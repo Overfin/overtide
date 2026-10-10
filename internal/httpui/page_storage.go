@@ -299,17 +299,20 @@ func (server *Server) cleanActions(actions []cleanup.Action, cfg config.Config) 
 			errs = append(errs, err.Error())
 			continue
 		}
-		// removal_execution.go's execution step already scopes each of
-		// these to the right media type/source internally, so it's safe
-		// to set all four unconditionally rather than branch on
-		// action.Kind/Media.Type — see runAutoRemovalEvaluation.
-		if cfg.Removal.AutoUnmonitor {
-			form.Set("unmonitor_movies", "1")
-			form.Set("unmonitor_episodes", "1")
-		}
-		if cfg.Removal.AutoExcludeFromImportLists {
-			form.Set("exclude_movies", "1")
-			form.Set("exclude_series", "1")
+		// removal_execution.go's execution step scopes each of these to the
+		// right media type/source internally, but validateRemovalScope's
+		// admission gate runs first and hard-forbids all four fields for a
+		// bare torrent action — so they must only be set for media-kind
+		// actions. See runAutoRemovalEvaluation.
+		if action.Kind != cleanup.StandaloneTorrent {
+			if cfg.Removal.AutoUnmonitor {
+				form.Set("unmonitor_movies", "1")
+				form.Set("unmonitor_episodes", "1")
+			}
+			if cfg.Removal.AutoExcludeFromImportLists {
+				form.Set("exclude_movies", "1")
+				form.Set("exclude_series", "1")
+			}
 		}
 		if err := server.submitAutoRemoval(form, action, "Manual cleanup: "); err != nil {
 			errs = append(errs, err.Error())

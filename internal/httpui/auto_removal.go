@@ -93,18 +93,21 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", action.Kind, err)
 				continue
 			}
-			// removal_execution.go's execution step already scopes each of
-			// these to the right media type/source internally (unmonitor_
-			// movies only touches Radarr-owned refs, exclude_series only
-			// fires for model.Series, etc.), so it's safe to set all four
-			// unconditionally here rather than branch on action.Kind/Media.Type.
-			if cfg.Removal.AutoUnmonitor {
-				form.Set("unmonitor_movies", "1")
-				form.Set("unmonitor_episodes", "1")
-			}
-			if cfg.Removal.AutoExcludeFromImportLists {
-				form.Set("exclude_movies", "1")
-				form.Set("exclude_series", "1")
+			// removal_execution.go's execution step scopes each of these to
+			// the right media type/source internally (unmonitor_movies only
+			// touches Radarr-owned refs, exclude_series only fires for
+			// model.Series, etc.), but validateRemovalScope's admission gate
+			// runs first and hard-forbids all four fields for a bare torrent
+			// action — so they must only be set for media-kind actions.
+			if action.Kind != cleanup.StandaloneTorrent {
+				if cfg.Removal.AutoUnmonitor {
+					form.Set("unmonitor_movies", "1")
+					form.Set("unmonitor_episodes", "1")
+				}
+				if cfg.Removal.AutoExcludeFromImportLists {
+					form.Set("exclude_movies", "1")
+					form.Set("exclude_series", "1")
+				}
 			}
 			if err := server.submitAutoRemoval(form, action, "Automatic cleanup: "); err != nil {
 				log.Printf("[auto-removal] submit failed kind=%s: %v", action.Kind, err)
