@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"stewarr/internal/services/imdb"
-	"stewarr/internal/valuation"
+	"overtide/internal/services/imdb"
+	"overtide/internal/valuation"
 )
 
 // imdbRatingsFetchHour is the local wall-clock hour RefreshIMDbRatings

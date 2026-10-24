@@ -1,7 +1,7 @@
 package inventory
 
 import (
-	"stewarr/internal/config"
+	"overtide/internal/config"
 	"testing"
 	"time"
 )

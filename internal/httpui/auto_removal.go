@@ -10,19 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"stewarr/internal/cleanup"
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
-	"stewarr/internal/tasks"
+	"overtide/internal/cleanup"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/store"
+	"overtide/internal/tasks"
 )
 
 const autoRemovalTaskID = "auto-removal"
 const autoRemovalEvalInterval = 15 * time.Minute
 
 // tmdbStalenessThreshold mirrors "2 refresh cycles" of TMDB enrichment
-// (cmd/stewarr/main.go's tmdbEnrichmentInterval, currently 24h) — kept as
-// its own constant here since internal/httpui cannot import cmd/stewarr.
+// (cmd/overtide/main.go's tmdbEnrichmentInterval, currently 24h) — kept as
+// its own constant here since internal/httpui cannot import cmd/overtide.
 // An item whose TMDB data is older than this (or was never fetched at
 // all) is excluded from automatic removal specifically — it's still
 // shown and scored normally everywhere else (see model.Media.
@@ -42,7 +42,7 @@ const tmdbStalenessThreshold = 2 * 24 * time.Hour
 // opt-in (Service.AllowAutomaticRemoval) still defaults to false regardless
 // of mode, so a fresh or upgraded install touches nothing until services
 // are individually opted in too. Unassociated torrents are additionally
-// excluded by default even in Auto mode, since Stewarr has no
+// excluded by default even in Auto mode, since Overtide has no
 // owning-media relationship to judge them safe to delete unattended — see
 // actionIsUnassociatedTorrent.
 func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
@@ -118,12 +118,12 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 }
 
 // actionIsUnassociatedTorrent reports whether action is a StandaloneTorrent
-// candidate Stewarr has no relationship for at all, current or historical.
+// candidate Overtide has no relationship for at all, current or historical.
 // Superseded and Orphaned torrents both carry known import provenance (a
 // specific replacement, or a former relationship whose media is simply gone)
 // and are not excluded by this gate. Unassociated has none of that — it may
 // simply be something the user downloaded through that client for their own
-// purposes, or from a service Stewarr doesn't track; automatic removal has
+// purposes, or from a service Overtide doesn't track; automatic removal has
 // no basis to judge those safe to delete unattended.
 func actionIsUnassociatedTorrent(action cleanup.Action) bool {
 	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) == 0 {

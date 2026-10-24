@@ -10,7 +10,7 @@ import "C"
 import (
 	"time"
 
-	"stewarr/internal/services/imdb"
+	"overtide/internal/services/imdb"
 )
 
 // ReplaceIMDbRatings atomically swaps in a full new snapshot of IMDb's

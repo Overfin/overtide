@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 // TestTorrentsTemplateShowsEmptyStateWithoutTorrentClient guards the fix

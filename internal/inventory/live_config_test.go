@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stewarr/internal/config"
+	"overtide/internal/config"
 )
 
 func TestAddServicePersistsAndActivatesLiveWithoutConfigPath(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 // TestNewTrustsCachedEnrichmentAfterRestart guards a real observability bug:

@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/jellyfin"
-	"stewarr/internal/services/seerr"
-	"stewarr/internal/services/tmdb"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/seerr"
+	"overtide/internal/services/tmdb"
 )
 
 // TestEnrichNewMediaFetchesAllApplicableSourcesForANewItem guards the

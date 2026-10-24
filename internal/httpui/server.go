@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"stewarr/internal/cleanup"
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
-	"stewarr/internal/product"
-	"stewarr/internal/tasks"
+	"overtide/internal/cleanup"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
+	"overtide/internal/product"
+	"overtide/internal/tasks"
 )
 
 // elementID turns an arbitrary stable key (a device's representative path)

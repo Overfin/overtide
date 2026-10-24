@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 func TestApplyTorrentValueScoresRatioRecencyAndPrivateBonus(t *testing.T) {
@@ -145,7 +145,7 @@ func TestApplyTorrentValueEligibleWithEnoughSamples(t *testing.T) {
 }
 
 // TestApplyTorrentValueEligibleAfterFullWindowElapsed guards the elapsed-
-// time path: even with just one sample, being that old (i.e. Stewarr has
+// time path: even with just one sample, being that old (i.e. Overtide has
 // been watching this torrent for a full TorrentContributionWindow already)
 // is sufficient on its own.
 func TestApplyTorrentValueEligibleAfterFullWindowElapsed(t *testing.T) {

@@ -2615,7 +2615,7 @@ Copyright © 2023 Basecamp, LLC
     return JSON.parse(new TextDecoder().decode(bytes));
   }
   function dispatchRevision(detail) {
-    document.dispatchEvent(new CustomEvent("stewarr:revision", { detail }));
+    document.dispatchEvent(new CustomEvent("overtide:revision", { detail }));
   }
 
   // internal/httpui/static/src/controllers/revisions.ts
@@ -2766,7 +2766,7 @@ Copyright © 2023 Basecamp, LLC
   var UpdatesController = class extends window.Stimulus.Controller {
     apply() {
       this.element.hidden = true;
-      document.dispatchEvent(new CustomEvent("stewarr:apply-updates"));
+      document.dispatchEvent(new CustomEvent("overtide:apply-updates"));
     }
   };
 
@@ -2783,10 +2783,10 @@ Copyright © 2023 Basecamp, LLC
         if (kind === "tasks") return;
         this.refresh();
       };
-      document.addEventListener("stewarr:revision", this.onRevision);
+      document.addEventListener("overtide:revision", this.onRevision);
     }
     disconnect() {
-      document.removeEventListener("stewarr:revision", this.onRevision);
+      document.removeEventListener("overtide:revision", this.onRevision);
     }
     field(name) {
       return this.element.querySelector(`[data-dashboard-field="${name}"]`);
@@ -2848,18 +2848,18 @@ Copyright © 2023 Basecamp, LLC
       document.addEventListener("input", this.onInput);
       document.addEventListener("change", this.onChange);
       document.addEventListener("submit", this.onSubmit);
-      document.addEventListener("stewarr:revision", this.onRevision);
-      document.addEventListener("stewarr:apply-updates", this.onApply);
-      document.addEventListener("stewarr:mutation-accepted", this.onAccepted);
+      document.addEventListener("overtide:revision", this.onRevision);
+      document.addEventListener("overtide:apply-updates", this.onApply);
+      document.addEventListener("overtide:mutation-accepted", this.onAccepted);
     }
     disconnect() {
       document.removeEventListener("click", this.onClick);
       document.removeEventListener("input", this.onInput);
       document.removeEventListener("change", this.onChange);
       document.removeEventListener("submit", this.onSubmit);
-      document.removeEventListener("stewarr:revision", this.onRevision);
-      document.removeEventListener("stewarr:apply-updates", this.onApply);
-      document.removeEventListener("stewarr:mutation-accepted", this.onAccepted);
+      document.removeEventListener("overtide:revision", this.onRevision);
+      document.removeEventListener("overtide:apply-updates", this.onApply);
+      document.removeEventListener("overtide:mutation-accepted", this.onAccepted);
       if (this.filterTimer) clearTimeout(this.filterTimer);
       if (this.modalRequest) this.modalRequest.abort();
     }
@@ -3265,7 +3265,7 @@ Copyright © 2023 Basecamp, LLC
           const unexplainedOther = device.otherBytes > device.reservedBytes ? device.otherBytes - device.reservedBytes : 0;
           const reserved = device.reservedBytes > 0 ? ` \xB7 ${humanBytes(device.reservedBytes)} reserved by the filesystem` : "";
           const elsewhere = unexplainedOther > 0 ? ` \xB7 ${humanBytes(unexplainedOther)} used elsewhere on this ${humanBytes(device.totalBytes)} disk` : "";
-          summary.textContent = `${humanBytes(device.stewarrUsedBytes)} used of ${humanBytes(device.usableBytes)} usable (${device.usagePercentOfUsable.toFixed(1)}%, target ${device.targetUsagePercent.toFixed(1)}%)${reserved}${elsewhere}`;
+          summary.textContent = `${humanBytes(device.overtideUsedBytes)} used of ${humanBytes(device.usableBytes)} usable (${device.usagePercentOfUsable.toFixed(1)}%, target ${device.targetUsagePercent.toFixed(1)}%)${reserved}${elsewhere}`;
         }
       } catch (_) {
       }
@@ -3286,10 +3286,10 @@ Copyright © 2023 Basecamp, LLC
       if (!root) return;
       root.innerHTML = '<div class="modal-overlay"><main class="modal-dialog preparing" role="dialog" aria-modal="true"><p class="muted">Loading\u2026</p><div class="actions"><button type="button" data-modal-cancel-loading>Cancel</button></div></main></div>';
       root.dataset.openerId = opener.id || "";
-      root._stewarrOpener = opener;
+      root._overtideOpener = opener;
       document.body.classList.add("modal-open");
       try {
-        const response = await fetch(url, { signal: this.modalRequest.signal, headers: { "X-Stewarr-Overlay": "1" } });
+        const response = await fetch(url, { signal: this.modalRequest.signal, headers: { "X-Overtide-Overlay": "1" } });
         const content = await response.text();
         if (!response.ok) throw new Error(content.trim() || `status ${response.status}`);
         root.innerHTML = content;
@@ -3308,7 +3308,7 @@ Copyright © 2023 Basecamp, LLC
     closeModal() {
       const root = document.getElementById("modal-root");
       if (!root) return;
-      const opener = root._stewarrOpener;
+      const opener = root._overtideOpener;
       root.replaceChildren();
       document.body.classList.remove("modal-open");
       if (opener && document.contains(opener)) opener.focus();
@@ -3340,7 +3340,7 @@ Copyright © 2023 Basecamp, LLC
     cancel() {
       if (this.busy) return;
       const root = document.getElementById("modal-root");
-      const opener = root?._stewarrOpener;
+      const opener = root?._overtideOpener;
       root?.replaceChildren();
       document.body.classList.remove("modal-open");
       if (opener && document.contains(opener)) opener.focus();
@@ -3517,7 +3517,7 @@ Copyright © 2023 Basecamp, LLC
         const response = await fetch(this.executeTarget.action, {
           method: "POST",
           body: new FormData(this.executeTarget),
-          headers: { "Accept": "application/json", "X-Stewarr-Overlay": "1" }
+          headers: { "Accept": "application/json", "X-Overtide-Overlay": "1" }
         });
         const responseText = await response.text();
         let body = {};
@@ -3530,7 +3530,7 @@ Copyright © 2023 Basecamp, LLC
         const label = this.element.querySelector("#removal-title")?.nextElementSibling?.textContent?.trim() || "Removal";
         this.cancelAfterAcceptance();
         announce(`${label} queued for removal.`);
-        document.dispatchEvent(new CustomEvent("stewarr:mutation-accepted", { detail: body }));
+        document.dispatchEvent(new CustomEvent("overtide:mutation-accepted", { detail: body }));
       } catch (error) {
         this.busy = false;
         this.submitButtonTarget.textContent = this.model.dryRun ? "Simulate" : "Remove selected";

@@ -1,6 +1,6 @@
 # Overtide Scheduler Specification
 
-Status: implemented in `internal/tasks` and composed by `cmd/stewarr/main.go`
+Status: implemented in `internal/tasks` and composed by `cmd/overtide/main.go`
 and the removal admission path in `internal/httpui`. Core policy confirmed and
 built 2026-08-29. `internal/tasks/manager_test.go` exercises every mandatory
 acceptance test in section 14 under an injected clock, and no legacy manager,

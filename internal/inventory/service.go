@@ -5,19 +5,19 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/imdb"
+	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/qbittorrent"
+	"overtide/internal/services/radarr"
+	"overtide/internal/services/seerr"
+	"overtide/internal/services/sonarr"
+	"overtide/internal/services/tmdb"
+	"overtide/internal/store"
+	"overtide/internal/valuation"
 	"path/filepath"
 	"sort"
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/imdb"
-	"stewarr/internal/services/jellyfin"
-	"stewarr/internal/services/qbittorrent"
-	"stewarr/internal/services/radarr"
-	"stewarr/internal/services/seerr"
-	"stewarr/internal/services/sonarr"
-	"stewarr/internal/services/tmdb"
-	"stewarr/internal/store"
-	"stewarr/internal/valuation"
 	"strings"
 	"sync"
 	"time"
@@ -485,7 +485,7 @@ func (service *Service) TorrentDetail(hash, svcID string) (model.Torrent, error)
 	if err != nil {
 		return indexed, err
 	}
-	// Preserve Stewarr-owned interpretations and expensive reconciliation facts.
+	// Preserve Overtide-owned interpretations and expensive reconciliation facts.
 	live.ServiceID = indexed.ServiceID
 	live.TorrentValue = indexed.TorrentValue
 	live.TorrentValueReasons = indexed.TorrentValueReasons
@@ -577,7 +577,7 @@ func (service *Service) RemoveManagedFile(ctx context.Context, ref model.MediaFi
 // is removed through that owning Radarr/Sonarr instance's queue instead,
 // when a matching queue entry still exists: one call there both drops the
 // stale queue entry and tells qBittorrent to delete the download, instead
-// of leaving Radarr/Sonarr still waiting on a download Stewarr just deleted
+// of leaving Radarr/Sonarr still waiting on a download Overtide just deleted
 // out from under it. Falls back to removing directly from qBittorrent when
 // there's no matching queue entry — already imported, already dropped from
 // the queue, or no current owning media item at all.

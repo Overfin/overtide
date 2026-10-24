@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 func TestApplyDoesNotCrossMovieAndSeriesProviderNamespaces(t *testing.T) {

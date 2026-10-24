@@ -8,7 +8,7 @@ README.md
 ROADMAP.md
 Scheduler-Spec.md
 VERSION
-cmd/stewarr/main.go
+cmd/overtide/main.go
 config.example.json
 docker-compose.yml
 go.mod

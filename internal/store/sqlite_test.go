@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 func TestStoreRoundTrip(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestConcurrentWritesAreSerialized(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestConcurrentWritesAreSerialized(t *testing.T) {
 }
 
 func TestPublishReconciliationRollsBackWholeGeneration(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestPublishReconciliationRollsBackWholeGeneration(t *testing.T) {
 }
 
 func TestPublishReconciliationDeltaUpdatesOnlyScopedRows(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestPublishReconciliationDeltaUpdatesOnlyScopedRows(t *testing.T) {
 }
 
 func TestPublishReconciliationDeltaRollsBackScopeAndRowsTogether(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestPublishReconciliationDeltaRollsBackScopeAndRowsTogether(t *testing.T) {
 }
 
 func TestReadersCannotObserveReplacementTransaction(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestReadersCannotObserveReplacementTransaction(t *testing.T) {
 }
 
 func TestPublishInventoryRollsBackCursorAndSnapshotTogether(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestPublishInventoryRollsBackCursorAndSnapshotTogether(t *testing.T) {
 }
 
 func TestPublishEnrichmentRollsBackMediaAndGenerationTogether(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestPublishEnrichmentRollsBackMediaAndGenerationTogether(t *testing.T) {
 }
 
 func TestCleanupStatisticsStartAtZero(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestCleanupStatisticsStartAtZero(t *testing.T) {
 }
 
 func TestFileModelRoundTrip(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestFileModelRoundTrip(t *testing.T) {
 }
 
 func TestRemovalHistoryRoundTrip(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestRemovalHistoryRoundTrip(t *testing.T) {
 }
 
 func TestCleanupStatisticsCountsSuccessfulRemovals(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func TestStartedRemovalCanBeFinalizedOrRecovered(t *testing.T) {
 }
 
 func TestSessionCreateValidateAndDelete(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestSessionCreateValidateAndDelete(t *testing.T) {
 // an expiry: a session past it must stop being accepted, and checking it
 // should clean the stale row up rather than leaving it to accumulate.
 func TestExpiredSessionIsRejectedAndPruned(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestExpiredSessionIsRejectedAndPruned(t *testing.T) {
 }
 
 func TestDeleteAllSessionsClearsEveryOne(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 type Client struct {
@@ -367,7 +367,7 @@ func (client *Client) resolveOrCreateTagID(label string) (int, error) {
 
 // AddKeepTag tags seriesID with label (creating the tag in Sonarr if it
 // doesn't already exist there) — used to permanently protect a series
-// from cleanup directly from Stewarr's own UI, the same mechanism a user
+// from cleanup directly from Overtide's own UI, the same mechanism a user
 // manually tagging it in Sonarr itself would produce. A no-op, not an
 // error, if the series already carries the tag.
 func (client *Client) AddKeepTag(seriesID int, label string) error {

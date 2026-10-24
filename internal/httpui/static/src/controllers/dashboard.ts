@@ -25,11 +25,11 @@ export class DashboardController extends window.Stimulus.Controller {
       if (kind === "tasks") return;
       this.refresh();
     };
-    document.addEventListener("stewarr:revision", this.onRevision as EventListener);
+    document.addEventListener("overtide:revision", this.onRevision as EventListener);
   }
 
   disconnect(): void {
-    document.removeEventListener("stewarr:revision", this.onRevision as EventListener);
+    document.removeEventListener("overtide:revision", this.onRevision as EventListener);
   }
 
   field(name: string): HTMLElement | null {

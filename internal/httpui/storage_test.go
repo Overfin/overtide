@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/cleanup"
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
+	"overtide/internal/cleanup"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
 )
 
 func TestStorageTemplateRendersPerServiceDetailAndRootPaths(t *testing.T) {

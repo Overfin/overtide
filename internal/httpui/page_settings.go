@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"stewarr/internal/config"
-	"stewarr/internal/services/tmdb"
+	"overtide/internal/config"
+	"overtide/internal/services/tmdb"
 )
 
 type settingsPageData struct {

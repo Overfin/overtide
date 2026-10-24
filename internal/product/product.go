@@ -3,7 +3,7 @@
 package product
 
 const (
-	Name    = "Stewarr"
-	Slug    = "stewarr"
+	Name    = "Overtide"
+	Slug    = "overtide"
 	Version = "0.5.0"
 )

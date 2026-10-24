@@ -11,17 +11,17 @@ RUN npm --prefix internal/httpui/static/src ci
 RUN npm --prefix internal/httpui/static/src run typecheck
 RUN go run ./tools/buildassets
 RUN go test ./...
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/stewarr ./cmd/stewarr
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/overtide ./cmd/overtide
 
 FROM alpine:3.22
 RUN apk add --no-cache sqlite-libs tzdata \
-    && addgroup -g 1000 -S stewarr \
-    && adduser -u 1000 -S -G stewarr stewarr \
+    && addgroup -g 1000 -S overtide \
+    && adduser -u 1000 -S -G overtide overtide \
     && mkdir -p /config/state \
-    && chown -R stewarr:stewarr /config
+    && chown -R overtide:overtide /config
 WORKDIR /app
-COPY --from=build /out/stewarr /usr/local/bin/stewarr
+COPY --from=build /out/overtide /usr/local/bin/overtide
 USER 1000:1000
 EXPOSE 8088
-ENTRYPOINT ["stewarr"]
+ENTRYPOINT ["overtide"]
 CMD ["-config", "/config/config.json"]

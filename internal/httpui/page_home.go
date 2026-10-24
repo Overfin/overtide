@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 type homeData struct {

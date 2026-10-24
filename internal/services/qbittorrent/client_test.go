@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 func TestVerifyPathsUnmanagedUsesFreshContentPath(t *testing.T) {
@@ -73,7 +73,7 @@ func TestTorrentFileRoot(t *testing.T) {
 // bug: a torrent still downloading into a separate incomplete-downloads
 // directory has its real files there, not under SavePath — using SavePath
 // unconditionally meant those real, in-progress files never matched the
-// reconstructed claim path, so Stewarr silently treated live download data
+// reconstructed claim path, so Overtide silently treated live download data
 // as Unmanaged (and VerifyPathsUnmanaged's ownership safety check missed
 // it too).
 func TestClaimedFilesUsesContentPathForIncompleteDownloads(t *testing.T) {
@@ -315,7 +315,7 @@ func TestStorageRootsReactivelyPicksUpContentPathEvenWithoutTempPathPreference(t
 
 // TestAddTagPostsHashAndTag guards the actual request shape sent to
 // qBittorrent's addTags endpoint — used to permanently protect a
-// torrent from cleanup directly from Stewarr's own UI.
+// torrent from cleanup directly from Overtide's own UI.
 func TestAddTagPostsHashAndTag(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v2/torrents/addTags" {
@@ -324,13 +324,13 @@ func TestAddTagPostsHashAndTag(t *testing.T) {
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
 		}
-		if r.Form.Get("hashes") != "abc123" || r.Form.Get("tags") != "stewarr_keep" {
+		if r.Form.Get("hashes") != "abc123" || r.Form.Get("tags") != "overtide_keep" {
 			t.Fatalf("unexpected form: %#v", r.Form)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
-	if err := New("qBittorrent", srv.URL, "", "", "token").AddTag("abc123", "stewarr_keep"); err != nil {
+	if err := New("qBittorrent", srv.URL, "", "", "token").AddTag("abc123", "overtide_keep"); err != nil {
 		t.Fatal(err)
 	}
 }

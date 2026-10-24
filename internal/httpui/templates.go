@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strings"
 
-	"stewarr/internal/product"
+	"overtide/internal/product"
 )
 
-// UI source and its pinned browser dependencies ship inside the Stewarr
-// binary. Running Stewarr never depends on a CDN or a JavaScript build service.
+// UI source and its pinned browser dependencies ship inside the Overtide
+// binary. Running Overtide never depends on a CDN or a JavaScript build service.
 //
 //go:embed templates/*.html static/*
 var uiFiles embed.FS

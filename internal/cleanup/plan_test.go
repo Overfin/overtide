@@ -3,11 +3,11 @@ package cleanup
 import (
 	"testing"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 func TestBuildUnavailableStorage(t *testing.T) {
-	p, err := Build("/definitely/not/a/stewarr/storage/path", 0, nil, 90, 95, 50, nil, nil, true, nil)
+	p, err := Build("/definitely/not/a/overtide/storage/path", 0, nil, 90, 95, 50, nil, nil, true, nil)
 	if err == nil {
 		t.Fatal("expected storage probe error")
 	}
@@ -48,10 +48,10 @@ func TestBuildPausesWhenValuationIsUnreliable(t *testing.T) {
 }
 
 // TestBuildScopesThresholdsToUsableSpace guards the whole point of the
-// otherBytes parameter: target/critical must mean "percent of what Stewarr
+// otherBytes parameter: target/critical must mean "percent of what Overtide
 // actually has to work with" on a shared pool, not percent of the raw disk
 // — otherwise space other services hold would silently count against
-// Stewarr's own thresholds. Every assertion is derived from a single Build
+// Overtide's own thresholds. Every assertion is derived from a single Build
 // call's own internally-consistent fields rather than compared against a
 // second, separately-timed call: two independent statfs snapshots on a busy
 // machine (e.g. a CI runner) can legitimately disagree by a few bytes,
@@ -74,15 +74,15 @@ func TestBuildScopesThresholdsToUsableSpace(t *testing.T) {
 	if p.UsableBytes != p.TotalBytes-otherBytes {
 		t.Fatalf("expected UsableBytes to exclude otherBytes: %#v", p)
 	}
-	if p.StewarrUsedBytes != p.UsedBytes-otherBytes {
-		t.Fatalf("expected StewarrUsedBytes to exclude otherBytes: %#v", p)
+	if p.OvertideUsedBytes != p.UsedBytes-otherBytes {
+		t.Fatalf("expected OvertideUsedBytes to exclude otherBytes: %#v", p)
 	}
-	// With target 0%, NeedBytes is exactly StewarrUsedBytes (see
+	// With target 0%, NeedBytes is exactly OvertideUsedBytes (see
 	// TestBuildUsesTargetWithoutWaitingForCritical for the same trick) — so
 	// this fails if NeedBytes were ever computed against raw UsedBytes
-	// instead of the otherBytes-scoped StewarrUsedBytes.
-	if p.NeedBytes != p.StewarrUsedBytes {
-		t.Fatalf("expected NeedBytes to equal StewarrUsedBytes at target 0%%: %#v", p)
+	// instead of the otherBytes-scoped OvertideUsedBytes.
+	if p.NeedBytes != p.OvertideUsedBytes {
+		t.Fatalf("expected NeedBytes to equal OvertideUsedBytes at target 0%%: %#v", p)
 	}
 }
 

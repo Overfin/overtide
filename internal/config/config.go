@@ -60,10 +60,10 @@ type RemovalConfig struct {
 	// submission.
 	AutoMode string `json:"auto_mode"`
 	// AutoRemoveUnassociatedTorrents gates automatic removal of torrents
-	// Stewarr has no owning-media relationship for. Defaults to false: an
+	// Overtide has no owning-media relationship for. Defaults to false: an
 	// Unassociated torrent may simply be something the user downloaded
 	// through that client for their own purposes, or from a service
-	// Stewarr doesn't track — automatic removal has no basis to judge those
+	// Overtide doesn't track — automatic removal has no basis to judge those
 	// are safe to delete unattended, unlike a torrent it can prove is
 	// Superseded or an independent copy of managed media. This gate is
 	// separate from and in addition to Service.AllowAutomaticRemoval: that
@@ -590,7 +590,9 @@ type QBittorrentService struct {
 // defaultConfigJSON is written to path by Load when no config file exists
 // yet (a fresh install). It mirrors config.example.json with the demo
 // services removed: services are meant to be added from the running app's
-// Services page, not hand-edited in before first start.
+// Services page, not hand-edited in before first start. stewarr_keep is
+// among the keep tags so what was protected with Stewarr, on the same
+// Radarr, Sonarr or qBittorrent, stays protected.
 const defaultConfigJSON = `{
   "server": {
     "listen": ":8088",
@@ -603,9 +605,9 @@ const defaultConfigJSON = `{
   "protection": {
     "favorite": true,
     "seerr_request_grace": "8760h",
-    "keep_tags": ["keep", "stewarr_keep"],
+    "keep_tags": ["keep", "overtide_keep", "stewarr_keep"],
     "min_torrent_ratio": 0,
-    "keep_torrent_tags": []
+    "keep_torrent_tags": ["stewarr_keep"]
   },
   "valuation": {
     "weights": {

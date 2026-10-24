@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 func TestTorrentHistorySamplingRecordsCurrentTorrents(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestTorrentHistorySamplingRecordsCurrentTorrents(t *testing.T) {
 }
 
 func TestTorrentHistorySamplingNoTorrentsIsNotAnError(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

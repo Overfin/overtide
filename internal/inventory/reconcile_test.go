@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"overtide/internal/config"
 	"path/filepath"
-	"stewarr/internal/config"
 	"testing"
 )
 
@@ -69,6 +69,7 @@ func TestWalkRootsCreatesOnlyExistingRegularFilesAndPreservesHardlinkIdentity(t 
 		t.Fatalf("hardlinks not recognized as same physical identity: %+v %+v", fs[0], fs[1])
 	}
 }
+
 // TestWalkRootsReportsPhysicalSizeNotApparentSizeForSparseFiles guards the
 // bug where reclaimable/unmanaged/library byte totals overstated real disk
 // usage: a torrent client can preallocate a download's final size well
@@ -168,7 +169,7 @@ func TestWalkStorageRootsMergesOverlappingServiceContexts(t *testing.T) {
 // chance to add one.
 // TestReconcileFilesToleratesOneUnreachableRoot guards the end-to-end
 // behavior the walkStorageRoots skip-and-continue change exists for: a
-// service reporting one root Stewarr can't see (alongside one it can) must
+// service reporting one root Overtide can't see (alongside one it can) must
 // not stop the whole reconciliation cycle from completing — FileModel
 // should still reach "reliable" (unblocking cleanup planning for every
 // unaffected device) and the reachable root's files should still be

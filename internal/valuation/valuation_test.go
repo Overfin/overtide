@@ -1,10 +1,10 @@
 package valuation
 
 import (
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/imdb"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/imdb"
+	"overtide/internal/store"
 	"testing"
 	"time"
 )

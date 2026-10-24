@@ -21,11 +21,11 @@ func TestAddKeepTagCreatesTagWhenMissing(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			var payload map[string]string
 			_ = json.Unmarshal(body, &payload)
-			if payload["label"] != "stewarr_keep" {
+			if payload["label"] != "overtide_keep" {
 				t.Fatalf("unexpected create-tag payload: %#v", payload)
 			}
 			tagCreated = true
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": 7, "label": "stewarr_keep"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 7, "label": "overtide_keep"})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/movie/42":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "tags": []any{1}})
 		case r.Method == http.MethodPut && r.URL.Path == "/api/v3/movie/42":
@@ -42,7 +42,7 @@ func TestAddKeepTagCreatesTagWhenMissing(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if err := New(server.URL, "key").AddKeepTag(42, "stewarr_keep"); err != nil {
+	if err := New(server.URL, "key").AddKeepTag(42, "overtide_keep"); err != nil {
 		t.Fatal(err)
 	}
 	if !tagCreated {
@@ -57,7 +57,7 @@ func TestAddKeepTagReusesExistingTagAndSkipsDuplicate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/tag":
-			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": 7, "label": "stewarr_keep"}})
+			_ = json.NewEncoder(w).Encode([]any{map[string]any{"id": 7, "label": "overtide_keep"}})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v3/tag":
 			t.Fatal("expected no tag creation when one already exists")
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/movie/42":
@@ -69,7 +69,7 @@ func TestAddKeepTagReusesExistingTagAndSkipsDuplicate(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if err := New(server.URL, "key").AddKeepTag(42, "stewarr_keep"); err != nil {
+	if err := New(server.URL, "key").AddKeepTag(42, "overtide_keep"); err != nil {
 		t.Fatal(err)
 	}
 }

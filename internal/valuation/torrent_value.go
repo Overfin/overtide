@@ -5,14 +5,14 @@ import (
 	"math"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 // Torrent Value inputs are entirely hardcoded — unlike Media's ValueWeights,
 // nothing about how a torrent's own value is computed is user-configurable.
-// The goal is what Stewarr considers objectively true about a torrent's
+// The goal is what Overtide considers objectively true about a torrent's
 // health, not what a user thinks makes one healthy.
 const (
 	torrentRatioWeight = 8
@@ -37,9 +37,9 @@ const (
 	// contribution.
 	TorrentContributionWindow     = 7 * 24 * time.Hour
 	torrentContributionMinSamples = 4
-	// torrentHistorySamplingInterval mirrors cmd/stewarr's own
+	// torrentHistorySamplingInterval mirrors cmd/overtide's own
 	// torrentHistoryInterval — duplicated here because valuation can't
-	// import cmd/stewarr. Keep them in sync if either ever changes.
+	// import cmd/overtide. Keep them in sync if either ever changes.
 	torrentHistorySamplingInterval = 30 * time.Minute
 	// torrentSeedingTimeWeight/HorizonDays reward accumulated seeding time,
 	// hard-capped so an old torrent can't earn unbounded points just for
@@ -131,11 +131,11 @@ func ApplyTorrentValue(torrents []model.Torrent, configuration config.Config, hi
 }
 
 // torrentHistorySufficient reports whether a torrent has enough observed
-// history to be trusted as a removal candidate: either Stewarr has been
+// history to be trusted as a removal candidate: either Overtide has been
 // continually watching it for the full TorrentContributionWindow already
 // (elapsed since its own earliest retained sample — never the torrent
 // client's AddedOn, which a client's existing seeding stack can predate
-// Stewarr entirely, and which survives a database wipe untouched), or it
+// Overtide entirely, and which survives a database wipe untouched), or it
 // has already accumulated at least half the samples that window would
 // hold at the current sampling cadence, whichever comes first.
 func torrentHistorySufficient(samples []store.TorrentHistorySample) bool {

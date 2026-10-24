@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"stewarr/internal/model"
+	"overtide/internal/model"
 	"sync"
 	"time"
 )

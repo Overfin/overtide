@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"stewarr/internal/applog"
-	"stewarr/internal/config"
-	"stewarr/internal/httpui"
-	"stewarr/internal/inventory"
-	"stewarr/internal/product"
-	"stewarr/internal/store"
-	"stewarr/internal/tasks"
+	"overtide/internal/applog"
+	"overtide/internal/config"
+	"overtide/internal/httpui"
+	"overtide/internal/inventory"
+	"overtide/internal/product"
+	"overtide/internal/store"
+	"overtide/internal/tasks"
 )
 
 const (
@@ -45,9 +45,9 @@ const (
 func main() {
 	configPath := flag.String("config", "/config/config.json", "path to config file")
 	flag.Parse()
-	applicationLog, err := applog.OpenDaily(logDirectory, "stewarr", logRetentionDays, time.Now)
+	applicationLog, err := applog.OpenDaily(logDirectory, "overtide", logRetentionDays, time.Now)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Stewarr cannot start without its persistent application log: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Overtide cannot start without its persistent application log: %v\n", err)
 		os.Exit(1)
 	}
 	defer applicationLog.Close()
@@ -77,7 +77,7 @@ func main() {
 	go func() {
 		select {
 		case loggingError := <-applicationLog.Errors():
-			fmt.Fprintf(os.Stderr, "Stewarr is stopping because its mandatory application log failed: %v\n", loggingError)
+			fmt.Fprintf(os.Stderr, "Overtide is stopping because its mandatory application log failed: %v\n", loggingError)
 			cancel()
 		case <-ctx.Done():
 		}
@@ -194,7 +194,7 @@ func main() {
 	cancel()
 	<-taskManager.Done()
 	if loggingError := applicationLog.Err(); loggingError != nil {
-		fmt.Fprintf(os.Stderr, "Stewarr terminated after mandatory application log failure: %v\n", loggingError)
+		fmt.Fprintf(os.Stderr, "Overtide terminated after mandatory application log failure: %v\n", loggingError)
 		os.Exit(1)
 	}
 	if runError != nil {

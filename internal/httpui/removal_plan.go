@@ -3,10 +3,10 @@ package httpui
 import (
 	"fmt"
 	"net/url"
+	"overtide/internal/model"
+	"overtide/internal/removal"
 	"path/filepath"
 	"sort"
-	"stewarr/internal/model"
-	"stewarr/internal/removal"
 	"strings"
 )
 
@@ -226,7 +226,7 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 	contextByHash := map[string]relatedRemovalTorrent{}
 	if mediaItem != nil {
 		for _, torrent := range mediaItem.Torrents {
-			// Every torrent Stewarr has ever related to this media — Current,
+			// Every torrent Overtide has ever related to this media — Current,
 			// Superseded, or Orphaned — is disclosed and selectable here, so
 			// removing the media can also clean up its old releases in one
 			// action. Only a torrent with no relationship to this media at all

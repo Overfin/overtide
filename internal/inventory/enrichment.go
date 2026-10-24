@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"stewarr/internal/model"
-	"stewarr/internal/valuation"
+	"overtide/internal/model"
+	"overtide/internal/valuation"
 	"sync"
 	"time"
 )
@@ -230,7 +230,7 @@ func needsSeerrEnrichment(m model.Media) bool { return m.SeerrEnrichedAt.IsZero(
 // rating moving, a request being fulfilled), never to discover new items
 // — there is no other path that would ever clear one of the *EnrichedAt
 // fields this function checks. Meant to be triggered right after a base
-// (Radarr/Sonarr) refresh (see cmd/stewarr/main.go); a no-op, cheap call
+// (Radarr/Sonarr) refresh (see cmd/overtide/main.go); a no-op, cheap call
 // when nothing needs any source's attention.
 //
 // Unlike the three Refresh* methods this never touches Reliability.* or

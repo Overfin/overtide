@@ -2,7 +2,7 @@ package inventory
 
 import (
 	"fmt"
-	"stewarr/internal/model"
+	"overtide/internal/model"
 	"strings"
 )
 

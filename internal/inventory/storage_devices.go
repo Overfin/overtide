@@ -7,15 +7,15 @@ import (
 	"strings"
 	"syscall"
 
-	"stewarr/internal/model"
-	"stewarr/internal/storagecapabilities"
+	"overtide/internal/model"
+	"overtide/internal/storagecapabilities"
 )
 
 // StorageDevice reports one physical storage device known from the last file
 // reconciliation's service-discovered roots, with real filesystem usage
-// alongside Stewarr's own attribution of claimed bytes by service. The
+// alongside Overtide's own attribution of claimed bytes by service. The
 // two are kept separate rather than forced to agree: OtherBytes is whatever
-// real usage Stewarr's claims do not account for, preserved as Unknown
+// real usage Overtide's claims do not account for, preserved as Unknown
 // rather than guessed away.
 type StorageDevice struct {
 	Filesystem         string
@@ -32,7 +32,7 @@ type StorageDevice struct {
 	// ReservedBytes is the portion of OtherBytes explained by the
 	// filesystem's own reserved-for-root blocks (see
 	// storagecapabilities.Capabilities.ReservedBytes) — a real, permanent,
-	// unwritable-by-Stewarr allocation, not another service's data. Always
+	// unwritable-by-Overtide allocation, not another service's data. Always
 	// <= OtherBytes. See UnexplainedOtherBytes for what's left over.
 	ReservedBytes uint64
 	// ServiceRoots is this device's own subset of each service's root
@@ -46,22 +46,22 @@ type StorageDevice struct {
 }
 
 // UsableBytes is this device's capacity once space already held by things
-// outside Stewarr's own view (OtherBytes) is set aside — the ceiling
-// Stewarr's own claimed/unmanaged/free bytes always sum to exactly.
+// outside Overtide's own view (OtherBytes) is set aside — the ceiling
+// Overtide's own claimed/unmanaged/free bytes always sum to exactly.
 func (d StorageDevice) UsableBytes() uint64 {
 	return d.TotalBytes - d.OtherBytes
 }
 
-// StewarrUsedBytes is UsedBytes with OtherBytes excluded — the portion of
-// real disk usage Stewarr can actually account for (Claimed + Unmanaged),
-// pairing with UsableBytes so "X used of Y usable" never counts space Stewarr
+// OvertideUsedBytes is UsedBytes with OtherBytes excluded — the portion of
+// real disk usage Overtide can actually account for (Claimed + Unmanaged),
+// pairing with UsableBytes so "X used of Y usable" never counts space Overtide
 // doesn't even attribute to itself.
-func (d StorageDevice) StewarrUsedBytes() uint64 {
+func (d StorageDevice) OvertideUsedBytes() uint64 {
 	return d.UsedBytes - d.OtherBytes
 }
 
 // UnexplainedOtherBytes is OtherBytes minus ReservedBytes — what's left
-// with no known cause at all, after subtracting the one cause Stewarr can
+// with no known cause at all, after subtracting the one cause Overtide can
 // actually detect directly from the filesystem itself. Display code should
 // show this and ReservedBytes as two distinct facts ("reserved by the
 // filesystem" vs. "used elsewhere"), not lump them under one ambiguous
@@ -156,7 +156,7 @@ func (service *Service) deviceGroups() (groups map[uint64]*deviceGroup, order []
 }
 
 // StorageDevices reports one entry per physical device, with real filesystem
-// usage and Stewarr's own attribution of claimed bytes by service.
+// usage and Overtide's own attribution of claimed bytes by service.
 func (service *Service) StorageDevices() []StorageDevice {
 	groups, order, files, mediaRefs, torrentRefs := service.deviceGroups()
 	if len(groups) == 0 {
@@ -387,10 +387,10 @@ func (service *Service) ServiceRootPaths() map[string][]string {
 }
 
 // RootCapability describes one service-reported storage root and what
-// Stewarr can currently do with it. A reachable root gets real filesystem
+// Overtide can currently do with it. A reachable root gets real filesystem
 // facts (storagecapabilities.Inspect). An unreachable one instead gets
-// whatever its owning service has already told Stewarr lives there —
-// self-reported from data already in memory, independent of Stewarr's own
+// whatever its owning service has already told Overtide lives there —
+// self-reported from data already in memory, independent of Overtide's own
 // filesystem view — so what mounting the path would add is still visible
 // even sight-unseen.
 type RootCapability struct {

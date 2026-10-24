@@ -13,7 +13,7 @@ type Capabilities struct {
 	Device     uint64 `json:"device"`
 	TotalBytes uint64 `json:"totalBytes"`
 	// FreeBytes is space available to an unprivileged process (statfs's
-	// Bavail) — what Stewarr, running as whatever user it runs as, could
+	// Bavail) — what Overtide, running as whatever user it runs as, could
 	// actually write into. Deliberately not Bfree (all free space,
 	// including anything reserved for root): that space isn't usable by a
 	// normal write regardless of what df or other tools report. See
@@ -22,7 +22,7 @@ type Capabilities struct {
 	// ReservedBytes is space the filesystem itself holds back from
 	// unprivileged writers (statfs's Bfree-Bavail) — most commonly ext4's
 	// default 5% reserved-for-root allocation. It's real, permanent
-	// overhead, not usage by anything Stewarr or another service put
+	// overhead, not usage by anything Overtide or another service put
 	// there, so it's tracked separately rather than folded into
 	// StorageDevice.OtherBytes' "some other service's data" framing.
 	ReservedBytes         uint64 `json:"reservedBytes"`

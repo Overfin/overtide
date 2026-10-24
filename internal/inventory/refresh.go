@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/radarr"
+	"overtide/internal/services/sonarr"
+	"overtide/internal/store"
+	"overtide/internal/valuation"
 	"sort"
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/radarr"
-	"stewarr/internal/services/sonarr"
-	"stewarr/internal/store"
-	"stewarr/internal/valuation"
 	"strings"
 	"sync"
 	"time"
@@ -525,7 +525,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 			m.DownloadIDs = sids[ownerKey{ServiceID: m.ServiceID, OwnerID: m.SourceID}]
 		}
 		// A logical media item may remain in Radarr/Sonarr after all of its files
-		// have been deleted. Keep that media in Stewarr, but do not let its
+		// have been deleted. Keep that media in Overtide, but do not let its
 		// historical latest download hash claim a torrent as currently associated.
 		// Until first-class media files are indexed, SizeBytes > 0 is our current
 		// authoritative summary that this media has file data in the library.

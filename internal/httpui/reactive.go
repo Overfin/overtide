@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 type uiRevision struct {

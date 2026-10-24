@@ -1,7 +1,7 @@
 services:
-  stewarr:
+  overtide:
     build: .
-    container_name: stewarr
+    container_name: overtide
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:

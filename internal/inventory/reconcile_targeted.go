@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/radarr"
-	"stewarr/internal/services/sonarr"
-	"stewarr/internal/store"
-	"stewarr/internal/tasks"
-	"stewarr/internal/valuation"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/radarr"
+	"overtide/internal/services/sonarr"
+	"overtide/internal/store"
+	"overtide/internal/tasks"
+	"overtide/internal/valuation"
 )
 
 func (service *Service) promoteTargeted(ctx context.Context, reason string) error {

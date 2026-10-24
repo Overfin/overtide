@@ -13,7 +13,7 @@
     {{if .Capabilities}}
     <section class="card">
       <h2>Storage capabilities</h2>
-      <p class="muted">Every path your services have reported, and what Stewarr currently knows about it.</p>
+      <p class="muted">Every path your services have reported, and what Overtide currently knows about it.</p>
       <ul class="capability-list">
         {{range .Capabilities}}
         <li>
@@ -21,7 +21,7 @@
           {{if .Reachable}}
           <span class="muted">· {{.Filesystem}}, {{humanU .FreeBytes}} free{{if gt .ReservedBytes 0}}, {{humanU .ReservedBytes}} reserved{{end}}</span>
           {{else}}
-          <span class="warn">· not reachable from Stewarr's own container</span>
+          <span class="warn">· not reachable from Overtide's own container</span>
           {{if gt .SelfReportedCount 0}}
           <span class="muted">— {{.ServiceName}} reports {{.SelfReportedCount}} item(s), {{human .SelfReportedSizeBytes}}, that would become visible once mounted</span>
           {{end}}
@@ -29,7 +29,7 @@
         </li>
         {{end}}
       </ul>
-      <p class="muted">Add a matching volume mount to Stewarr's own container for any path marked not reachable — the host-side path is whatever directory you already mounted into that service's own container; Stewarr can't see or guess that part. Reconciliation keeps running for everything else in the meantime: media and torrents under these paths are simply excluded from automatic removal until the mount is fixed.</p>
+      <p class="muted">Add a matching volume mount to Overtide's own container for any path marked not reachable — the host-side path is whatever directory you already mounted into that service's own container; Overtide can't see or guess that part. Reconciliation keeps running for everything else in the meantime: media and torrents under these paths are simply excluded from automatic removal until the mount is fixed.</p>
     </section>
     {{end}}
     {{if not .Devices}}
@@ -55,7 +55,7 @@
              reactive fragment below. A raw disk-byte tick has nothing to do
              with which items would actually be removed and must never force
              that comparatively expensive plan to be recomputed. -->
-        <p class="muted" data-storage-summary data-representative-path="{{.Storage.RepresentativePath}}">{{humanU .Storage.StewarrUsedBytes}} used of {{humanU .Storage.UsableBytes}} usable ({{printf "%.1f" (bytePercent .Storage.StewarrUsedBytes .Storage.UsableBytes)}}%, target {{printf "%.1f" .Plan.TargetUsagePercent}}%){{if gt .Storage.ReservedBytes 0}} · {{humanU .Storage.ReservedBytes}} reserved by the filesystem{{end}}{{if gt .Storage.UnexplainedOtherBytes 0}} · {{humanU .Storage.UnexplainedOtherBytes}} used elsewhere on this {{humanU .Storage.TotalBytes}} disk{{end}}</p>
+        <p class="muted" data-storage-summary data-representative-path="{{.Storage.RepresentativePath}}">{{humanU .Storage.OvertideUsedBytes}} used of {{humanU .Storage.UsableBytes}} usable ({{printf "%.1f" (bytePercent .Storage.OvertideUsedBytes .Storage.UsableBytes)}}%, target {{printf "%.1f" .Plan.TargetUsagePercent}}%){{if gt .Storage.ReservedBytes 0}} · {{humanU .Storage.ReservedBytes}} reserved by the filesystem{{end}}{{if gt .Storage.UnexplainedOtherBytes 0}} · {{humanU .Storage.UnexplainedOtherBytes}} used elsewhere on this {{humanU .Storage.TotalBytes}} disk{{end}}</p>
         {{end}}
         <div id="storage-live-{{elementID .Storage.RepresentativePath}}" data-reactive-fragment data-live-policy="immediate">
           {{if .Storage.Available}}

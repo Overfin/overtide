@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
+	"overtide/internal/config"
+	"overtide/internal/model"
 )
 
 // TestRemoveTorrentUsesRadarrQueueForIncompleteCurrentDownload guards the

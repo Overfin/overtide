@@ -7,7 +7,7 @@ import (
 	"strings"
 	"syscall"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 // ActionKind distinguishes the three shapes a cleanup candidate can take.
@@ -89,7 +89,7 @@ type Plan struct {
 	UsedBytes            uint64  `json:"usedBytes"`
 	FreeBytes            uint64  `json:"freeBytes"`
 	// OtherBytes is the real disk usage this plan was told to set aside as
-	// outside Stewarr's own view (see inventory.StorageDevice.OtherBytes) —
+	// outside Overtide's own view (see inventory.StorageDevice.OtherBytes) —
 	// carried through so a caller can see what UsableBytes/UsagePercent were
 	// actually computed against.
 	OtherBytes uint64 `json:"otherBytes"`
@@ -97,12 +97,12 @@ type Plan struct {
 	// TargetUsagePercent/CriticalUsagePercent are evaluated against, not the
 	// raw disk total. See UsagePercent.
 	UsableBytes uint64 `json:"usableBytes"`
-	// StewarrUsedBytes is UsedBytes minus OtherBytes.
-	StewarrUsedBytes uint64 `json:"stewarrUsedBytes"`
-	// UsagePercent is StewarrUsedBytes/UsableBytes, not UsedBytes/TotalBytes:
-	// target/critical mean "percent of what Stewarr actually has to work
+	// OvertideUsedBytes is UsedBytes minus OtherBytes.
+	OvertideUsedBytes uint64 `json:"overtideUsedBytes"`
+	// UsagePercent is OvertideUsedBytes/UsableBytes, not UsedBytes/TotalBytes:
+	// target/critical mean "percent of what Overtide actually has to work
 	// with," not percent of the raw disk, so space held by other services on
-	// a shared pool is never something Stewarr's own thresholds silently
+	// a shared pool is never something Overtide's own thresholds silently
 	// have to compete against.
 	UsagePercent  float64  `json:"usagePercent"`
 	NeedBytes     uint64   `json:"needBytes"`
@@ -392,11 +392,11 @@ func enforceSeasonOrder(actions []Action) {
 // carried in the response for configuration compatibility, but belongs to a
 // future emergency/alarm policy and never gates cleanup planning.
 //
-// otherBytes is real disk usage outside Stewarr's own view — other services
+// otherBytes is real disk usage outside Overtide's own view — other services
 // sharing the same pool (see inventory.StorageDevice.OtherBytes) — and is
 // set aside from both sides of the usage calculation: targetUsage/
 // criticalUsage are evaluated against UsableBytes (TotalBytes-otherBytes),
-// not the raw disk total, so a target of 90% means 90% of what Stewarr
+// not the raw disk total, so a target of 90% means 90% of what Overtide
 // actually has to work with, not 90% of a disk other services already have
 // a share of.
 //
@@ -442,18 +442,18 @@ func Build(path string, otherBytes uint64, claimedByService map[string]uint64, t
 		otherBytes = totalBytes
 	}
 	usableBytes := totalBytes - otherBytes
-	stewarrUsedBytes := usedBytes
+	overtideUsedBytes := usedBytes
 	if otherBytes > usedBytes {
-		stewarrUsedBytes = 0
+		overtideUsedBytes = 0
 	} else {
-		stewarrUsedBytes = usedBytes - otherBytes
+		overtideUsedBytes = usedBytes - otherBytes
 	}
 	plan.OtherBytes = otherBytes
 	plan.UsableBytes = usableBytes
-	plan.StewarrUsedBytes = stewarrUsedBytes
+	plan.OvertideUsedBytes = overtideUsedBytes
 	usagePercent := 0.0
 	if usableBytes > 0 {
-		usagePercent = float64(stewarrUsedBytes) / float64(usableBytes) * 100
+		usagePercent = float64(overtideUsedBytes) / float64(usableBytes) * 100
 	}
 	plan.UsagePercent = usagePercent
 	if usagePercent <= targetUsage {
@@ -461,8 +461,8 @@ func Build(path string, otherBytes uint64, claimedByService map[string]uint64, t
 		return plan, nil
 	}
 	targetUsedBytes := uint64(float64(usableBytes) * targetUsage / 100)
-	if stewarrUsedBytes > targetUsedBytes {
-		plan.NeedBytes = stewarrUsedBytes - targetUsedBytes
+	if overtideUsedBytes > targetUsedBytes {
+		plan.NeedBytes = overtideUsedBytes - targetUsedBytes
 	}
 	if !reliable {
 		plan.Message = "Cleanup planning paused: valuation or File topology is incomplete or stale"

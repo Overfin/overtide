@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 // TestLibraryTemplateShowsEmptyStateWithoutMediaLibrary guards the same

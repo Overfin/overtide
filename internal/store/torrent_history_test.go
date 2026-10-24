@@ -7,7 +7,7 @@ import (
 )
 
 func TestTorrentHistorySaveAndRead(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestTorrentHistorySaveAndRead(t *testing.T) {
 }
 
 func TestTorrentHistoryPruneRemovesOnlyOlderRows(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestTorrentHistoryPruneRemovesOnlyOlderRows(t *testing.T) {
 }
 
 func TestSaveTorrentHistorySamplesNoOpOnEmpty(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

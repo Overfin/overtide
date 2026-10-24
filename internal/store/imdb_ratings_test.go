@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/services/imdb"
+	"overtide/internal/services/imdb"
 )
 
 func TestIMDbRatingsRoundTrip(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestIMDbRatingsRoundTrip(t *testing.T) {
 // title (removed/renamed upstream) must not leave that title's stale
 // rating behind.
 func TestIMDbRatingsReplaceClearsPreviousSnapshot(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

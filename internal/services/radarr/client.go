@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 type Client struct {
@@ -300,7 +300,7 @@ func (client *Client) resolveOrCreateTagID(label string) (int, error) {
 
 // AddKeepTag tags movieID with label (creating the tag in Radarr if it
 // doesn't already exist there) — used to permanently protect a movie
-// from cleanup directly from Stewarr's own UI, the same mechanism a user
+// from cleanup directly from Overtide's own UI, the same mechanism a user
 // manually tagging it in Radarr itself would produce. A no-op, not an
 // error, if the movie already carries the tag.
 func (client *Client) AddKeepTag(movieID int, label string) error {

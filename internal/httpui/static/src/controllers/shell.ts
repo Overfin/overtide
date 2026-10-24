@@ -1,7 +1,7 @@
 import { announce, dispatchRevision } from "../shared";
 
 interface ModalRoot extends HTMLElement {
-  _stewarrOpener?: HTMLElement;
+  _overtideOpener?: HTMLElement;
 }
 
 interface StorageStatsDevice {
@@ -16,7 +16,7 @@ interface StorageStatsDevice {
   otherBytes: number;
   reservedBytes: number;
   usableBytes: number;
-  stewarrUsedBytes: number;
+  overtideUsedBytes: number;
   usagePercentOfUsable: number;
 }
 
@@ -59,9 +59,9 @@ export class ShellController extends window.Stimulus.Controller {
     document.addEventListener("input", this.onInput);
     document.addEventListener("change", this.onChange);
     document.addEventListener("submit", this.onSubmit);
-    document.addEventListener("stewarr:revision", this.onRevision as EventListener);
-    document.addEventListener("stewarr:apply-updates", this.onApply);
-    document.addEventListener("stewarr:mutation-accepted", this.onAccepted);
+    document.addEventListener("overtide:revision", this.onRevision as EventListener);
+    document.addEventListener("overtide:apply-updates", this.onApply);
+    document.addEventListener("overtide:mutation-accepted", this.onAccepted);
   }
 
   disconnect(): void {
@@ -69,9 +69,9 @@ export class ShellController extends window.Stimulus.Controller {
     document.removeEventListener("input", this.onInput);
     document.removeEventListener("change", this.onChange);
     document.removeEventListener("submit", this.onSubmit);
-    document.removeEventListener("stewarr:revision", this.onRevision as EventListener);
-    document.removeEventListener("stewarr:apply-updates", this.onApply);
-    document.removeEventListener("stewarr:mutation-accepted", this.onAccepted);
+    document.removeEventListener("overtide:revision", this.onRevision as EventListener);
+    document.removeEventListener("overtide:apply-updates", this.onApply);
+    document.removeEventListener("overtide:mutation-accepted", this.onAccepted);
     if (this.filterTimer) clearTimeout(this.filterTimer);
     if (this.modalRequest) this.modalRequest.abort();
   }
@@ -507,7 +507,7 @@ export class ShellController extends window.Stimulus.Controller {
         const unexplainedOther = device.otherBytes > device.reservedBytes ? device.otherBytes - device.reservedBytes : 0;
         const reserved = device.reservedBytes > 0 ? ` · ${humanBytes(device.reservedBytes)} reserved by the filesystem` : "";
         const elsewhere = unexplainedOther > 0 ? ` · ${humanBytes(unexplainedOther)} used elsewhere on this ${humanBytes(device.totalBytes)} disk` : "";
-        summary.textContent = `${humanBytes(device.stewarrUsedBytes)} used of ${humanBytes(device.usableBytes)} usable (${device.usagePercentOfUsable.toFixed(1)}%, target ${device.targetUsagePercent.toFixed(1)}%)${reserved}${elsewhere}`;
+        summary.textContent = `${humanBytes(device.overtideUsedBytes)} used of ${humanBytes(device.usableBytes)} usable (${device.usagePercentOfUsable.toFixed(1)}%, target ${device.targetUsagePercent.toFixed(1)}%)${reserved}${elsewhere}`;
       }
     } catch (_) {
       // The next 5s tick tries again; the last-known text stays in place.
@@ -531,10 +531,10 @@ export class ShellController extends window.Stimulus.Controller {
     if (!root) return;
     root.innerHTML = '<div class="modal-overlay"><main class="modal-dialog preparing" role="dialog" aria-modal="true"><p class="muted">Loading…</p><div class="actions"><button type="button" data-modal-cancel-loading>Cancel</button></div></main></div>';
     root.dataset.openerId = opener.id || "";
-    root._stewarrOpener = opener;
+    root._overtideOpener = opener;
     document.body.classList.add("modal-open");
     try {
-      const response = await fetch(url, { signal: this.modalRequest.signal, headers: { "X-Stewarr-Overlay": "1" } });
+      const response = await fetch(url, { signal: this.modalRequest.signal, headers: { "X-Overtide-Overlay": "1" } });
       const content = await response.text();
       if (!response.ok) throw new Error(content.trim() || `status ${response.status}`);
       root.innerHTML = content;
@@ -559,7 +559,7 @@ export class ShellController extends window.Stimulus.Controller {
   closeModal(): void {
     const root = document.getElementById("modal-root") as ModalRoot | null;
     if (!root) return;
-    const opener = root._stewarrOpener;
+    const opener = root._overtideOpener;
     root.replaceChildren();
     document.body.classList.remove("modal-open");
     if (opener && document.contains(opener)) opener.focus();

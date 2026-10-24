@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/radarr"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/radarr"
+	"overtide/internal/store"
 )
 
 func TestComputeInventoryDeltaDetectsNewChangedAndRemoved(t *testing.T) {

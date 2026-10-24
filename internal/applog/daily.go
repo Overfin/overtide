@@ -1,4 +1,4 @@
-// Package applog provides Stewarr's mandatory persistent application log.
+// Package applog provides Overtide's mandatory persistent application log.
 package applog
 
 import (

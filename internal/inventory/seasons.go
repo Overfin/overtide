@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"stewarr/internal/filetopology"
-	"stewarr/internal/model"
+	"overtide/internal/filetopology"
+	"overtide/internal/model"
 )
 
 // seasonKey identifies one season across multiple configured Sonarr
@@ -29,7 +29,7 @@ func seasonFromParts(parts []model.MediaFilePart) (number int, group string, ok 
 
 // aggregateSeasons groups Sonarr media file refs into per-season summaries,
 // keyed by (ServiceID, SeriesID/Media.SourceID). A ref with no Parts
-// (season grouping unknown) is skipped; Stewarr only knows season boundaries
+// (season grouping unknown) is skipped; Overtide only knows season boundaries
 // for Sonarr.
 func aggregateSeasons(mediaRefs []model.MediaFileRef, files []model.File) map[ownerKey][]model.Season {
 	sizeByPath := make(map[string]int64, len(files))

@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"stewarr/internal/cleanup"
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
+	"overtide/internal/cleanup"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
 )
 
 type storageData struct {
@@ -68,7 +68,7 @@ type storageStatsDevice struct {
 	OtherBytes           uint64              `json:"otherBytes"`
 	ReservedBytes        uint64              `json:"reservedBytes"`
 	UsableBytes          uint64              `json:"usableBytes"`
-	StewarrUsedBytes     uint64              `json:"stewarrUsedBytes"`
+	OvertideUsedBytes    uint64              `json:"overtideUsedBytes"`
 	UsagePercentOfUsable float64             `json:"usagePercentOfUsable"`
 }
 
@@ -97,10 +97,10 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 			claimed = append(claimed, storageStatsClaim{Service: segment.Service, Bytes: segment.Bytes})
 		}
 		usableBytes := device.UsableBytes()
-		stewarrUsedBytes := device.StewarrUsedBytes()
+		overtideUsedBytes := device.OvertideUsedBytes()
 		usagePercentOfUsable := 0.0
 		if usableBytes > 0 {
-			usagePercentOfUsable = float64(stewarrUsedBytes) / float64(usableBytes) * 100
+			usagePercentOfUsable = float64(overtideUsedBytes) / float64(usableBytes) * 100
 		}
 		out = append(out, storageStatsDevice{
 			RepresentativePath:   device.RepresentativePath,
@@ -117,7 +117,7 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 			OtherBytes:           device.OtherBytes,
 			ReservedBytes:        device.ReservedBytes,
 			UsableBytes:          usableBytes,
-			StewarrUsedBytes:     stewarrUsedBytes,
+			OvertideUsedBytes:    overtideUsedBytes,
 			UsagePercentOfUsable: usagePercentOfUsable,
 		})
 	}

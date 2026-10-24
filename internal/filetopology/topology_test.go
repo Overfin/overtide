@@ -1,7 +1,7 @@
 package filetopology
 
 import (
-	"stewarr/internal/model"
+	"overtide/internal/model"
 	"testing"
 )
 

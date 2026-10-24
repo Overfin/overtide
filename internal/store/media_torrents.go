@@ -9,8 +9,8 @@ import "C"
 
 import (
 	"encoding/json"
+	"overtide/internal/model"
 	"sort"
-	"stewarr/internal/model"
 	"strings"
 	"time"
 )
@@ -101,7 +101,7 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 	defer C.sqlite3_finalize(st)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, p := range items {
-		// Persist only the torrent index Stewarr needs for lists, valuation,
+		// Persist only the torrent index Overtide needs for lists, valuation,
 		// relationships and storage work. Client-owned diagnostics are lazy.
 		p.Tracker = ""
 		p.TotalSizeBytes = 0

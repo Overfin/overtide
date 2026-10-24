@@ -3,7 +3,7 @@ SHELL := /bin/sh
 -include Makefile.local
 
 REMOTE ?= user@your-server
-REMOTE_DIR ?= ./servarr/stewarr
+REMOTE_DIR ?= ./servarr/overtide
 
 .PHONY: build run fmt test test-browser deploy logs assets typecheck
 
@@ -22,10 +22,10 @@ assets: typecheck
 	go run ./tools/buildassets
 
 build: assets
-	go build ./cmd/stewarr
+	go build ./cmd/overtide
 
 run: assets
-	go run ./cmd/stewarr -config ./config.json
+	go run ./cmd/overtide -config ./config.json
 
 fmt:
 	gofmt -w ./cmd ./internal ./tools
@@ -45,4 +45,4 @@ deploy: assets
 	ssh $(REMOTE) 'cd $(REMOTE_DIR) && PUID=$$(id -u) PGID=$$(id -g) docker compose up -d --build'
 
 logs:
-	ssh $(REMOTE) 'cd $(REMOTE_DIR) && docker compose logs -f stewarr'
+	ssh $(REMOTE) 'cd $(REMOTE_DIR) && docker compose logs -f overtide'

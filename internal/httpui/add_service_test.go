@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/tasks"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/tasks"
 )
 
 // multipartServiceForm builds a request body shaped exactly like the

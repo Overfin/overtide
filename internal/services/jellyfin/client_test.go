@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 func TestApplyFetchesSparseUserSignals(t *testing.T) {

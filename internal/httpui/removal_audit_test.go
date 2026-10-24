@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/removal"
+	"overtide/internal/removal"
 )
 
 func TestRemovalAuditIsCompleteLineBasedAndSecretFree(t *testing.T) {

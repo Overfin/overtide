@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
 )
 
 // TestSetIMDbEnabledPersistsAndRenders guards the actual wiring end to

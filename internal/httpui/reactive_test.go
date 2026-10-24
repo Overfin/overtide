@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
-	"stewarr/internal/tasks"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
+	"overtide/internal/store"
+	"overtide/internal/tasks"
 )
 
 func TestRevisionHubDeliversNewestInvalidation(t *testing.T) {

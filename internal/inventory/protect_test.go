@@ -8,21 +8,21 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
+	"overtide/internal/config"
+	"overtide/internal/model"
 )
 
 // TestProtectMediaTagsMovieAndRegistersKeepTag guards the whole path:
-// the movie gets tagged directly in Radarr, and stewarr_keep is
+// the movie gets tagged directly in Radarr, and overtide_keep is
 // registered into Protection.KeepTags so the tag actually protects it in
-// Stewarr's own valuation, not just existing inertly on the Radarr side.
+// Overtide's own valuation, not just existing inertly on the Radarr side.
 func TestProtectMediaTagsMovieAndRegistersKeepTag(t *testing.T) {
 	radarrSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/tag":
 			w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v3/tag":
-			w.Write([]byte(`{"id":9,"label":"stewarr_keep"}`))
+			w.Write([]byte(`{"id":9,"label":"overtide_keep"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/movie/42":
 			w.Write([]byte(`{"id":42,"tags":[]}`))
 		case r.Method == http.MethodPut && r.URL.Path == "/api/v3/movie/42":
@@ -55,12 +55,12 @@ func TestProtectMediaTagsMovieAndRegistersKeepTag(t *testing.T) {
 	}
 	found := false
 	for _, tag := range reloaded.Protection.KeepTags {
-		if tag == "stewarr_keep" {
+		if tag == "overtide_keep" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected stewarr_keep to be registered in KeepTags, got %#v", reloaded.Protection.KeepTags)
+		t.Fatalf("expected overtide_keep to be registered in KeepTags, got %#v", reloaded.Protection.KeepTags)
 	}
 }
 
@@ -75,7 +75,7 @@ func TestProtectTorrentTagsTorrentAndRegistersKeepTag(t *testing.T) {
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
 		}
-		if r.Form.Get("hashes") != "abc123" || r.Form.Get("tags") != "stewarr_keep" {
+		if r.Form.Get("hashes") != "abc123" || r.Form.Get("tags") != "overtide_keep" {
 			t.Fatalf("unexpected form: %#v", r.Form)
 		}
 		tagged = true
@@ -108,12 +108,12 @@ func TestProtectTorrentTagsTorrentAndRegistersKeepTag(t *testing.T) {
 	}
 	found := false
 	for _, tag := range reloaded.Protection.KeepTorrentTags {
-		if tag == "stewarr_keep" {
+		if tag == "overtide_keep" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected stewarr_keep to be registered in KeepTorrentTags, got %#v", reloaded.Protection.KeepTorrentTags)
+		t.Fatalf("expected overtide_keep to be registered in KeepTorrentTags, got %#v", reloaded.Protection.KeepTorrentTags)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestProtectMediaSkipsPersistWhenTagAlreadyRegistered(t *testing.T) {
 	radarrSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/tag":
-			w.Write([]byte(`[{"id":9,"label":"stewarr_keep"}]`))
+			w.Write([]byte(`[{"id":9,"label":"overtide_keep"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v3/movie/42":
 			w.Write([]byte(`{"id":42,"tags":[]}`))
 		case r.Method == http.MethodPut && r.URL.Path == "/api/v3/movie/42":
@@ -136,7 +136,7 @@ func TestProtectMediaSkipsPersistWhenTagAlreadyRegistered(t *testing.T) {
 	defer radarrSrv.Close()
 
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(configPath, []byte(`{"storage":{},"protection":{"keep_tags":["stewarr_keep"]}}`), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{"storage":{},"protection":{"keep_tags":["overtide_keep"]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(configPath)

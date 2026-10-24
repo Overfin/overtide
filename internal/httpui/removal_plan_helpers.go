@@ -2,10 +2,10 @@ package httpui
 
 import (
 	"fmt"
+	"overtide/internal/model"
+	"overtide/internal/removal"
 	"path/filepath"
 	"sort"
-	"stewarr/internal/model"
-	"stewarr/internal/removal"
 	"strconv"
 	"strings"
 )

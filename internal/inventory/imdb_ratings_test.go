@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/services/imdb"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/services/imdb"
+	"overtide/internal/store"
 )
 
 func TestIMDbRatingsDue(t *testing.T) {
@@ -66,7 +66,7 @@ func TestRefreshIMDbRatingsFetchesReplacesAndRescoresWhenDue(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	db, err := store.Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestRefreshIMDbRatingsNoopsWhenDisabled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	db, err := store.Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestRefreshIMDbRatingsNoopsWhenNotDue(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	db, err := store.Open(filepath.Join(t.TempDir(), "stewarr.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "overtide.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

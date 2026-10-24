@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 type identity struct {

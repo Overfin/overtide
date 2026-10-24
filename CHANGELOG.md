@@ -4,7 +4,7 @@ Notable changes worth calling out beyond ordinary bug fixes. See `git log` for f
 
 ## Overtide
 
-Overtide starts from Stewarr 0.5.0, with its full history, as the storage side of [Overfin](https://github.com/Overfin/server); Stewarr stays a standalone project. Documentation rewritten for Overtide and its way to Overfin (`README.md`, `ROADMAP.md` "Toward Overfin", `ARCHITECTURE.md`). The code is still Stewarr 0.5.0's. The entries below are Stewarr's.
+Overtide starts from Stewarr 0.5.0, with its full history, as the storage side of [Overfin](https://github.com/Overfin/server); Stewarr stays a standalone project. Documentation rewritten for Overtide and its way to Overfin (`README.md`, `ROADMAP.md` "Toward Overfin", `ARCHITECTURE.md`). Renamed throughout the code (binary, module, container, on-screen name, log file, session cookie, keep tag `overtide_keep`); `stewarr_keep` stays a default keep tag, so what was protected with Stewarr stays protected. The entries below are Stewarr's.
 
 ## 0.1.10 — UI
 

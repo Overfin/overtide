@@ -16,12 +16,12 @@ import (
 	"sync"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 // NotFoundError reports that qBittorrent authoritatively has no such object
 // (HTTP 404) — a definitive fact, not an ambiguous or transient failure. A
-// torrent removed directly in qBittorrent between Stewarr's own sync and a
+// torrent removed directly in qBittorrent between Overtide's own sync and a
 // subsequent per-hash lookup is the common case: callers should treat that
 // object as having nothing to report rather than failing an entire batch.
 type NotFoundError struct {
@@ -78,7 +78,7 @@ func (client *Client) login() error {
 	// The documented success body is "Ok." with a 200, but real deployments
 	// diverge from that: some respond 204 with an empty body, and a
 	// qBittorrent instance with "bypass authentication for whitelisted
-	// IPs" enabled (a very common home-lab setup when Stewarr and
+	// IPs" enabled (a very common home-lab setup when Overtide and
 	// qBittorrent share a network) never needs to hand back a SID session
 	// cookie either, since every request from that IP is auto-authorized
 	// regardless. The one thing qBittorrent's API actually documents as a
@@ -397,7 +397,7 @@ func (client *Client) Inventory() (map[string]model.Torrent, error) {
 
 // Detail fetches the current full qBittorrent record for one torrent. It is
 // intentionally lazy: list/refresh paths keep only the indexed fields needed
-// by Stewarr, while the detail page asks the owning application for details.
+// by Overtide, while the detail page asks the owning application for details.
 func (client *Client) Detail(hash string) (model.Torrent, error) {
 	if !client.enabled() {
 		return model.Torrent{}, fmt.Errorf("qbittorrent is not configured")
@@ -559,7 +559,7 @@ func pathInside(root, path string) bool {
 }
 
 // VerifyPathsUnmanaged checks the live torrent index rather than a cached
-// Stewarr snapshot. content_path cheaply narrows exact file-membership calls
+// Overtide snapshot. content_path cheaply narrows exact file-membership calls
 // to torrents that could own a requested path. Rare records without a usable
 // content_path are conservatively included in the exact check.
 func (client *Client) VerifyPathsUnmanaged(paths []string) error {
@@ -644,7 +644,7 @@ func (client *Client) AllFiles(torrents map[string]model.Torrent) (map[string][]
 			var notFound *NotFoundError
 			if errors.As(r.err, &notFound) {
 				// qBittorrent authoritatively has no such torrent anymore
-				// (e.g. removed directly, outside Stewarr, between the last
+				// (e.g. removed directly, outside Overtide, between the last
 				// sync and this fetch). That torrent has zero known files;
 				// it must not fail every other torrent's file fetch too.
 				continue
@@ -666,7 +666,7 @@ func (client *Client) Delete(hash string) error {
 }
 
 // AddTag applies tag to hash — used to permanently protect a torrent
-// from cleanup directly from Stewarr's own UI. Unlike Radarr/Sonarr,
+// from cleanup directly from Overtide's own UI. Unlike Radarr/Sonarr,
 // qBittorrent tags are plain strings with no id indirection, and
 // addTags is already idempotent (adding a tag a torrent already has is a
 // no-op on qBittorrent's own side).

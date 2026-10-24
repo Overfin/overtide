@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/store"
 )
 
 // newAuthTestServer builds a server backed by a real store and a real

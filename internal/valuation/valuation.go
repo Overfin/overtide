@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/imdb"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/imdb"
 )
 
 func daysSince(timestamp time.Time) float64 { return time.Since(timestamp).Hours() / 24 }

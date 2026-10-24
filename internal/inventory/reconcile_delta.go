@@ -9,12 +9,12 @@ import (
 	"strings"
 	"sync"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/qbittorrent"
-	"stewarr/internal/services/radarr"
-	"stewarr/internal/services/sonarr"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/qbittorrent"
+	"overtide/internal/services/radarr"
+	"overtide/internal/services/sonarr"
+	"overtide/internal/store"
 )
 
 // inventoryDelta is the set of media/torrent identities whose base-catalog

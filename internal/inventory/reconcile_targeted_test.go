@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/store"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/store"
 )
 
 func TestRefreshTargetedPathsExpandsAndRestatsHardlinkPeers(t *testing.T) {

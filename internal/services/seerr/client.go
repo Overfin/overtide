@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"stewarr/internal/model"
+	"overtide/internal/model"
 	"strconv"
 	"strings"
 	"time"

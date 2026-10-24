@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"stewarr/internal/model"
+	"overtide/internal/model"
 )
 
 type unmanagedFileGroup struct {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"stewarr/internal/store"
-	"stewarr/internal/valuation"
+	"overtide/internal/store"
+	"overtide/internal/valuation"
 )
 
 // TorrentHistoryRetention is how long sampled torrent readings are kept

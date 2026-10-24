@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"stewarr/internal/model"
-	"stewarr/internal/removal"
+	"overtide/internal/model"
+	"overtide/internal/removal"
 )
 
 // removalSelectionModel contains only facts already inspected while the modal

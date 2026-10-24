@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/tmdb"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/tmdb"
 )
 
 // TestRefreshTMDBDoesNotDiscardResultsWhenBaseGenerationMovesOnMidPass

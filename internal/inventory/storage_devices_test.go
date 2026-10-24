@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
+	"overtide/internal/config"
+	"overtide/internal/model"
 )
 
 // TestUnexplainedOtherBytesSubtractsReservedBlocks guards the actual point
 // of separating the two: a filesystem's own reserved-for-root blocks
 // (ext4's default 5% allocation, most commonly) are real, permanent,
-// unwritable-by-Stewarr overhead, not another service's data — lumping
+// unwritable-by-Overtide overhead, not another service's data — lumping
 // them into one ambiguous "Other" bucket misleads a user into thinking
 // something is using space that, in fact, nothing is.
 func TestUnexplainedOtherBytesSubtractsReservedBlocks(t *testing.T) {
@@ -227,10 +227,10 @@ func TestStorageCapabilitiesReportsReachableAndUnreachableRoots(t *testing.T) {
 }
 
 // TestStorageCapabilitiesSelfReportsUnreachableRootContents guards the
-// point of the unreachable branch: even sight-unseen, Stewarr already
+// point of the unreachable branch: even sight-unseen, Overtide already
 // knows (from each service's own API) roughly what mounting an unreachable
 // root would add, since Media/Torrent Path and SavePath are self-reported
-// independent of Stewarr's own filesystem walk.
+// independent of Overtide's own filesystem walk.
 func TestStorageCapabilitiesSelfReportsUnreachableRootContents(t *testing.T) {
 	service := New(config.Config{}, nil)
 	service.mu.Lock()

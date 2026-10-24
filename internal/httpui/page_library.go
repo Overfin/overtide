@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
 )
 
 type mediaRow struct {

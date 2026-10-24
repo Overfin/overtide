@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/cleanup"
-	"stewarr/internal/config"
-	"stewarr/internal/inventory"
-	"stewarr/internal/model"
-	"stewarr/internal/removal"
-	"stewarr/internal/store"
+	"overtide/internal/cleanup"
+	"overtide/internal/config"
+	"overtide/internal/inventory"
+	"overtide/internal/model"
+	"overtide/internal/removal"
+	"overtide/internal/store"
 )
 
 // TestMediaTMDBDataStale guards the auto-removal-only exclusion added on
@@ -41,7 +41,7 @@ func TestMediaTMDBDataStale(t *testing.T) {
 }
 
 // TestActionIsUnassociatedTorrentTreatsFormerRelationshipAsKnown guards the
-// distinction between "Stewarr has never had any relationship for this
+// distinction between "Overtide has never had any relationship for this
 // torrent at all" (the case automatic removal excludes by default, since it
 // may be a personal download or from an untracked service) and "this
 // torrent was managed once but its relationship is now historical" — the

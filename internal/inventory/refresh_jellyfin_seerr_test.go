@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"stewarr/internal/config"
-	"stewarr/internal/model"
-	"stewarr/internal/services/jellyfin"
-	"stewarr/internal/services/seerr"
+	"overtide/internal/config"
+	"overtide/internal/model"
+	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/seerr"
 )
 
 // TestRefreshJellyfinDoesNotDiscardResultsWhenBaseGenerationMovesOnMidPass
