@@ -15,6 +15,8 @@ Overtide works with Overfin and never alone against people's data: Overfin knows
 7. **Leaving soon.** Overtide tells Overfin what it plans to remove and when, so people see it and get a last chance to watch.
 8. **Fewer sources of its own.** With Overfin's values in place, Overtide drops its own Jellyfin, Seerr, TMDB and IMDb adapters: no TMDB key, no ratings download, as little Jellyfin as possible. Sizes always come from the filesystem.
 
+9. **Overfin's look.** Overtide takes on the look of Overfin's control panel: its colours, fonts, spacing and corners (light and dark), its sidebar with groups and icons, and its buttons, cards, notices, tables, forms and sliders. Only the look changes; pages stay rendered by the server. Overtide has no operator branding: it always looks like Overfin's panel, not like the operator's site. Styles copied from Overfin keep Overfin's copyright notice (both are MIT).
+
 Open: whether automatic removal stays available once Overfin drives it, or Overtide only proposes and the operator approves (the confirm mode already exists).
 
 ## Implemented through 0.4.8
