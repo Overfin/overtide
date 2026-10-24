@@ -7,7 +7,9 @@ services:
     environment:
       - TZ=America/Toronto
     ports:
-      - "8088:8088"
+      # OVERTIDE_PORT, in a .env file beside this one, moves it off 8088
+      # (where Stewarr may already be).
+      - "${OVERTIDE_PORT:-8088}:8088"
     volumes:
       - ./config:/config
       - /mnt/media:/data

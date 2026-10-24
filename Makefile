@@ -41,7 +41,7 @@ deploy: assets
 	trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 	tar -cf - -T .release-manifest | tar -xf - -C "$$stage"; \
 	ssh $(REMOTE) 'mkdir -p $(REMOTE_DIR)/config'; \
-	rsync -av --delete --exclude '/config/' --exclude '/config.json' "$$stage"/ $(REMOTE):$(REMOTE_DIR)/; \
+	rsync -av --delete --exclude '/config/' --exclude '/config.json' --exclude '/.env' "$$stage"/ $(REMOTE):$(REMOTE_DIR)/; \
 	ssh $(REMOTE) 'cd $(REMOTE_DIR) && PUID=$$(id -u) PGID=$$(id -g) docker compose up -d --build'
 
 logs:
