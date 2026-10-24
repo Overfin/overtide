@@ -1,28 +1,48 @@
-# Stewarr
+# Overtide
 
-> **Your Arr stack knows what files it manages. Your filesystem knows what's actually using space. Stewarr connects the two — including hardlinks — so you can see what's truly reclaimable, and why.**
+> **Overfin knows what people want and watch. Your disks, your torrent client and your *arr stack know what everything costs. Overtide brings the two together and decides what the server gets and what it keeps.**
 
-Stewarr is a coordination and storage-intelligence layer for self-hosted media stacks. It integrates Radarr, Sonarr, Jellyfin, Seerr and qBittorrent, and adds the cross-service context none of them have on their own: which torrents still actually back your library, which files are physically the same data via hardlinks, and which media is safest to remove when storage gets tight.
+Overtide is the storage side of [Overfin](https://github.com/Overfin/server). Overfin values every title from what people say they want, what they actually watch and how well the title is rated. Overtide weighs those values against what only it can see: file sizes on disk, hardlinks, each torrent's history, the space left on each device and the traffic used. It then sends requests to Radarr and Sonarr, and removes what's least worth keeping when space runs short.
 
-Stewarr does not try to replace any of those applications. Services provide facts; Stewarr provides context across them.
+Overtide doesn't replace Radarr, Sonarr or your torrent client. They keep doing their jobs; Overtide decides what to ask of them.
 
-> **Status:** Stewarr is a work in progress. Core flows (inventory, removal planning, storage accounting) are functional and used daily, but interfaces and configuration may still change between releases. See `CHANGELOG.md` for release history, `ROADMAP.md` for planned direction, and `ARCHITECTURE.md` for the full technical model.
+> **Status: early.** Overtide starts from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, a standalone storage tool for the *arr stack, which stays its own project. Today Overtide still does exactly what Stewarr does (below) and still reads Jellyfin, Seerr, TMDB and IMDb itself. The link to Overfin is being built; see [`ROADMAP.md`](ROADMAP.md). Run it in dry run (the default) until then.
 
-## What it does
+## How it works with Overfin
+
+Each side does what only it can:
+
+| | Overfin | Overtide |
+|---|---|---|
+| Knows | titles, ratings, people's wishes and viewing | disks, files, hardlinks, torrents, traffic |
+| Decides | who may request what (quotas, approval, kids' limits) | what fits: storage, traffic, downloads at once, seeding |
+| Gives the other | each title's value, and approved requests | each request's status, and what's leaving soon |
+
+- **Values, not people.** Overfin only ever gives Overtide values and counts per title, never who wanted or watched what. Requests come with an anonymous account ID, used for counting and nothing else.
+- **Requests.** In Overfin, the operator chooses where approved requests go: straight to Radarr and Sonarr, or to Overtide. With Overtide, the most valued titles download first when resources are short, and a request that has to wait says why ("traffic limit reached, expected tomorrow").
+- **Making space.** When a device goes over its target, Overtide asks Overfin for the least valuable titles on the server, weighs them with their real size on disk and the value of the torrents behind them, and removes the least worth keeping, or proposes it for the operator to approve.
+- **Leaving soon.** Overtide tells Overfin what it plans to remove, so people get a last chance to watch it.
+
+Overfin's values don't depend on files: a title is valued the same way whether it's on the server or not. Storage is entirely Overtide's concern.
+
+## What it does today
+
+Inherited from Stewarr, and kept:
 
 - Correlates Radarr/Sonarr library media with qBittorrent torrents using authoritative import data, not fuzzy title matching.
-- Proves whether a torrent's files are still physically hardlinked to your library media, so you know what removing it would *actually* free — not just what it appears to occupy.
-- Ranks library media by **Retention Value** (rating, watch activity, requests, favorites, and more) to help decide what's safest to remove first when storage gets tight.
-- Discovers files on disk that none of your services claim ownership of ("Unmanaged").
-- Plans every removal as a dry-run-by-default, re-validated `RemovalPlan`, executed through the owning service's own API (Radarr/Sonarr/qBittorrent) rather than deleting files directly.
+- Proves whether a torrent's files are still physically hardlinked to library media, so you know what removing it would *actually* free, not just what it appears to occupy.
+- Ranks library media by **Retention Value** to decide what's safest to remove first when storage gets tight. Today its inputs (ratings, watch activity, requests, favourites) come from Jellyfin, Seerr, TMDB and IMDb; they will come from Overfin's values instead.
+- Scores torrents by their own **Torrent Value**, from the history Overtide records: ratio, contribution over time, consistency, seeding time, private trackers.
+- Finds files on disk that no service claims ("Unmanaged").
+- Plans every removal as a re-validated plan, dry run by default, carried out through the owning service's own API (Radarr, Sonarr, qBittorrent) rather than by deleting files directly.
 
 ## Quickstart
 
 ```yaml
 services:
-  stewarr:
-    build: https://github.com/C0PT3R/stewarr.git
-    container_name: stewarr
+  overtide:
+    build: https://github.com/Overfin/overtide.git
+    container_name: overtide
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     ports:
@@ -32,79 +52,91 @@ services:
       - /mnt/media:/data
 ```
 
-1. `docker compose up -d`, then open `http://<host>:8088`. Stewarr creates `/config/config.json`, its database, and its log directory on first start if they don't already exist — no manual setup required.
-2. Follow the first-run screen to create the admin account, then add Radarr/Sonarr/Jellyfin/Seerr/qBittorrent from the Services page. Manually editing `config.json` (see [`config.example.json`](config.example.json) for the shape) is still possible but is meant for debugging or scripted setups, not routine service configuration.
+1. `docker compose up -d`, then open `http://<host>:8088`. Overtide creates `/config/config.json`, its database and its log directory on first start.
+2. Follow the first-run screen to create the admin account, then add your services from the Services page. [`config.example.json`](config.example.json) shows the file's shape, for debugging or scripted setups.
+
+**Dry run is on by default and should stay on for now.** In dry run, Overtide plans and records what it would do, and does nothing. If you already run Stewarr or another cleanup tool on the same disks, keep Overtide in dry run: two tools removing from the same storage, each with its own logic, would remove more than either would alone.
 
 ## Navigation
 
-- **Home** — storage state, Library/Torrent summaries, service health, storage capabilities and lifetime cleanup statistics.
-- **Library** — searchable, filterable, sortable, server-paginated Radarr/Sonarr media ranked by Retention Value.
-- **Torrents** — searchable, filterable, sortable, server-paginated qBittorrent inventory with provenance and reclaimable-space information.
-- **Unmanaged files** — observational inventory of paths that no current service claims. Removable manually, but never selected as an automatic cleanup candidate.
-- **Tasks** — background maintenance tasks, their schedules/status, and **Run now** controls.
-- **History** — durable event history. Removal simulations and live removal outcomes are recorded here.
+- **Home**: storage state, library and torrent summaries, service health, storage capabilities and lifetime cleanup statistics.
+- **Library**: Radarr/Sonarr media, searchable, filterable, ranked by Retention Value.
+- **Torrents**: the torrent client's inventory, with provenance and reclaimable space.
+- **Unmanaged files**: paths no service claims. Removable by hand, never picked automatically.
+- **Tasks**: background tasks, their schedules and status, and **Run now**.
+- **History**: every simulated and real removal, and what came of it.
 
 ## Core concepts
 
 ### Retention Value
 
-A retention score for library media — higher means more valuable to keep when storage becomes scarce. It factors in rating, watch activity, library age, request state, popularity, favorites/keep tags, and torrent activity (only when a torrent is proven to still back that media via a hardlink). It's deliberately separate from file size: how much space something *takes* and how much it's *worth keeping* are different questions.
+How much a library item deserves to stay when storage gets scarce; higher survives longer. It's deliberately separate from size: how much space something *takes* and how much it's *worth keeping* are different questions, and Overtide weighs the two only when it picks what to remove.
 
-Torrents have their own independent **Torrent Value** — ratio, realized contribution over time, consistency, seeding time, and private-tracker status, all derivable from any torrent-client adapter, not just qBittorrent. It's never compared directly against Retention Value; a single `torrent_care_percent` setting scales one onto the other's scale when both are candidates for the same device's cleanup.
+Protection is separate from value: a keep tag, for instance, takes an item out of automatic removal whatever its value.
+
+### Torrent Value
+
+An independent score for each torrent, from its own history: ratio, realized contribution over time, consistency, seeding time and private-tracker status. Every signal comes from what any torrent client reports, not just qBittorrent. It's never compared directly with Retention Value; one setting, `torrent_care_percent`, scales one onto the other when both compete for the same device's space.
 
 ### Torrent provenance
 
-Every torrent Stewarr knows about is in one of four states:
+Every torrent Overtide knows about is in one of four states:
 
-- **Current** — it backs library media right now, proven by import data or by physical hardlink identity.
-- **Superseded** — it backed an older release that's since been replaced by a newer import for the same still-existing media.
-- **Orphaned** — it was imported for media that Radarr/Sonarr no longer has any record of at all (the media itself was removed), so there's no newer import to point to.
-- **Unassociated** — no current or historical relationship to library media is established. This isn't proof it's safe to remove; it just means Stewarr has no basis to link it to anything.
+- **Current**: it backs library media right now, proven by import data or by physical hardlink identity.
+- **Superseded**: it backed an older release since replaced by a newer import for the same media.
+- **Orphaned**: it was imported for media Radarr/Sonarr no longer has any record of.
+- **Unassociated**: no current or past link to library media is established. That isn't proof it's safe to remove; Overtide just has no basis to link it to anything.
 
-### Manual removal and dry run
+### Removal and dry run
 
-Every removal — media, torrent, or unmanaged file — is first turned into a plan that shows exactly what would happen, then re-validated immediately before anything actually runs. `removal.dry_run` defaults to **true**: nothing is actually deleted until you turn it off. Managed media is removed only through Radarr/Sonarr, torrent data only through qBittorrent; unmanaged files (nothing else claims them) are the only kind Stewarr deletes directly, and even those go through the same validation path.
+Every removal (media, torrent or unmanaged file) first becomes a plan showing exactly what would happen, then is checked again just before anything runs. `removal.dry_run` defaults to **true**. Managed media is removed only through Radarr/Sonarr and torrent data only through the torrent client; unmanaged files, which nothing else claims, are the only ones Overtide deletes itself, through the same checks.
+
+Automatic removal has three modes: off, confirm (candidates are picked, a person approves) and automatic.
 
 ### Storage and devices
 
-There's no single configured storage path. Stewarr derives storage devices from the roots each service already reports (Radarr/Sonarr root folders, qBittorrent save paths), grouping roots that resolve to the same physical device. Each device gets an independent Target usage threshold (defaulting to 90%) and can be opted out of automatic removal entirely, regardless of what's on it — see [`config.example.json`](config.example.json).
+There's no single storage path to configure. Overtide derives storage devices from the roots each service already reports (Radarr/Sonarr root folders, torrent save paths), grouping roots on the same physical device. Each device has its own target usage (90% by default) and can be left out of automatic removal entirely.
 
-Usage is measured against a device's *usable* capacity, not its raw size: space held by something outside Stewarr's own view (another service sharing the disk, or the filesystem's own reserved-for-root blocks) is shown as its own line item and set aside, so a target of 90% means 90% of what Stewarr actually has to work with.
+Usage is measured against what Overtide can actually work with: space held by something outside its view (another service on the same disk, the filesystem's reserved blocks) is shown on its own line and set aside.
 
 ## Docker
 
-The Compose example above is the minimal setup. `PUID`/`PGID` should match the user that owns your media/config paths on the host.
+`PUID`/`PGID` should match the user that owns your media and config paths on the host.
 
-**Every container that touches your media — Radarr, Sonarr, your torrent client, and Stewarr — must mount the same host directory at the same internal path.** This has nothing to do with which compose file each service is declared in; Radarr, Sonarr, and your torrent client are commonly already running as their own separate stacks (different compose files, sometimes different hosts entirely), and that's completely fine. What matters is only each container's own volume line: whatever host directory backs your media, every one of these containers needs to mount *that same directory* at *the same internal path*, e.g. every one of them mounting `/mnt/media` (a host path) to `/data` (the internal path they all use) — regardless of what else is or isn't in that container's own compose file.
+**Every container that touches your media (Radarr, Sonarr, your torrent client and Overtide) must mount the same host directory at the same path inside.** They can live in different compose files, or on different hosts with shared storage; what matters is each container's own volume line. For example, all of them mount `/mnt/media` (on the host) at `/data` (inside).
 
-Hardlink detection, file reconciliation, and Unmanaged discovery all depend on Stewarr being able to `stat()` the exact paths Radarr/Sonarr/your torrent client report. If Stewarr's container can't see a path another service uses, Stewarr will say so on the Storage page — but it can't guess what the right mount is, since that mapping only exists in your own compose files.
+Hardlink detection, file reconciliation and Unmanaged discovery depend on Overtide being able to `stat()` the exact paths the other services report. If it can't see a path, the Storage page says so, but it can't guess the right mount: that only exists in your compose files.
 
 ## Development
 
 ```bash
 go test ./...
-go build ./cmd/stewarr
+go build ./cmd/stewarr   # the code still carries Stewarr's name; renamed next
 ```
 
-The real-browser reactivity suite uses Playwright and an installed Chromium:
+The real-browser test suite uses Playwright and an installed Chromium:
 
 ```bash
 PLAYWRIGHT_NODE_MODULES=/path/to/node_modules make test-browser
 ```
 
-`make deploy`/`make logs` read `REMOTE`/`REMOTE_DIR` from the environment or an optional, gitignored `Makefile.local` — see the `Makefile` for defaults.
+`make deploy`/`make logs` read `REMOTE`/`REMOTE_DIR` from the environment or an optional, gitignored `Makefile.local`.
 
 ## Further reading
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the full product model and technical architecture.
-- [`Scheduler-Spec.md`](Scheduler-Spec.md) — the background task/scheduler contract.
-- [`ROADMAP.md`](ROADMAP.md) — implemented behavior vs. planned direction.
-- [`CHANGELOG.md`](CHANGELOG.md) — release history.
+- [`ROADMAP.md`](ROADMAP.md): the way to Overfin, then Stewarr's history and plans.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): the product model and technical architecture.
+- [`Scheduler-Spec.md`](Scheduler-Spec.md): the background task scheduler.
+- [`CHANGELOG.md`](CHANGELOG.md): release history.
 
 ## Origins
 
-Stewarr began as a storage-pressure cleanup experiment called **Spartarr**. Its first proposed name was the regrettable **Shovitupyoarr**. As it outgrew cleanup-only scope it became **Togetharr**, then **Connarr**, then **Stewarr** when a shorter, less unfortunate name proved preferable.
+Overtide is built from [Stewarr](https://github.com/C0PT3R/stewarr), with its full history. Stewarr began as a storage-pressure cleanup experiment called **Spartarr** (first proposed as the regrettable **Shovitupyoarr**), then became **Togetharr**, **Connarr** and **Stewarr**. Stewarr stays a standalone tool for any *arr stack; Overtide is the one made to work with Overfin.
+
+## AI-assisted development
+
+Overtide's development is assisted by AI (Claude, by Anthropic), as Overfin's is. Commits it contributed to carry a `Co-Authored-By` line.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE).

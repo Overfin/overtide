@@ -1,6 +1,21 @@
-# Stewarr Roadmap
+# Overtide Roadmap
 
-This file separates implemented behavior from intended direction. It is not a promise of release dates. See `CHANGELOG.md` for a curated, version-by-version release history — the section below predates that file and was never fully kept in sync with it version-by-version as new releases shipped; entries here describe design intent and the state of the product at the time they were written, not necessarily the current terminology (e.g. "Swarm Value" below was Torrent Value's name at the time).
+This file separates implemented behavior from intended direction. It is not a promise of release dates. The first section is Overtide's own direction: the way from Stewarr 0.5.0 to the storage side of [Overfin](https://github.com/Overfin/server). Everything after it is Stewarr's roadmap as it stood when Overtide started, kept for its history and its plans, most of which still apply. It uses Stewarr's names, older entries use names since changed ("Swarm Value" is now Torrent Value), and it predates `CHANGELOG.md`, which has the release-by-release history.
+
+## Toward Overfin
+
+Overtide works with Overfin and never alone against people's data: Overfin knows the titles and the people, Overtide the storage. Overfin gives values and counts per title, never who; Overtide gives back statuses and what's leaving soon. Each step below keeps dry run on by default, and Overtide must keep running safely beside a Stewarr that manages the same disks until the operator switches over.
+
+1. **Overtide's name in the code.** The binary, module, container and on-screen name become Overtide; the data and config folders keep working from an existing Stewarr setup only if copied, never shared with a running Stewarr.
+2. **Dry run covers every action.** Today `removal.dry_run` covers removals. Requests sent to Radarr and Sonarr, and any download limit Overtide sets on the torrent client, must follow the same rule: in dry run, Overtide records "would request X", "would limit Y" and does nothing.
+3. **Overfin as a service.** Overfin becomes a service type, like Radarr or qBittorrent: its address and an apps key from Overfin's control panel, a connection test, its health on Home.
+4. **Values from Overfin.** Retention Value takes its title value from Overfin, which already mixes ratings (IMDb's dataset first, then TMDB's), what people say they want and what they actually watch, per season for series. Overtide keeps what only it knows: size on disk, hardlinks, Torrent Value from its recorded history, and its protections and removal rules (keep tags, per-service and per-device settings). When a device needs space, it asks Overfin for the least valuable titles on the server and weighs them with all that.
+5. **Requests from Overfin.** Overtide reads Overfin's approved requests and sends them to Radarr and Sonarr, the most valued first when resources are short. It reports each request's status to Overfin: accepted, queued and why, downloading, available, refused and why.
+6. **Resource limits.** Storage per library, genre and so on; traffic per day or month; downloads at once; seeding. Overfin keeps the limits on people (quotas, approval, kids); Overtide those on resources.
+7. **Leaving soon.** Overtide tells Overfin what it plans to remove and when, so people see it and get a last chance to watch.
+8. **Fewer sources of its own.** With Overfin's values in place, Overtide drops its own Jellyfin, Seerr, TMDB and IMDb adapters: no TMDB key, no ratings download, as little Jellyfin as possible. Sizes always come from the filesystem.
+
+Open: whether automatic removal stays available once Overfin drives it, or Overtide only proposes and the operator approves (the confirm mode already exists).
 
 ## Implemented through 0.4.8
 

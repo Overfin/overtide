@@ -2,6 +2,10 @@
 
 Notable changes worth calling out beyond ordinary bug fixes. See `git log` for full history.
 
+## Overtide
+
+Overtide starts from Stewarr 0.5.0, with its full history, as the storage side of [Overfin](https://github.com/Overfin/server); Stewarr stays a standalone project. Documentation rewritten for Overtide and its way to Overfin (`README.md`, `ROADMAP.md` "Toward Overfin", `ARCHITECTURE.md`). The code is still Stewarr 0.5.0's. The entries below are Stewarr's.
+
 ## 0.1.10 — UI
 
 Media detail pages group torrent relationships into current, superseded, and unassociated sections, with former relationships identified as historical context and release names shown as the primary identifier.

@@ -1,33 +1,46 @@
-# Stewarr — Architecture and Product Model
+# Overtide — Architecture and Product Model
 
 ## Product identity
 
-Stewarr is the coordination layer for the *arr ecosystem and related
-applications. Those applications are principally centered on their own data
-and responsibilities. Stewarr combines attributable facts and authoritative
-actions across them to provide features that none can provide individually.
+Overtide is the storage side of Overfin. Overfin knows the titles and the
+people: what they say they want, what they actually watch, and how each
+title is rated, which it turns into a value per title. Overtide knows the
+storage: the files on disk and their physical identity, the torrents and
+their history, the space and traffic each device and connection allows. It
+combines attributable facts and authoritative actions across the *arr stack
+to decide what the server gets and what it keeps, which no application can
+decide on its own.
 
-File and storage management is the first major feature built on that context;
-it is not an architectural limit on Stewarr's purpose. Future features may
-participate in entirely different domains when a concrete cross-application
-need justifies them. Stewarr should not duplicate Radarr, Sonarr, Jellyfin,
-qBittorrent, Seerr, Bazarr, Lidarr, Readarr or storage systems.
+Overtide was built from Stewarr 0.5.0, a standalone coordination layer for
+the *arr stack, and keeps its model: file and storage management first,
+facts kept apart from interpretations, every action through the service
+that owns it. Overtide should not duplicate Overfin, Radarr, Sonarr,
+qBittorrent, Lidarr, Readarr or storage systems.
 
-Core principle:
+Core principles:
 
-> **Services provide facts. Stewarr provides context.**
+> **Services provide facts. Overtide provides context.**
 
-The unified model is the product. Cleanup is one application of that model.
+> **Overfin values titles; Overtide weighs them against storage.**
 
-Inventory generations distinguish authoritative base facts from enrichment. Radarr, Sonarr and qBittorrent establish their own mutation ownership. Jellyfin contributes playback/favourite facts and Seerr contributes request facts without joining Stewarr's filesystem namespace. Cached or partially enriched generations may be displayed, but they are explicitly valuation-unreliable and cannot produce automatic cleanup candidates. A failed service disables only capabilities depending on it and never expands another service's authority.
+Overfin's values are about titles and never about files or sizes: a title
+is valued the same way whether it's on the server or not. Overfin gives
+values and counts per title, never who wanted or watched what. Size, physical
+identity, torrent value and resource limits are Overtide's alone. The
+current state, and the steps from it, are in [`ROADMAP.md`](ROADMAP.md),
+"Toward Overfin": until those steps are done, Overtide still reads Jellyfin,
+Seerr, TMDB and IMDb itself, as Overtide does, and what this document says of
+them describes that inherited state.
 
-File topology is generation-bound. A reconciliation result is discarded if the authoritative base inventory changes before it is published. Its Files, claims, Unmanaged projection, Media and Torrents are committed atomically as one durable generation; readers cannot enter a replacement transaction halfway through. Direct filesystem removal has a stronger boundary still: at the final unlink boundary, after owner-backed actions finish, Stewarr discovers the live torrent set and refreshes current Radarr/Sonarr file claims rather than treating cached absence as proof.
+Inventory generations distinguish authoritative base facts from enrichment. Radarr, Sonarr and qBittorrent establish their own mutation ownership. Jellyfin contributes playback/favourite facts and Seerr contributes request facts without joining Overtide's filesystem namespace. Cached or partially enriched generations may be displayed, but they are explicitly valuation-unreliable and cannot produce automatic cleanup candidates. A failed service disables only capabilities depending on it and never expands another service's authority.
+
+File topology is generation-bound. A reconciliation result is discarded if the authoritative base inventory changes before it is published. Its Files, claims, Unmanaged projection, Media and Torrents are committed atomically as one durable generation; readers cannot enter a replacement transaction halfway through. Direct filesystem removal has a stronger boundary still: at the final unlink boundary, after owner-backed actions finish, Overtide discovers the live torrent set and refreshes current Radarr/Sonarr file claims rather than treating cached absence as proof.
 
 ## Core facts and interpretations
 
 Raw service data should remain attributable facts: an *arr import event, a qBittorrent hash, Jellyfin playback state, a Seerr request, a filesystem inode/link count, a storage usage reading.
 
-Stewarr then derives interpretations from combinations of facts: Current, Superseded, Orphaned, Unassociated, former relationships, Value, reclaimable bytes, storage pressure, safe actions, inconsistencies and health conditions.
+Overtide then derives interpretations from combinations of facts: Current, Superseded, Orphaned, Unassociated, former relationships, Value, reclaimable bytes, storage pressure, safe actions, inconsistencies and health conditions.
 
 Do not blur those layers. A future change in interpretation should not require rebuilding the service that supplied the facts.
 
@@ -114,7 +127,7 @@ triggers and generic linear workflow instances are persisted in SQLite.
 Interrupted idempotent maintenance may be retried; irreversible mutations defer
 restart decisions to their domain journal and otherwise require attention.
 
-Stewarr composes a shared owner/filesystem mutation boundary and an exclusive
+Overtide composes a shared owner/filesystem mutation boundary and an exclusive
 inventory-publication boundary. Base inventory, Jellyfin enrichment and Seerr
 enrichment publish serially. File reconciliation may overlap inventory network
 work but cannot overlap a removal. Jellyfin is interruptible and resumes after
@@ -182,10 +195,10 @@ usage > target   → reclaim only enough to return <= target
 
 Target is per storage device, not global. "Usage" is evaluated against a
 device's *usable* capacity — total capacity minus whatever real disk usage
-Stewarr cannot attribute to itself (`OtherBytes`: other services on a shared
+Overtide cannot attribute to itself (`OtherBytes`: other services on a shared
 pool, plus the filesystem's own reserved-for-root blocks, shown as a
 distinct, honest line item rather than folded into one ambiguous bucket) —
-not the raw disk total. A target of 90% means 90% of what Stewarr actually
+not the raw disk total. A target of 90% means 90% of what Overtide actually
 has to work with, not 90% of a disk another service already holds a share
 of.
 
@@ -222,16 +235,19 @@ The long-term optimization question is:
 
 ## Services
 
-A service type exists only when Stewarr has a defined adapter for it.
+A service type exists only when Overtide has a defined adapter for it.
 Configuration cannot create a generic service merely by supplying a URL or
 filesystem root. The currently defined types are Radarr, Sonarr, Jellyfin,
-Seerr and qBittorrent.
+Seerr and qBittorrent. Overfin is the next one; Jellyfin and Seerr, and the
+TMDB and IMDb sources, go once Overfin's values replace what they provide.
 
 Adapters participate through explicit capabilities. An adapter need not
-subscribe to the File management layer to contribute playback, request,
+subscribe to the File management layer to contribute value, request,
 catalog, diagnostic or future domain facts. Conversely, a feature may consume
 an adapter only when the adapter satisfies that feature's complete capability
-contract.
+contract. Overfin never joins the filesystem namespace: it contributes title
+values, approved requests and their counts, and receives request statuses and
+what's leaving soon.
 
 Root discovery does not by itself establish ownership. A future adapter that
 declares an exhaustive filesystem root must claim every regular File under it;
@@ -246,15 +262,14 @@ Future service entities should support:
 - capability advertisement;
 - GUI creation/edit/test connection;
 - manager/history providers (Radarr, Sonarr, Lidarr, Readarr);
-- request providers (Seerr);
-- playback providers (Jellyfin, Plex);
+- value and request providers (Overfin);
 - torrent/download clients (qBittorrent, Transmission, Deluge, rTorrent, etc.);
 - auxiliary services (Bazarr);
 - storage/filesystem inspectors.
 
 ## Explainability
 
-Stewarr must explain decisions, not merely scores.
+Overtide must explain decisions, not merely scores.
 
 A cleanup plan should answer:
 
@@ -283,15 +298,15 @@ Historical data should be captured from the first destructive release even if th
 
 ## Data economy and lazy loading
 
-Stewarr is a cross-stack model, not a replica of every integrated application's database.
+Overtide is a cross-stack model, not a replica of every integrated application's database.
 
 The default rule is: **cheap scans, a small durable model, and lazy details**.
 
-Persist data when Stewarr needs it for stable identity, cross-application relationships, provenance/history, search/filter/sort, decisions, sync cursors, or expensive filesystem reconciliation. Derive interpretations from those facts when practical. Details that remain authoritative and cheap to retrieve from the owning application should be fetched on demand and normally not persisted.
+Persist data when Overtide needs it for stable identity, cross-application relationships, provenance/history, search/filter/sort, decisions, sync cursors, or expensive filesystem reconciliation. Derive interpretations from those facts when practical. Details that remain authoritative and cheap to retrieve from the owning application should be fetched on demand and normally not persisted.
 
 List pages must be renderable from indexed state and must not cause one remote detail request per row. Detail pages may enrich one selected object from its owning application. Heavy filesystem or whole-client reconciliation belongs in an explicit sparse task rather than the routine inventory refresh.
 
-Media, files, torrents, source ownership, and physical storage identity are distinct concepts. The filesystem establishes which Files exist and their physical identity; services declare claims on those existing Files; Stewarr reconciles the two. Existing Files with no claims are Unmanaged observations, while claims with no matching File are missing claims rather than phantom Files. A media entity remains valid with zero files. A File is deliberately content-agnostic so subtitles, text files, ebooks, or other regular files can participate without changing the core storage object.
+Media, files, torrents, source ownership, and physical storage identity are distinct concepts. The filesystem establishes which Files exist and their physical identity; services declare claims on those existing Files; Overtide reconciles the two. Existing Files with no claims are Unmanaged observations, while claims with no matching File are missing claims rather than phantom Files. A media entity remains valid with zero files. A File is deliberately content-agnostic so subtitles, text files, ebooks, or other regular files can participate without changing the core storage object.
 
 
 ## Media detail relationship presentation
@@ -302,14 +317,14 @@ Media pages expose their Current and Superseded torrent relationships rather tha
 
 The durable file inventory is filesystem-first. A successful reconciliation validates services, discovers their storage roots, scans those roots for regular files, records path/size/device/inode/link-count facts, then applies service claims. Symlinks are not followed. A failed or partial generation is never published over the last authoritative one.
 
-Physical identity is authoritative for storage relationships: paths with the same device/inode are the same physical File. Proven physical backing establishes a Current torrent/media relationship even when import provenance is absent or stale. Ownership never overrides physical identity, and physical identity never lets Stewarr manipulate a path through the wrong owner. Owned objects are manipulated only through their service. A Media plan may propose a qBittorrent action for a Current torrent; confirming it still delegates the complete Torrent removal to qBittorrent. Unmanaged paths cannot be unlinked directly. Filenames alone never authorize destructive relationships.
+Physical identity is authoritative for storage relationships: paths with the same device/inode are the same physical File. Proven physical backing establishes a Current torrent/media relationship even when import provenance is absent or stale. Ownership never overrides physical identity, and physical identity never lets Overtide manipulate a path through the wrong owner. Owned objects are manipulated only through their service. A Media plan may propose a qBittorrent action for a Current torrent; confirming it still delegates the complete Torrent removal to qBittorrent. Unmanaged paths cannot be unlinked directly. Filenames alone never authorize destructive relationships.
 
 Space consequences are calculated from the physical graph. A physical file is freed only when the selected actions remove every known filesystem link, and an incomplete hardlink set is surfaced as a warning rather than guessed away.
 
 
 ## Relationship projection
 
-Torrent/media relationships are bidirectional at the Stewarr model boundary. Authoritative current import provenance and proven device/inode physical backing independently establish Current `MediaItems`; either source is sufficient and neither may demote the other. Historical `FormerMediaItems` establish Superseded context only in the absence of a current relationship. Torrent health contributes to a media's Retention Value only when the relationship is Current and reconciled device/inode identity proves distinct torrent and media paths are hardlinks. Current copied imports, missing files, and unknown topology contribute nothing.
+Torrent/media relationships are bidirectional at the Overtide model boundary. Authoritative current import provenance and proven device/inode physical backing independently establish Current `MediaItems`; either source is sufficient and neither may demote the other. Historical `FormerMediaItems` establish Superseded context only in the absence of a current relationship. Torrent health contributes to a media's Retention Value only when the relationship is Current and reconciled device/inode identity proves distinct torrent and media paths are hardlinks. Current copied imports, missing files, and unknown topology contribute nothing.
 
 
 ## Removal architecture
@@ -324,7 +339,7 @@ Removal execution also emits a complete line-oriented audit to the mandatory app
 
 ## Application logging
 
-The process has one logging stream mirrored to stdout and `/config/log/stewarr-YYYY-MM-DD.log`. Daily rollover uses local time, restarts append, and the latest ten days are retained without splitting an individual day by size. Log initialization is a startup prerequisite. A later write, rollover, retention, or filesystem failure cancels the application context and terminates the process non-zero; Stewarr never knowingly continues mutations without persistent logging. Each line declares an origin so concurrent scheduler, inventory, HTTP, and removal work remains attributable.
+The process has one logging stream mirrored to stdout and `/config/log/stewarr-YYYY-MM-DD.log`. Daily rollover uses local time, restarts append, and the latest ten days are retained without splitting an individual day by size. Log initialization is a startup prerequisite. A later write, rollover, retention, or filesystem failure cancels the application context and terminates the process non-zero; Overtide never knowingly continues mutations without persistent logging. Each line declares an origin so concurrent scheduler, inventory, HTTP, and removal work remains attributable.
 
 The scheduler emits exactly one terminal summary for each execution. Runners
 may attach sorted key/value diagnostics to their execution context; File
@@ -363,7 +378,7 @@ Removal planning remains a domain boundary. A Media can open a RemovalPlan whene
 
 ## Removal action model
 
-Removal is built from concrete owner-backed resources. `Media` is logical context and a selection grouping; it is not deleted by Stewarr. Managed-file actions reference `MediaFileRef` records carrying the owning service and owner file ID. Radarr actions delete MovieFiles; Sonarr actions delete EpisodeFiles. Torrent and Unmanaged File actions remain separate primitives.
+Removal is built from concrete owner-backed resources. `Media` is logical context and a selection grouping; it is not deleted by Overtide. Managed-file actions reference `MediaFileRef` records carrying the owning service and owner file ID. Radarr actions delete MovieFiles; Sonarr actions delete EpisodeFiles. Torrent and Unmanaged File actions remain separate primitives.
 
 ## Code readability
 
@@ -375,7 +390,7 @@ Owner state changes are explicit options layered above managed-file removal. Man
 
 The same boundary supports optional import-list exclusions. Radarr exclusions
 require the media's authoritative TMDB ID; Sonarr exclusions require its TVDB
-ID. The option is omitted when Stewarr cannot construct a valid owner request,
+ID. The option is omitted when Overtide cannot construct a valid owner request,
 and exclusions are attempted only for media with at least one successfully
 removed managed file.
 
