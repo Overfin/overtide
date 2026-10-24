@@ -5,7 +5,7 @@ SHELL := /bin/sh
 REMOTE ?= user@your-server
 REMOTE_DIR ?= ./servarr/overtide
 
-.PHONY: build run fmt test test-browser deploy logs assets typecheck
+.PHONY: build run fmt test test-browser deploy logs assets typecheck manifest
 
 # typecheck runs tsc --strict over internal/httpui/static/src. This is the
 # only place Node/npm is required at build time — esbuild (below) only
@@ -36,7 +36,13 @@ test:
 test-browser:
 	node tests/ui/reactivity.mjs
 
-deploy: assets
+# manifest refuses a deploy while a tracked source file isn't in
+# .release-manifest: the remote build would miss it.
+manifest:
+	@missing=$$(git ls-files cmd internal tools | grep -vxF -f .release-manifest); \
+	if [ -n "$$missing" ]; then echo "Not in .release-manifest:"; echo "$$missing"; exit 1; fi
+
+deploy: manifest assets
 	@stage=$$(mktemp -d); \
 	trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 	tar -cf - -T .release-manifest | tar -xf - -C "$$stage"; \

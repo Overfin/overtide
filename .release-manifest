@@ -184,3 +184,8 @@ internal/valuation/valuation.go
 internal/valuation/valuation_test.go
 tests/ui/reactivity.mjs
 tools/buildassets/main.go
+internal/inventory/overfin.go
+internal/inventory/overfin_test.go
+internal/inventory/remove_torrent_test.go
+internal/services/overfin/client.go
+internal/services/overfin/client_test.go
