@@ -3,7 +3,7 @@ package cleanup
 import (
 	"testing"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 func TestBuildUnavailableStorage(t *testing.T) {

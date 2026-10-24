@@ -3,7 +3,10 @@
 package product
 
 const (
-	Name    = "Overtide"
-	Slug    = "overtide"
-	Version = "0.5.0"
+	Name = "Overtide"
+	Slug = "overtide"
 )
+
+// Version is set when building, from the git tag: go build -ldflags
+// "-X github.com/overfin/overtide/internal/product.Version=v0.6.0".
+var Version = "dev"

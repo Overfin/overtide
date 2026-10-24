@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // TestAggregateSeasonsUsesAirDateNotImportDate guards the fix for a real

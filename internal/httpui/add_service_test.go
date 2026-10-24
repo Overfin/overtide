@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 // multipartServiceForm builds a request body shaped exactly like the

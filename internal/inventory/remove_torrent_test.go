@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // TestRemoveTorrentUsesRadarrQueueForIncompleteCurrentDownload guards the

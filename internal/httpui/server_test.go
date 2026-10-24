@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/removal"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 // loginForTest drives a server's real first-run setup flow (POST /setup)

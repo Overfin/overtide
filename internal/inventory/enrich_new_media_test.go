@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/jellyfin"
-	"overtide/internal/services/seerr"
-	"overtide/internal/services/tmdb"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/jellyfin"
+	"github.com/overfin/overtide/internal/services/seerr"
+	"github.com/overfin/overtide/internal/services/tmdb"
 )
 
 // TestEnrichNewMediaFetchesAllApplicableSourcesForANewItem guards the

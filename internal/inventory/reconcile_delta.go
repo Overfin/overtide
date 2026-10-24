@@ -9,12 +9,12 @@ import (
 	"strings"
 	"sync"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/qbittorrent"
-	"overtide/internal/services/radarr"
-	"overtide/internal/services/sonarr"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/qbittorrent"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/store"
 )
 
 // inventoryDelta is the set of media/torrent identities whose base-catalog

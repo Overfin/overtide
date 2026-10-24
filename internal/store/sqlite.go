@@ -1,23 +1,31 @@
 package store
 
-/*
-#cgo LDFLAGS: -lsqlite3
-#include <sqlite3.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
-	"unsafe"
+	"time"
+
+	_ "modernc.org/sqlite" // the SQLite driver, in pure Go
 )
 
+// querier is what the store's statements run on: the database, or the
+// transaction withWriteTx is in.
+type querier interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	Prepare(query string) (*sql.Stmt, error)
+}
+
 type Store struct {
-	db           *C.sqlite3
+	db *sql.DB
+	// q is db, or during withWriteTx its transaction: it changes only while
+	// accessMu is held exclusively, so readers always see db.
+	q            querier
 	accessMu     sync.RWMutex
 	beforeCommit func() error // test failure/blocking hook; nil in production
 }
@@ -29,22 +37,20 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-	var db *C.sqlite3
-	if rc := C.sqlite3_open_v2(cpath, &db, C.SQLITE_OPEN_READWRITE|C.SQLITE_OPEN_CREATE|C.SQLITE_OPEN_FULLMUTEX, nil); rc != C.SQLITE_OK {
-		msg := "sqlite open failed"
-		if db != nil {
-			msg = C.GoString(C.sqlite3_errmsg(db))
-			C.sqlite3_close(db)
-		}
-		return nil, fmt.Errorf("sqlite: %s", msg)
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: %w", err)
 	}
-	s := &Store{db: db}
+	// One connection, as before: writes are serialized by accessMu, and a
+	// write transaction must be the only thing on the database.
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite: %w", err)
+	}
+	s := &Store{db: db, q: db}
 	for _, q := range []string{
-		`PRAGMA journal_mode=WAL;`,
-		`PRAGMA synchronous=NORMAL;`,
-		`PRAGMA busy_timeout=5000;`,
 		`CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 		`CREATE TABLE IF NOT EXISTS media (kind TEXT NOT NULL, source_id INTEGER NOT NULL, service_id TEXT NOT NULL DEFAULT '', payload BLOB NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(kind,source_id,service_id));`,
 		`CREATE TABLE IF NOT EXISTS torrents (client TEXT NOT NULL, hash TEXT NOT NULL, payload BLOB NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(client,hash));`,
@@ -96,26 +102,27 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) ensureColumn(table, column, definition string) error {
-	st, err := s.prepare(`PRAGMA table_info(` + table + `)`)
+	rows, err := s.q.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return err
 	}
 	found := false
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, kind string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
 		}
-		if rc != C.SQLITE_ROW {
-			C.sqlite3_finalize(st)
-			return s.err(rc)
-		}
-		if colText(st, 1) == column {
+		if name == column {
 			found = true
-			break
 		}
 	}
-	C.sqlite3_finalize(st)
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	if found {
 		return nil
 	}
@@ -131,95 +138,56 @@ func (s *Store) Close() error {
 	if s.db == nil {
 		return nil
 	}
-	if rc := C.sqlite3_close(s.db); rc != C.SQLITE_OK {
-		return s.err(rc)
-	}
-	s.db = nil
-	return nil
+	err := s.db.Close()
+	s.db, s.q = nil, nil
+	return err
 }
 
-func (s *Store) err(rc C.int) error {
-	return fmt.Errorf("sqlite rc=%d: %s", int(rc), C.GoString(C.sqlite3_errmsg(s.db)))
-}
-
-func (s *Store) exec(sql string) error {
-	c := C.CString(sql)
-	defer C.free(unsafe.Pointer(c))
-	var em *C.char
-	rc := C.sqlite3_exec(s.db, c, nil, nil, &em)
-	if rc != C.SQLITE_OK {
-		var msg string
-		if em != nil {
-			msg = C.GoString(em)
-			C.sqlite3_free(unsafe.Pointer(em))
-		} else {
-			msg = C.GoString(C.sqlite3_errmsg(s.db))
-		}
-		return fmt.Errorf("sqlite: %s", msg)
-	}
-	return nil
-}
-
-func (s *Store) prepare(sql string) (*C.sqlite3_stmt, error) {
-	c := C.CString(sql)
-	defer C.free(unsafe.Pointer(c))
-	var st *C.sqlite3_stmt
-	if rc := C.sqlite3_prepare_v2(s.db, c, -1, &st, nil); rc != C.SQLITE_OK {
-		return nil, s.err(rc)
-	}
-	return st, nil
-}
-
-func bindText(st *C.sqlite3_stmt, idx int, v string) C.int {
-	c := C.CString(v)
-	defer C.free(unsafe.Pointer(c))
-	return C.sqlite3_bind_text(st, C.int(idx), c, C.int(len(v)), (*[0]byte)(C.SQLITE_TRANSIENT))
-}
-
-func bindInt(st *C.sqlite3_stmt, idx int, v int64) C.int {
-	return C.sqlite3_bind_int64(st, C.int(idx), C.sqlite3_int64(v))
-}
-
-func colText(st *C.sqlite3_stmt, idx int) string {
-	p := C.sqlite3_column_text(st, C.int(idx))
-	if p == nil {
-		return ""
-	}
-	return C.GoString((*C.char)(unsafe.Pointer(p)))
-}
-
-func stepDone(s *Store, st *C.sqlite3_stmt) error {
-	if rc := C.sqlite3_step(st); rc != C.SQLITE_DONE {
-		return s.err(rc)
+func (s *Store) exec(query string, args ...any) error {
+	if _, err := s.q.Exec(query, args...); err != nil {
+		return fmt.Errorf("sqlite: %w", err)
 	}
 	return nil
 }
 
 // withWriteTx publishes a logical snapshot atomically. The caller must own
-// accessMu exclusively so no reader on the shared connection can observe the
-// DELETE/INSERT replacement while it is in progress.
+// accessMu exclusively so no reader can observe the DELETE/INSERT
+// replacement while it is in progress.
 func (s *Store) withWriteTx(fn func() error) error {
-	if err := s.exec("BEGIN IMMEDIATE"); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = s.exec("ROLLBACK")
-		}
-	}()
+	s.q = tx
+	defer func() { s.q = s.db }()
 	if err := fn(); err != nil {
+		_ = tx.Rollback()
 		return err
 	}
 	if s.beforeCommit != nil {
 		if err := s.beforeCommit(); err != nil {
+			_ = tx.Rollback()
 			return err
 		}
 	}
-	if err := s.exec("COMMIT"); err != nil {
+	return tx.Commit()
+}
+
+// insertAll runs one prepared statement once per row of arguments.
+func (s *Store) insertAll(query string, rows [][]any) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	st, err := s.q.Prepare(query)
+	if err != nil {
 		return err
 	}
-	committed = true
+	defer st.Close()
+	for _, args := range rows {
+		if _, err := st.Exec(args...); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -231,14 +199,7 @@ func (s *Store) SetMeta(key, value string) error {
 
 // setMeta writes metadata while the caller already owns accessMu.
 func (s *Store) setMeta(key, value string) error {
-	st, e := s.prepare(`INSERT INTO metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
-	if e != nil {
-		return e
-	}
-	defer C.sqlite3_finalize(st)
-	bindText(st, 1, key)
-	bindText(st, 2, value)
-	return stepDone(s, st)
+	return s.exec(`INSERT INTO metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
 }
 
 func (s *Store) Meta(key string) (string, error) {
@@ -248,20 +209,12 @@ func (s *Store) Meta(key string) (string, error) {
 }
 
 func (s *Store) meta(key string) (string, error) {
-	st, e := s.prepare(`SELECT value FROM metadata WHERE key=?`)
-	if e != nil {
-		return "", e
-	}
-	defer C.sqlite3_finalize(st)
-	bindText(st, 1, key)
-	rc := C.sqlite3_step(st)
-	if rc == C.SQLITE_DONE {
+	var v string
+	err := s.q.QueryRow(`SELECT value FROM metadata WHERE key=?`, key).Scan(&v)
+	if err == sql.ErrNoRows {
 		return "", nil
 	}
-	if rc != C.SQLITE_ROW {
-		return "", s.err(rc)
-	}
-	return colText(st, 0), nil
+	return v, err
 }
 
 func (s *Store) MetaInt64(key string) (int64, error) {
@@ -282,3 +235,24 @@ func boolInt(v bool) int64 {
 	}
 	return 0
 }
+
+// payloads reads one text column of every row, for JSON payloads.
+func (s *Store) payloads(query string, args ...any) ([]string, error) {
+	rows, err := s.q.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// rfc3339 is how the store writes times.
+func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }

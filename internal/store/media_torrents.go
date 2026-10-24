@@ -1,15 +1,8 @@
 package store
 
-/*
-#cgo LDFLAGS: -lsqlite3
-#include <sqlite3.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"encoding/json"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 	"sort"
 	"strings"
 	"time"
@@ -25,27 +18,17 @@ func (s *Store) saveMedia(items []model.Media) error {
 	if err := s.exec("DELETE FROM media"); err != nil {
 		return err
 	}
-	st, e := s.prepare(`INSERT INTO media(kind,source_id,service_id,payload,updated_at) VALUES(?,?,?,?,?)`)
-	if e != nil {
-		return e
-	}
-	defer C.sqlite3_finalize(st)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := rfc3339(time.Now())
+	rows := make([][]any, 0, len(items))
 	for _, m := range items {
 		b, e := json.Marshal(m)
 		if e != nil {
 			return e
 		}
-		C.sqlite3_reset(st)
-		C.sqlite3_clear_bindings(st)
-		bindText(st, 1, string(m.Type))
-		bindInt(st, 2, int64(m.SourceID))
-		bindText(st, 3, m.ServiceID)
-		bindText(st, 4, string(b))
-		bindText(st, 5, now)
-		if e := stepDone(s, st); e != nil {
-			return e
-		}
+		rows = append(rows, []any{string(m.Type), m.SourceID, m.ServiceID, string(b), now})
+	}
+	if err := s.insertAll(`INSERT INTO media(kind,source_id,service_id,payload,updated_at) VALUES(?,?,?,?,?)`, rows); err != nil {
+		return err
 	}
 	return s.setMeta("media.updated_at", now)
 }
@@ -53,22 +36,14 @@ func (s *Store) saveMedia(items []model.Media) error {
 func (s *Store) LoadMedia() ([]model.Media, time.Time, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT payload FROM media`)
+	payloads, e := s.payloads(`SELECT payload FROM media`)
 	if e != nil {
 		return nil, time.Time{}, e
 	}
-	defer C.sqlite3_finalize(st)
 	var out []model.Media
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, time.Time{}, s.err(rc)
-		}
+	for _, p := range payloads {
 		var m model.Media
-		if e := json.Unmarshal([]byte(colText(st, 0)), &m); e != nil {
+		if e := json.Unmarshal([]byte(p), &m); e != nil {
 			return nil, time.Time{}, e
 		}
 		out = append(out, m)
@@ -94,12 +69,8 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 	if err := s.exec("DELETE FROM torrents"); err != nil {
 		return err
 	}
-	st, e := s.prepare(`INSERT INTO torrents(client,hash,payload,updated_at) VALUES(?,?,?,?)`)
-	if e != nil {
-		return e
-	}
-	defer C.sqlite3_finalize(st)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := rfc3339(time.Now())
+	rows := make([][]any, 0, len(items))
 	for _, p := range items {
 		// Persist only the torrent index Overtide needs for lists, valuation,
 		// relationships and storage work. Client-owned diagnostics are lazy.
@@ -131,15 +102,10 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 		if e != nil {
 			return e
 		}
-		C.sqlite3_reset(st)
-		C.sqlite3_clear_bindings(st)
-		bindText(st, 1, p.Client)
-		bindText(st, 2, strings.ToLower(p.Hash))
-		bindText(st, 3, string(b))
-		bindText(st, 4, now)
-		if e := stepDone(s, st); e != nil {
-			return e
-		}
+		rows = append(rows, []any{p.Client, strings.ToLower(p.Hash), string(b), now})
+	}
+	if err := s.insertAll(`INSERT INTO torrents(client,hash,payload,updated_at) VALUES(?,?,?,?)`, rows); err != nil {
+		return err
 	}
 	return s.setMeta("torrents.updated_at", now)
 }
@@ -147,22 +113,14 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 func (s *Store) LoadTorrents() ([]model.Torrent, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT payload FROM torrents`)
+	payloads, e := s.payloads(`SELECT payload FROM torrents`)
 	if e != nil {
 		return nil, e
 	}
-	defer C.sqlite3_finalize(st)
 	var out []model.Torrent
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, s.err(rc)
-		}
+	for _, raw := range payloads {
 		var p model.Torrent
-		if e := json.Unmarshal([]byte(colText(st, 0)), &p); e != nil {
+		if e := json.Unmarshal([]byte(raw), &p); e != nil {
 			return nil, e
 		}
 		out = append(out, p)

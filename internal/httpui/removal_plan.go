@@ -2,9 +2,9 @@ package httpui
 
 import (
 	"fmt"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
 	"net/url"
-	"overtide/internal/model"
-	"overtide/internal/removal"
 	"path/filepath"
 	"sort"
 	"strings"

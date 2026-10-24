@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"overtide/internal/cleanup"
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/cleanup"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type storageData struct {

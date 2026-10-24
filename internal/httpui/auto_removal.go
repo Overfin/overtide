@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/cleanup"
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/cleanup"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 const autoRemovalTaskID = "auto-removal"

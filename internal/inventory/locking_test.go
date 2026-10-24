@@ -1,7 +1,7 @@
 package inventory
 
 import (
-	"overtide/internal/config"
+	"github.com/overfin/overtide/internal/config"
 	"testing"
 	"time"
 )

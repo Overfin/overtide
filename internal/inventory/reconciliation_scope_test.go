@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func TestQueueReconciliationDurablyMergesScopes(t *testing.T) {

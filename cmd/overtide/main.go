@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"overtide/internal/applog"
-	"overtide/internal/config"
-	"overtide/internal/httpui"
-	"overtide/internal/inventory"
-	"overtide/internal/product"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/applog"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/httpui"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/product"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 const (

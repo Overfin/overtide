@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/store"
 )
 
 // newAuthTestServer builds a server backed by a real store and a real

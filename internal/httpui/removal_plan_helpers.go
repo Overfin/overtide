@@ -2,8 +2,8 @@ package httpui
 
 import (
 	"fmt"
-	"overtide/internal/model"
-	"overtide/internal/removal"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
 	"path/filepath"
 	"sort"
 	"strconv"

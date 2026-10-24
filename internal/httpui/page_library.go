@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/inventory"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type mediaRow struct {
@@ -252,9 +252,9 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 	planningReliable := server.planningReliable(reliability)
 	if !planningReliable && last == nil {
 		if server.tasks != nil && server.tasks.ConsistencyPending() {
-			last = fmt.Errorf("Automatic removal planning paused. Post-removal synchronization is pending")
+			last = notice("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
-			last = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel)
+			last = notice(fmt.Sprintf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel))
 		}
 	}
 

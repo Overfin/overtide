@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/overfin"
 )
 
 // Overfin's scores become the items' Retention Value, and valuation is

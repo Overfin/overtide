@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/inventory"
 )
 
 func TestServicesTemplateRendersServiceDetailAndRootPaths(t *testing.T) {

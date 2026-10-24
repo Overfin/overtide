@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"overtide/internal/config"
+	"github.com/overfin/overtide/internal/config"
 )
 
 func TestAddServicePersistsAndActivatesLiveWithoutConfigPath(t *testing.T) {

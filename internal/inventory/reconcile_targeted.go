@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/radarr"
-	"overtide/internal/services/sonarr"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
-	"overtide/internal/valuation"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 func (service *Service) promoteTargeted(ctx context.Context, reason string) error {

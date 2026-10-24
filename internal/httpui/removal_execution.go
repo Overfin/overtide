@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/removal"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 func selectedUnmanagedStates(plan removal.RemovalPlan, paths []string) []removal.FileState {
@@ -110,7 +110,7 @@ func targetSelection(r *http.Request) bool {
 
 func (server *Server) removalMedia(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", 405)
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
 	kind := model.MediaType(strings.TrimSpace(r.URL.Query().Get("type")))
@@ -125,7 +125,7 @@ func (server *Server) removalMedia(w http.ResponseWriter, r *http.Request) {
 }
 func (server *Server) removalTorrent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", 405)
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
 	d, err := server.buildTorrentRemovalPlan(r.URL.Query().Get("hash"), strings.TrimSpace(r.URL.Query().Get("service_id")), targetSelection(r), selectedManagedSet(r.URL.Query()["managed_file"]), selectedUnmanagedSet(r.URL.Query()["unmanaged_path"]))
@@ -137,7 +137,7 @@ func (server *Server) removalTorrent(w http.ResponseWriter, r *http.Request) {
 }
 func (server *Server) removalUnmanaged(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", 405)
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
 	d, err := server.buildUnmanagedRemovalPlan(r.URL.Query()["path"], selectedTorrentSet(r))
@@ -346,7 +346,7 @@ func cloneForm(source url.Values) url.Values {
 
 func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Request, ctx context.Context) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", 405)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	kind := r.FormValue("kind")
@@ -370,7 +370,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 		err = fmt.Errorf("unknown removal kind")
 	}
 	if err != nil {
-		http.Error(w, "Removal revalidation failed: "+err.Error(), 409)
+		http.Error(w, "Removal revalidation failed: "+err.Error(), http.StatusConflict)
 		return
 	}
 	if d.SelectedActions == 0 {

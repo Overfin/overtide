@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // NotFoundError reports that qBittorrent authoritatively has no such object

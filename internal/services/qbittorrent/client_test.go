@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 func TestVerifyPathsUnmanagedUsesFreshContentPath(t *testing.T) {

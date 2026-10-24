@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
 )
 
 type homeData struct {
@@ -70,9 +70,9 @@ func (server *Server) dashboardSnapshot() homeData {
 	}
 	if !planningReliable && d.LastErr == nil {
 		if server.tasks != nil && server.tasks.ConsistencyPending() {
-			d.LastErr = fmt.Errorf("Automatic removal planning paused. Post-removal synchronization is pending")
+			d.LastErr = notice("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
-			d.LastErr = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel)
+			d.LastErr = notice(fmt.Sprintf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel))
 		}
 	}
 	for _, svc := range server.inv.StatusSnapshot() {

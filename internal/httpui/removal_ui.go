@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"overtide/internal/model"
-	"overtide/internal/removal"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
 )
 
 // removalSelectionModel contains only facts already inspected while the modal

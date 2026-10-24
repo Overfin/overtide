@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/radarr"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func TestComputeInventoryDeltaDetectsNewChangedAndRemoved(t *testing.T) {

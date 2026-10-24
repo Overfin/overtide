@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 func TestRevisionHubDeliversNewestInvalidation(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/inventory"
 )
 
 func TestHomeTemplateRendersStorageSummaryOnly(t *testing.T) {

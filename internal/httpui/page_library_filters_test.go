@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // TestLibraryTemplateShowsEmptyStateWithoutMediaLibrary guards the same

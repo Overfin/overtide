@@ -6,17 +6,17 @@ import (
 	"log"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/imdb"
-	"overtide/internal/services/jellyfin"
-	"overtide/internal/services/overfin"
-	"overtide/internal/services/qbittorrent"
-	"overtide/internal/services/radarr"
-	"overtide/internal/services/seerr"
-	"overtide/internal/services/sonarr"
-	"overtide/internal/services/tmdb"
-	"overtide/internal/valuation"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/services/jellyfin"
+	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/qbittorrent"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/seerr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/services/tmdb"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 // AddService is the first slice of live config editing: validate a new

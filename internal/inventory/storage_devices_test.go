@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // TestUnexplainedOtherBytesSubtractsReservedBlocks guards the actual point

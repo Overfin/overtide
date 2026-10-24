@@ -1,12 +1,5 @@
 package store
 
-/*
-#cgo LDFLAGS: -lsqlite3
-#include <sqlite3.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"time"
 )
@@ -37,30 +30,13 @@ func (s *Store) SaveTorrentHistorySamples(samples []TorrentHistorySample) error 
 	}
 	s.accessMu.Lock()
 	defer s.accessMu.Unlock()
+	rows := make([][]any, 0, len(samples))
+	for _, x := range samples {
+		rows = append(rows, []any{x.Client, x.Hash, rfc3339(x.SampledAt), x.Ratio, x.SeedsSwarm, x.LeechersSwarm,
+			x.UploadedBytes, x.DownloadedBytes, x.State, x.LastActivity})
+	}
 	return s.withWriteTx(func() error {
-		st, e := s.prepare(`INSERT INTO torrent_history(client,hash,sampled_at,ratio,seeds_swarm,leechers_swarm,uploaded_bytes,downloaded_bytes,state,last_activity) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-		if e != nil {
-			return e
-		}
-		defer C.sqlite3_finalize(st)
-		for _, sample := range samples {
-			C.sqlite3_reset(st)
-			C.sqlite3_clear_bindings(st)
-			bindText(st, 1, sample.Client)
-			bindText(st, 2, sample.Hash)
-			bindText(st, 3, sample.SampledAt.UTC().Format(time.RFC3339Nano))
-			C.sqlite3_bind_double(st, 4, C.double(sample.Ratio))
-			bindInt(st, 5, int64(sample.SeedsSwarm))
-			bindInt(st, 6, int64(sample.LeechersSwarm))
-			bindInt(st, 7, sample.UploadedBytes)
-			bindInt(st, 8, sample.DownloadedBytes)
-			bindText(st, 9, sample.State)
-			bindInt(st, 10, sample.LastActivity)
-			if e := stepDone(s, st); e != nil {
-				return e
-			}
-		}
-		return nil
+		return s.insertAll(`INSERT INTO torrent_history(client,hash,sampled_at,ratio,seeds_swarm,leechers_swarm,uploaded_bytes,downloaded_bytes,state,last_activity) VALUES(?,?,?,?,?,?,?,?,?,?)`, rows)
 	})
 }
 
@@ -71,15 +47,33 @@ func (s *Store) PruneTorrentHistory(before time.Time) error {
 	s.accessMu.Lock()
 	defer s.accessMu.Unlock()
 	return s.withWriteTx(func() error {
-		st, e := s.prepare(`DELETE FROM torrent_history WHERE sampled_at < ?`)
-		if e != nil {
-			return e
-		}
-		defer C.sqlite3_finalize(st)
-		bindText(st, 1, before.UTC().Format(time.RFC3339Nano))
-		return stepDone(s, st)
+		return s.exec(`DELETE FROM torrent_history WHERE sampled_at < ?`, rfc3339(before))
 	})
 }
+
+// historySamples reads samples, each row client, hash, then the sample's
+// own columns.
+func (s *Store) historySamples(query string, args ...any) ([]TorrentHistorySample, error) {
+	rows, err := s.q.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TorrentHistorySample
+	for rows.Next() {
+		var x TorrentHistorySample
+		var at string
+		if err := rows.Scan(&x.Client, &x.Hash, &at, &x.Ratio, &x.SeedsSwarm, &x.LeechersSwarm,
+			&x.UploadedBytes, &x.DownloadedBytes, &x.State, &x.LastActivity); err != nil {
+			return nil, err
+		}
+		x.SampledAt, _ = time.Parse(time.RFC3339Nano, at)
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+const sampleColumns = `client,hash,sampled_at,ratio,seeds_swarm,leechers_swarm,uploaded_bytes,downloaded_bytes,state,last_activity`
 
 // TorrentHistorySince returns every retained sample at or after since,
 // across every torrent, in one query — grouped by client+hash so a caller
@@ -88,37 +82,14 @@ func (s *Store) PruneTorrentHistory(before time.Time) error {
 func (s *Store) TorrentHistorySince(since time.Time) (map[string][]TorrentHistorySample, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT client,hash,sampled_at,ratio,seeds_swarm,leechers_swarm,uploaded_bytes,downloaded_bytes,state,last_activity FROM torrent_history WHERE sampled_at >= ? ORDER BY client,hash,sampled_at ASC`)
-	if e != nil {
-		return nil, e
+	samples, err := s.historySamples(`SELECT `+sampleColumns+` FROM torrent_history WHERE sampled_at >= ? ORDER BY client,hash,sampled_at ASC`, rfc3339(since))
+	if err != nil {
+		return nil, err
 	}
-	defer C.sqlite3_finalize(st)
-	bindText(st, 1, since.UTC().Format(time.RFC3339Nano))
 	out := map[string][]TorrentHistorySample{}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, s.err(rc)
-		}
-		client := colText(st, 0)
-		hash := colText(st, 1)
-		sampledAt, _ := time.Parse(time.RFC3339Nano, colText(st, 2))
-		key := client + "|" + hash
-		out[key] = append(out[key], TorrentHistorySample{
-			Client:          client,
-			Hash:            hash,
-			SampledAt:       sampledAt,
-			Ratio:           float64(C.sqlite3_column_double(st, 3)),
-			SeedsSwarm:      int(C.sqlite3_column_int64(st, 4)),
-			LeechersSwarm:   int(C.sqlite3_column_int64(st, 5)),
-			UploadedBytes:   int64(C.sqlite3_column_int64(st, 6)),
-			DownloadedBytes: int64(C.sqlite3_column_int64(st, 7)),
-			State:           colText(st, 8),
-			LastActivity:    int64(C.sqlite3_column_int64(st, 9)),
-		})
+	for _, x := range samples {
+		key := x.Client + "|" + x.Hash
+		out[key] = append(out[key], x)
 	}
 	return out, nil
 }
@@ -128,35 +99,5 @@ func (s *Store) TorrentHistorySince(since time.Time) (map[string][]TorrentHistor
 func (s *Store) TorrentHistorySamples(client, hash string) ([]TorrentHistorySample, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT sampled_at,ratio,seeds_swarm,leechers_swarm,uploaded_bytes,downloaded_bytes,state,last_activity FROM torrent_history WHERE client=? AND hash=? ORDER BY sampled_at ASC`)
-	if e != nil {
-		return nil, e
-	}
-	defer C.sqlite3_finalize(st)
-	bindText(st, 1, client)
-	bindText(st, 2, hash)
-	var out []TorrentHistorySample
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, s.err(rc)
-		}
-		sampledAt, _ := time.Parse(time.RFC3339Nano, colText(st, 0))
-		out = append(out, TorrentHistorySample{
-			Client:          client,
-			Hash:            hash,
-			SampledAt:       sampledAt,
-			Ratio:           float64(C.sqlite3_column_double(st, 1)),
-			SeedsSwarm:      int(C.sqlite3_column_int64(st, 2)),
-			LeechersSwarm:   int(C.sqlite3_column_int64(st, 3)),
-			UploadedBytes:   int64(C.sqlite3_column_int64(st, 4)),
-			DownloadedBytes: int64(C.sqlite3_column_int64(st, 5)),
-			State:           colText(st, 6),
-			LastActivity:    int64(C.sqlite3_column_int64(st, 7)),
-		})
-	}
-	return out, nil
+	return s.historySamples(`SELECT `+sampleColumns+` FROM torrent_history WHERE client=? AND hash=? ORDER BY sampled_at ASC`, client, hash)
 }

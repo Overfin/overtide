@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
 )
 
 // consistencyWorkflowInstanceID identifies the single global workflow
@@ -89,7 +89,7 @@ type addServiceFormData struct {
 
 func addServiceFormDataFor(category string) addServiceFormData {
 	if found, ok := serviceCategories[category]; ok {
-		return addServiceFormData{Title: found.Title, Types: found.Types}
+		return addServiceFormData(found)
 	}
 	return addServiceFormData{Title: "Add service", Types: allServiceTypes}
 }

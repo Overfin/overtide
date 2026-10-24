@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type unmanagedFileGroup struct {

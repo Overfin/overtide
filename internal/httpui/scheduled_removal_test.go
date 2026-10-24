@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 func TestPostRemovalConsistencyIsReadyImmediately(t *testing.T) {

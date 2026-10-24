@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 type taskGroup struct {

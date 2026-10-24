@@ -2,7 +2,7 @@ package inventory
 
 import (
 	"fmt"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 	"strings"
 )
 

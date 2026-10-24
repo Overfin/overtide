@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // TestProtectMediaTagsMovieAndRegistersKeepTag guards the whole path:

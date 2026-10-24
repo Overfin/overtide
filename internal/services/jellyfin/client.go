@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/overfin/overtide/internal/model"
 	"net/http"
 	"net/url"
-	"overtide/internal/model"
 	"strings"
 	"time"
 )

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/inventory"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type torrentData struct {

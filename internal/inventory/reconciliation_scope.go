@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"overtide/internal/model"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 const reconciliationScopeKey = "inventory.reconciliation.scope.v1"

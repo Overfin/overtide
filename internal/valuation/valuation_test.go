@@ -1,10 +1,10 @@
 package valuation
 
 import (
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/imdb"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/store"
 	"testing"
 	"time"
 )

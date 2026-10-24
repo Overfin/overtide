@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"overtide/internal/config"
+	"github.com/overfin/overtide/internal/config"
 )
 
 // TestSyncDeviceRegistryPersistsIDAndDefaultNameForANewDevice guards the

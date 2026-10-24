@@ -1,0 +1,51 @@
+# Checks every push and pull request: formatting, vet, static analysis,
+# known vulnerabilities, tests (with the race detector), and the web
+# assets: their TypeScript type-checked, and the committed bundles the
+# same as a fresh build of their sources.
+name: CI
+
+on:
+  push:
+  pull_request:
+  # The release workflow runs these checks first.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Static analysis
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+
+      - name: Known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Tests
+        run: go test -race ./...
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Web assets
+        run: |
+          npm --prefix internal/httpui/static/src ci
+          npm --prefix internal/httpui/static/src run typecheck
+          go run ./tools/buildassets
+          git diff --exit-code internal/httpui/static/app.js internal/httpui/static/app.css ||
+            { echo "The committed web assets differ from their sources: run go run ./tools/buildassets"; exit 1; }

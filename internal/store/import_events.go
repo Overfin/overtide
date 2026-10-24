@@ -1,12 +1,5 @@
 package store
 
-/*
-#cgo LDFLAGS: -lsqlite3
-#include <sqlite3.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"strings"
 	"time"
@@ -27,38 +20,13 @@ func (s *Store) AddImportEvents(events []ImportEvent) error {
 	}
 	s.accessMu.Lock()
 	defer s.accessMu.Unlock()
-	if err := s.exec("BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	ok := false
-	defer func() {
-		if !ok {
-			_ = s.exec("ROLLBACK")
-		}
-	}()
-	st, e := s.prepare(`INSERT OR IGNORE INTO arr_imports(source,owner_id,sub_id,download_id,imported_at,service_id) VALUES(?,?,?,?,?,?)`)
-	if e != nil {
-		return e
-	}
-	defer C.sqlite3_finalize(st)
+	rows := make([][]any, 0, len(events))
 	for _, x := range events {
-		C.sqlite3_reset(st)
-		C.sqlite3_clear_bindings(st)
-		bindText(st, 1, x.Source)
-		bindInt(st, 2, int64(x.OwnerID))
-		bindInt(st, 3, int64(x.SubID))
-		bindText(st, 4, strings.ToLower(strings.TrimSpace(x.DownloadID)))
-		bindText(st, 5, x.ImportedAt.UTC().Format(time.RFC3339Nano))
-		bindText(st, 6, x.ServiceID)
-		if e := stepDone(s, st); e != nil {
-			return e
-		}
+		rows = append(rows, []any{x.Source, x.OwnerID, x.SubID, strings.ToLower(strings.TrimSpace(x.DownloadID)), rfc3339(x.ImportedAt), x.ServiceID})
 	}
-	if err := s.exec("COMMIT"); err != nil {
-		return err
-	}
-	ok = true
-	return nil
+	return s.withWriteTx(func() error {
+		return s.insertAll(`INSERT OR IGNORE INTO arr_imports(source,owner_id,sub_id,download_id,imported_at,service_id) VALUES(?,?,?,?,?,?)`, rows)
+	})
 }
 
 // ImportEvents returns import history for one service instance of
@@ -68,46 +36,34 @@ func (s *Store) AddImportEvents(events []ImportEvent) error {
 func (s *Store) ImportEvents(source, serviceID string) ([]ImportEvent, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT owner_id,sub_id,download_id,imported_at FROM arr_imports WHERE source=? AND service_id=? ORDER BY imported_at DESC`)
+	rows, e := s.q.Query(`SELECT owner_id,sub_id,download_id,imported_at FROM arr_imports WHERE source=? AND service_id=? ORDER BY imported_at DESC`, source, serviceID)
 	if e != nil {
 		return nil, e
 	}
-	defer C.sqlite3_finalize(st)
-	bindText(st, 1, source)
-	bindText(st, 2, serviceID)
+	defer rows.Close()
 	var out []ImportEvent
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
+	for rows.Next() {
+		x := ImportEvent{Source: source, ServiceID: serviceID}
+		var at string
+		if e := rows.Scan(&x.OwnerID, &x.SubID, &x.DownloadID, &at); e != nil {
+			return nil, e
 		}
-		if rc != C.SQLITE_ROW {
-			return nil, s.err(rc)
-		}
-		t, _ := time.Parse(time.RFC3339Nano, colText(st, 3))
-		out = append(out, ImportEvent{Source: source, ServiceID: serviceID, OwnerID: int(C.sqlite3_column_int64(st, 0)), SubID: int(C.sqlite3_column_int64(st, 1)), DownloadID: colText(st, 2), ImportedAt: t})
+		x.ImportedAt, _ = time.Parse(time.RFC3339Nano, at)
+		out = append(out, x)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *Store) AllImportHashes() (map[string]bool, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT DISTINCT download_id FROM arr_imports`)
+	hashes, e := s.payloads(`SELECT DISTINCT download_id FROM arr_imports`)
 	if e != nil {
 		return nil, e
 	}
-	defer C.sqlite3_finalize(st)
 	out := map[string]bool{}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, s.err(rc)
-		}
-		out[strings.ToLower(colText(st, 0))] = true
+	for _, h := range hashes {
+		out[strings.ToLower(h)] = true
 	}
 	return out, nil
 }

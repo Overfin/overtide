@@ -5,9 +5,9 @@ import (
 	"math"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
 )
 
 // Torrent Value inputs are entirely hardcoded — unlike Media's ValueWeights,

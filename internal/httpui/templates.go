@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"overtide/internal/product"
+	"github.com/overfin/overtide/internal/product"
 )
 
 // UI source and its pinned browser dependencies ship inside the Overtide

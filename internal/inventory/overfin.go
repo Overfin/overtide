@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"overtide/internal/model"
-	"overtide/internal/valuation"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 // RefreshOverfin reads Overfin's scores for what the libraries have. Like

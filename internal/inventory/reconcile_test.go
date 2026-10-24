@@ -3,10 +3,10 @@ package inventory
 import (
 	"context"
 	"encoding/json"
+	"github.com/overfin/overtide/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"overtide/internal/config"
 	"path/filepath"
 	"testing"
 )

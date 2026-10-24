@@ -1,0 +1,30 @@
+# Overtide beside your *arr stack. Copy .env.example to .env, set where your
+# media and downloads are, then: docker compose up -d. Open this machine's
+# address on port 8088, create the admin account, then add your services
+# (Radarr, Sonarr, your torrent client, Overfin). See README.md.
+#
+# Overtide must see your files at the same paths as Radarr, Sonarr and your
+# torrent client do: mount them here exactly as they mount them.
+name: overtide
+
+services:
+  overtide:
+    container_name: overtide
+    image: ${OVERTIDE_IMAGE:-ghcr.io/overfin/overtide:0.6.0}
+    # From a checkout of the repository: docker compose build overtide
+    build: ..
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # The user that owns your media, so Overtide may remove what you let it.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${CONFIG_DIR:-./config}:/config
+      - ${MEDIA_DIR:?set MEDIA_DIR in .env}:${MEDIA_PATH:-/data}
+      # A second folder, when downloads live apart from the library:
+      # - ${DOWNLOADS_DIR}:${DOWNLOADS_PATH}
+    ports:
+      - "${OVERTIDE_PORT:-8088}:8088"

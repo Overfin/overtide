@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 func TestApplyEnrichesMovieDirectlyByTMDBID(t *testing.T) {

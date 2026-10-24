@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"overtide/internal/model"
-	"overtide/internal/valuation"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/valuation"
 	"sync"
 	"time"
 )

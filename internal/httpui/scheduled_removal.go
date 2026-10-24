@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"overtide/internal/inventory"
-	"overtide/internal/store"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 const removalTaskID = "removal-operation"

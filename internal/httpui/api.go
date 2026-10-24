@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"overtide/internal/cleanup"
-	"overtide/internal/inventory"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/cleanup"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func (server *Server) apiMedia(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func (server *Server) apiFiles(w http.ResponseWriter, r *http.Request) {
 }
 func (server *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", 405)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 	if server.tasks != nil {
@@ -81,7 +81,7 @@ func (server *Server) refresh(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
-	http.Redirect(w, r, "/", 303)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 func (server *Server) plan(w http.ResponseWriter, r *http.Request) {
 	x, _, _ := server.inv.Snapshot()

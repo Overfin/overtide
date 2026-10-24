@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/model"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func TestApplyTorrentValueScoresRatioRecencyAndPrivateBonus(t *testing.T) {

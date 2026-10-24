@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type identity struct {

@@ -1,6 +1,9 @@
+/overtide
+*.db
+*.db-*
+# local configs and secrets
 config.json
-.env
+.env*
 .DS_Store
-overtide
-Makefile.local
 internal/httpui/static/src/node_modules
+!.env.example

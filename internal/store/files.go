@@ -1,21 +1,15 @@
 package store
 
-/*
-#cgo LDFLAGS: -lsqlite3
-#include <sqlite3.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"encoding/json"
 	"fmt"
-	"overtide/internal/model"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/overfin/overtide/internal/model"
 )
 
 func (s *Store) SaveUnmanagedFiles(items []model.UnmanagedFile) error {
@@ -28,49 +22,41 @@ func (s *Store) saveUnmanagedFiles(items []model.UnmanagedFile) error {
 	if err := s.exec("DELETE FROM unmanaged_files"); err != nil {
 		return err
 	}
-	st, e := s.prepare(`INSERT INTO unmanaged_files(path,payload,updated_at) VALUES(?,?,?)`)
-	if e != nil {
-		return e
+	now := rfc3339(time.Now())
+	rows, err := unmanagedRows(items, now)
+	if err != nil {
+		return err
 	}
-	defer C.sqlite3_finalize(st)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	for _, f := range items {
-		b, e := json.Marshal(f)
-		if e != nil {
-			return e
-		}
-		C.sqlite3_reset(st)
-		C.sqlite3_clear_bindings(st)
-		bindText(st, 1, f.Path)
-		bindText(st, 2, string(b))
-		bindText(st, 3, now)
-		if e := stepDone(s, st); e != nil {
-			return e
-		}
+	if err := s.insertAll(`INSERT INTO unmanaged_files(path,payload,updated_at) VALUES(?,?,?)`, rows); err != nil {
+		return err
 	}
 	return s.setMeta("unmanaged.updated_at", now)
+}
+
+func unmanagedRows(items []model.UnmanagedFile, now string) ([][]any, error) {
+	rows := make([][]any, 0, len(items))
+	for _, f := range items {
+		b, err := json.Marshal(f)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, []any{filepath.Clean(f.Path), string(b), now})
+	}
+	return rows, nil
 }
 
 func (s *Store) LoadUnmanagedFiles() ([]model.UnmanagedFile, time.Time, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	st, e := s.prepare(`SELECT payload FROM unmanaged_files`)
-	if e != nil {
-		return nil, time.Time{}, e
+	payloads, err := s.payloads(`SELECT payload FROM unmanaged_files`)
+	if err != nil {
+		return nil, time.Time{}, err
 	}
-	defer C.sqlite3_finalize(st)
 	var out []model.UnmanagedFile
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			return nil, time.Time{}, s.err(rc)
-		}
+	for _, p := range payloads {
 		var f model.UnmanagedFile
-		if e := json.Unmarshal([]byte(colText(st, 0)), &f); e != nil {
-			return nil, time.Time{}, e
+		if err := json.Unmarshal([]byte(p), &f); err != nil {
+			return nil, time.Time{}, err
 		}
 		out = append(out, f)
 	}
@@ -86,88 +72,68 @@ func (s *Store) ReplaceFiles(files []model.File, mediaRefs []model.MediaFileRef,
 	return s.withWriteTx(func() error { return s.replaceFiles(files, mediaRefs, torrentRefs) })
 }
 
+const (
+	insertFile         = `INSERT INTO files(path,payload,updated_at) VALUES(?,?,?)`
+	insertMediaFile    = `INSERT INTO media_files(kind,source_id,source,source_file_id,path,service_id,service_name) VALUES(?,?,?,?,?,?,?)`
+	insertMediaPart    = `INSERT INTO media_file_parts(kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id) VALUES(?,?,?,?,?,?,?,?)`
+	insertTorrentFile  = `INSERT INTO torrent_files(client,hash,file_index,path,service_id,service_name) VALUES(?,?,?,?,?,?)`
+	insertUnmanagedRow = `INSERT INTO unmanaged_files(path,payload,updated_at) VALUES(?,?,?)`
+)
+
+func fileRows(files []model.File, now string) ([][]any, error) {
+	rows := make([][]any, 0, len(files))
+	for _, f := range files {
+		b, err := json.Marshal(f)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, []any{filepath.Clean(f.Path), string(b), now})
+	}
+	return rows, nil
+}
+
+// mediaRefRows are media_files rows and media_file_parts rows.
+func mediaRefRows(refs []model.MediaFileRef) (files, parts [][]any) {
+	for _, r := range refs {
+		files = append(files, []any{string(r.MediaType), r.MediaID, r.Source, r.SourceFileID, filepath.Clean(r.Path), r.ServiceID, r.ServiceName})
+		for _, part := range r.Parts {
+			parts = append(parts, []any{string(r.MediaType), r.MediaID, r.Source, r.SourceFileID, part.Group, part.Label, part.Order, part.SourcePartID})
+		}
+	}
+	return files, parts
+}
+
+func torrentRefRows(refs []model.TorrentFileRef) [][]any {
+	rows := make([][]any, 0, len(refs))
+	for _, r := range refs {
+		rows = append(rows, []any{r.Client, strings.ToLower(r.Hash), r.FileIndex, filepath.Clean(r.Path), r.ServiceID, r.ServiceName})
+	}
+	return rows
+}
+
 func (s *Store) replaceFiles(files []model.File, mediaRefs []model.MediaFileRef, torrentRefs []model.TorrentFileRef) error {
 	for _, q := range []string{"DELETE FROM files", "DELETE FROM media_file_parts", "DELETE FROM media_files", "DELETE FROM torrent_files"} {
 		if err := s.exec(q); err != nil {
 			return err
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	fst, err := s.prepare(`INSERT INTO files(path,payload,updated_at) VALUES(?,?,?)`)
+	now := rfc3339(time.Now())
+	rows, err := fileRows(files, now)
 	if err != nil {
 		return err
 	}
-	defer C.sqlite3_finalize(fst)
-	for _, f := range files {
-		b, err := json.Marshal(f)
-		if err != nil {
-			return err
-		}
-		C.sqlite3_reset(fst)
-		C.sqlite3_clear_bindings(fst)
-		bindText(fst, 1, filepath.Clean(f.Path))
-		bindText(fst, 2, string(b))
-		bindText(fst, 3, now)
-		if err := stepDone(s, fst); err != nil {
-			return err
-		}
-	}
-	mst, err := s.prepare(`INSERT INTO media_files(kind,source_id,source,source_file_id,path,service_id,service_name) VALUES(?,?,?,?,?,?,?)`)
-	if err != nil {
+	if err := s.insertAll(insertFile, rows); err != nil {
 		return err
 	}
-	defer C.sqlite3_finalize(mst)
-	pst, err := s.prepare(`INSERT INTO media_file_parts(kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id) VALUES(?,?,?,?,?,?,?,?)`)
-	if err != nil {
+	mediaFiles, parts := mediaRefRows(mediaRefs)
+	if err := s.insertAll(insertMediaFile, mediaFiles); err != nil {
 		return err
 	}
-	defer C.sqlite3_finalize(pst)
-	for _, r := range mediaRefs {
-		C.sqlite3_reset(mst)
-		C.sqlite3_clear_bindings(mst)
-		bindText(mst, 1, string(r.MediaType))
-		bindInt(mst, 2, int64(r.MediaID))
-		bindText(mst, 3, r.Source)
-		bindInt(mst, 4, int64(r.SourceFileID))
-		bindText(mst, 5, filepath.Clean(r.Path))
-		bindText(mst, 6, r.ServiceID)
-		bindText(mst, 7, r.ServiceName)
-		if err := stepDone(s, mst); err != nil {
-			return err
-		}
-		for _, part := range r.Parts {
-			C.sqlite3_reset(pst)
-			C.sqlite3_clear_bindings(pst)
-			bindText(pst, 1, string(r.MediaType))
-			bindInt(pst, 2, int64(r.MediaID))
-			bindText(pst, 3, r.Source)
-			bindInt(pst, 4, int64(r.SourceFileID))
-			bindText(pst, 5, part.Group)
-			bindText(pst, 6, part.Label)
-			bindInt(pst, 7, int64(part.Order))
-			bindInt(pst, 8, int64(part.SourcePartID))
-			if err := stepDone(s, pst); err != nil {
-				return err
-			}
-		}
-	}
-	tst, err := s.prepare(`INSERT INTO torrent_files(client,hash,file_index,path,service_id,service_name) VALUES(?,?,?,?,?,?)`)
-	if err != nil {
+	if err := s.insertAll(insertMediaPart, parts); err != nil {
 		return err
 	}
-	defer C.sqlite3_finalize(tst)
-	for _, r := range torrentRefs {
-		C.sqlite3_reset(tst)
-		C.sqlite3_clear_bindings(tst)
-		bindText(tst, 1, r.Client)
-		bindText(tst, 2, strings.ToLower(r.Hash))
-		bindInt(tst, 3, int64(r.FileIndex))
-		bindText(tst, 4, filepath.Clean(r.Path))
-		bindText(tst, 5, r.ServiceID)
-		bindText(tst, 6, r.ServiceName)
-		if err := stepDone(s, tst); err != nil {
-			return err
-		}
+	if err := s.insertAll(insertTorrentFile, torrentRefRows(torrentRefs)); err != nil {
+		return err
 	}
 	return s.setMeta("files.updated_at", now)
 }
@@ -229,155 +195,56 @@ func (s *Store) PublishReconciliationDelta(delta ReconciliationDelta) error {
 	s.accessMu.Lock()
 	defer s.accessMu.Unlock()
 	return s.withWriteTx(func() error {
-		now := time.Now().UTC().Format(time.RFC3339Nano)
-		deletePath, err := s.prepare(`DELETE FROM files WHERE path=?`)
-		if err != nil {
-			return err
-		}
-		defer C.sqlite3_finalize(deletePath)
-		deleteUnmanaged, err := s.prepare(`DELETE FROM unmanaged_files WHERE path=?`)
-		if err != nil {
-			return err
-		}
-		defer C.sqlite3_finalize(deleteUnmanaged)
+		now := rfc3339(time.Now())
+		var paths [][]any
 		for _, path := range delta.Paths {
-			for _, statement := range []*C.sqlite3_stmt{deletePath, deleteUnmanaged} {
-				C.sqlite3_reset(statement)
-				C.sqlite3_clear_bindings(statement)
-				bindText(statement, 1, filepath.Clean(path))
-				if err := stepDone(s, statement); err != nil {
-					return err
-				}
-			}
+			paths = append(paths, []any{filepath.Clean(path)})
 		}
-		insertFile, err := s.prepare(`INSERT INTO files(path,payload,updated_at) VALUES(?,?,?)`)
+		if err := s.insertAll(`DELETE FROM files WHERE path=?`, paths); err != nil {
+			return err
+		}
+		if err := s.insertAll(`DELETE FROM unmanaged_files WHERE path=?`, paths); err != nil {
+			return err
+		}
+		rows, err := fileRows(delta.Files, now)
 		if err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(insertFile)
-		for _, file := range delta.Files {
-			payload, err := json.Marshal(file)
-			if err != nil {
-				return err
-			}
-			C.sqlite3_reset(insertFile)
-			C.sqlite3_clear_bindings(insertFile)
-			bindText(insertFile, 1, filepath.Clean(file.Path))
-			bindText(insertFile, 2, string(payload))
-			bindText(insertFile, 3, now)
-			if err := stepDone(s, insertFile); err != nil {
-				return err
-			}
-		}
-		insertUnmanaged, err := s.prepare(`INSERT INTO unmanaged_files(path,payload,updated_at) VALUES(?,?,?)`)
-		if err != nil {
+		if err := s.insertAll(insertFile, rows); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(insertUnmanaged)
-		for _, file := range delta.Unmanaged {
-			payload, err := json.Marshal(file)
-			if err != nil {
-				return err
-			}
-			C.sqlite3_reset(insertUnmanaged)
-			C.sqlite3_clear_bindings(insertUnmanaged)
-			bindText(insertUnmanaged, 1, filepath.Clean(file.Path))
-			bindText(insertUnmanaged, 2, string(payload))
-			bindText(insertUnmanaged, 3, now)
-			if err := stepDone(s, insertUnmanaged); err != nil {
-				return err
-			}
-		}
-		deleteParts, err := s.prepare(`DELETE FROM media_file_parts WHERE kind=? AND source_id=?`)
-		if err != nil {
+		if rows, err = unmanagedRows(delta.Unmanaged, now); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(deleteParts)
-		deleteMedia, err := s.prepare(`DELETE FROM media_files WHERE kind=? AND source_id=?`)
-		if err != nil {
+		if err := s.insertAll(insertUnmanagedRow, rows); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(deleteMedia)
+		var owners [][]any
 		for _, owner := range delta.MediaOwners {
-			for _, statement := range []*C.sqlite3_stmt{deleteParts, deleteMedia} {
-				C.sqlite3_reset(statement)
-				C.sqlite3_clear_bindings(statement)
-				bindText(statement, 1, string(owner.Kind))
-				bindInt(statement, 2, int64(owner.SourceID))
-				if err := stepDone(s, statement); err != nil {
-					return err
-				}
-			}
+			owners = append(owners, []any{string(owner.Kind), owner.SourceID})
 		}
-		mediaStatement, err := s.prepare(`INSERT INTO media_files(kind,source_id,source,source_file_id,path,service_id,service_name) VALUES(?,?,?,?,?,?,?)`)
-		if err != nil {
+		if err := s.insertAll(`DELETE FROM media_file_parts WHERE kind=? AND source_id=?`, owners); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(mediaStatement)
-		partStatement, err := s.prepare(`INSERT INTO media_file_parts(kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id) VALUES(?,?,?,?,?,?,?,?)`)
-		if err != nil {
+		if err := s.insertAll(`DELETE FROM media_files WHERE kind=? AND source_id=?`, owners); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(partStatement)
-		for _, ref := range delta.MediaRefs {
-			C.sqlite3_reset(mediaStatement)
-			C.sqlite3_clear_bindings(mediaStatement)
-			bindText(mediaStatement, 1, string(ref.MediaType))
-			bindInt(mediaStatement, 2, int64(ref.MediaID))
-			bindText(mediaStatement, 3, ref.Source)
-			bindInt(mediaStatement, 4, int64(ref.SourceFileID))
-			bindText(mediaStatement, 5, filepath.Clean(ref.Path))
-			bindText(mediaStatement, 6, ref.ServiceID)
-			bindText(mediaStatement, 7, ref.ServiceName)
-			if err := stepDone(s, mediaStatement); err != nil {
-				return err
-			}
-			for _, part := range ref.Parts {
-				C.sqlite3_reset(partStatement)
-				C.sqlite3_clear_bindings(partStatement)
-				bindText(partStatement, 1, string(ref.MediaType))
-				bindInt(partStatement, 2, int64(ref.MediaID))
-				bindText(partStatement, 3, ref.Source)
-				bindInt(partStatement, 4, int64(ref.SourceFileID))
-				bindText(partStatement, 5, part.Group)
-				bindText(partStatement, 6, part.Label)
-				bindInt(partStatement, 7, int64(part.Order))
-				bindInt(partStatement, 8, int64(part.SourcePartID))
-				if err := stepDone(s, partStatement); err != nil {
-					return err
-				}
-			}
-		}
-		deleteTorrent, err := s.prepare(`DELETE FROM torrent_files WHERE hash=?`)
-		if err != nil {
+		mediaFiles, parts := mediaRefRows(delta.MediaRefs)
+		if err := s.insertAll(insertMediaFile, mediaFiles); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(deleteTorrent)
+		if err := s.insertAll(insertMediaPart, parts); err != nil {
+			return err
+		}
+		var hashes [][]any
 		for _, hash := range delta.RemovedTorrentHashes {
-			C.sqlite3_reset(deleteTorrent)
-			C.sqlite3_clear_bindings(deleteTorrent)
-			bindText(deleteTorrent, 1, strings.ToLower(strings.TrimSpace(hash)))
-			if err := stepDone(s, deleteTorrent); err != nil {
-				return err
-			}
+			hashes = append(hashes, []any{strings.ToLower(strings.TrimSpace(hash))})
 		}
-		insertTorrentFile, err := s.prepare(`INSERT INTO torrent_files(client,hash,file_index,path,service_id,service_name) VALUES(?,?,?,?,?,?)`)
-		if err != nil {
+		if err := s.insertAll(`DELETE FROM torrent_files WHERE hash=?`, hashes); err != nil {
 			return err
 		}
-		defer C.sqlite3_finalize(insertTorrentFile)
-		for _, ref := range delta.TorrentRefs {
-			C.sqlite3_reset(insertTorrentFile)
-			C.sqlite3_clear_bindings(insertTorrentFile)
-			bindText(insertTorrentFile, 1, ref.Client)
-			bindText(insertTorrentFile, 2, strings.ToLower(ref.Hash))
-			bindInt(insertTorrentFile, 3, int64(ref.FileIndex))
-			bindText(insertTorrentFile, 4, filepath.Clean(ref.Path))
-			bindText(insertTorrentFile, 5, ref.ServiceID)
-			bindText(insertTorrentFile, 6, ref.ServiceName)
-			if err := stepDone(s, insertTorrentFile); err != nil {
-				return err
-			}
+		if err := s.insertAll(insertTorrentFile, torrentRefRows(delta.TorrentRefs)); err != nil {
+			return err
 		}
 		if err := s.saveTorrents(delta.Torrents); err != nil {
 			return err
@@ -446,85 +313,91 @@ func (s *Store) PublishEnrichment(name string, generation uint64, media []model.
 func (s *Store) LoadFiles() ([]model.File, []model.MediaFileRef, []model.TorrentFileRef, time.Time, error) {
 	s.accessMu.RLock()
 	defer s.accessMu.RUnlock()
-	var files []model.File
-	st, err := s.prepare(`SELECT payload FROM files ORDER BY path`)
+	payloads, err := s.payloads(`SELECT payload FROM files ORDER BY path`)
 	if err != nil {
 		return nil, nil, nil, time.Time{}, err
 	}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
-		}
-		if rc != C.SQLITE_ROW {
-			C.sqlite3_finalize(st)
-			return nil, nil, nil, time.Time{}, s.err(rc)
-		}
+	var files []model.File
+	for _, p := range payloads {
 		var f model.File
-		if err := json.Unmarshal([]byte(colText(st, 0)), &f); err != nil {
-			C.sqlite3_finalize(st)
+		if err := json.Unmarshal([]byte(p), &f); err != nil {
 			return nil, nil, nil, time.Time{}, err
 		}
 		files = append(files, f)
 	}
-	C.sqlite3_finalize(st)
+	mr, err := s.mediaFileRefs()
+	if err != nil {
+		return nil, nil, nil, time.Time{}, err
+	}
+	tr, err := s.torrentFileRefs()
+	if err != nil {
+		return nil, nil, nil, time.Time{}, err
+	}
+	ts, _ := s.meta("files.updated_at")
+	updated, _ := time.Parse(time.RFC3339Nano, ts)
+	return files, mr, tr, updated, nil
+}
+
+func (s *Store) mediaFileRefs() ([]model.MediaFileRef, error) {
+	rows, err := s.q.Query(`SELECT kind,source_id,source,source_file_id,path,service_id,service_name FROM media_files ORDER BY kind,source_id,path`)
+	if err != nil {
+		return nil, err
+	}
 	var mr []model.MediaFileRef
-	st, err = s.prepare(`SELECT kind,source_id,source,source_file_id,path,service_id,service_name FROM media_files ORDER BY kind,source_id,path`)
-	if err != nil {
-		return nil, nil, nil, time.Time{}, err
-	}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
+	for rows.Next() {
+		var r model.MediaFileRef
+		var kind string
+		if err := rows.Scan(&kind, &r.MediaID, &r.Source, &r.SourceFileID, &r.Path, &r.ServiceID, &r.ServiceName); err != nil {
+			rows.Close()
+			return nil, err
 		}
-		if rc != C.SQLITE_ROW {
-			C.sqlite3_finalize(st)
-			return nil, nil, nil, time.Time{}, s.err(rc)
-		}
-		mr = append(mr, model.MediaFileRef{MediaType: model.MediaType(colText(st, 0)), MediaID: int(C.sqlite3_column_int64(st, 1)), Source: colText(st, 2), SourceFileID: int(C.sqlite3_column_int64(st, 3)), Path: colText(st, 4), ServiceID: colText(st, 5), ServiceName: colText(st, 6)})
+		r.MediaType = model.MediaType(kind)
+		mr = append(mr, r)
 	}
-	C.sqlite3_finalize(st)
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	partsByFile := map[string][]model.MediaFilePart{}
-	st, err = s.prepare(`SELECT kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id FROM media_file_parts ORDER BY kind,source_id,source_file_id,part_order,part_label`)
+	rows, err = s.q.Query(`SELECT kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id FROM media_file_parts ORDER BY kind,source_id,source_file_id,part_order,part_label`)
 	if err != nil {
-		return nil, nil, nil, time.Time{}, err
+		return nil, err
 	}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
+	for rows.Next() {
+		var kind, source string
+		var sourceID, sourceFileID int
+		var part model.MediaFilePart
+		if err := rows.Scan(&kind, &sourceID, &source, &sourceFileID, &part.Group, &part.Label, &part.Order, &part.SourcePartID); err != nil {
+			rows.Close()
+			return nil, err
 		}
-		if rc != C.SQLITE_ROW {
-			C.sqlite3_finalize(st)
-			return nil, nil, nil, time.Time{}, s.err(rc)
-		}
-		key := fmt.Sprintf("%s:%d:%s:%d", colText(st, 0), int(C.sqlite3_column_int64(st, 1)), colText(st, 2), int(C.sqlite3_column_int64(st, 3)))
-		partsByFile[key] = append(partsByFile[key], model.MediaFilePart{Group: colText(st, 4), Label: colText(st, 5), Order: int(C.sqlite3_column_int64(st, 6)), SourcePartID: int(C.sqlite3_column_int64(st, 7))})
+		key := fmt.Sprintf("%s:%d:%s:%d", kind, sourceID, source, sourceFileID)
+		partsByFile[key] = append(partsByFile[key], part)
 	}
-	C.sqlite3_finalize(st)
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	for i := range mr {
 		key := fmt.Sprintf("%s:%d:%s:%d", mr[i].MediaType, mr[i].MediaID, mr[i].Source, mr[i].SourceFileID)
 		mr[i].Parts = append([]model.MediaFilePart(nil), partsByFile[key]...)
 	}
-	var tr []model.TorrentFileRef
-	st, err = s.prepare(`SELECT client,hash,file_index,path,service_id,service_name FROM torrent_files ORDER BY client,hash,file_index`)
+	return mr, nil
+}
+
+func (s *Store) torrentFileRefs() ([]model.TorrentFileRef, error) {
+	rows, err := s.q.Query(`SELECT client,hash,file_index,path,service_id,service_name FROM torrent_files ORDER BY client,hash,file_index`)
 	if err != nil {
-		return nil, nil, nil, time.Time{}, err
+		return nil, err
 	}
-	for {
-		rc := C.sqlite3_step(st)
-		if rc == C.SQLITE_DONE {
-			break
+	defer rows.Close()
+	var tr []model.TorrentFileRef
+	for rows.Next() {
+		var r model.TorrentFileRef
+		if err := rows.Scan(&r.Client, &r.Hash, &r.FileIndex, &r.Path, &r.ServiceID, &r.ServiceName); err != nil {
+			return nil, err
 		}
-		if rc != C.SQLITE_ROW {
-			C.sqlite3_finalize(st)
-			return nil, nil, nil, time.Time{}, s.err(rc)
-		}
-		tr = append(tr, model.TorrentFileRef{Client: colText(st, 0), Hash: colText(st, 1), FileIndex: int(C.sqlite3_column_int64(st, 2)), Path: colText(st, 3), ServiceID: colText(st, 4), ServiceName: colText(st, 5)})
+		tr = append(tr, r)
 	}
-	C.sqlite3_finalize(st)
-	ts, _ := s.meta("files.updated_at")
-	updated, _ := time.Parse(time.RFC3339Nano, ts)
-	return files, mr, tr, updated, nil
+	return tr, rows.Err()
 }

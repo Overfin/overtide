@@ -7,7 +7,7 @@ import (
 	"strings"
 	"syscall"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // ActionKind distinguishes the three shapes a cleanup candidate can take.

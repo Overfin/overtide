@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type Client struct {
@@ -72,27 +72,6 @@ func (client *Client) get(path string, out any) error {
 	return json.NewDecoder(r.Body).Decode(out)
 }
 
-func (client *Client) postJSON(path string, body any) error {
-	encodedBody, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequestWithContext(client.requestContext(), http.MethodPost, client.base+path, bytes.NewReader(encodedBody))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("X-Api-Key", client.key)
-	request.Header.Set("Content-Type", "application/json")
-	response, err := client.hc.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode/100 != 2 {
-		return fmt.Errorf("sonarr %s: %s", path, response.Status)
-	}
-	return nil
-}
 func (client *Client) Inventory() ([]model.Media, error) {
 	var ss []series
 	var ts []tag

@@ -4,19 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/services/jellyfin"
+	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/qbittorrent"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/seerr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/services/tmdb"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/valuation"
 	"log"
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/imdb"
-	"overtide/internal/services/jellyfin"
-	"overtide/internal/services/overfin"
-	"overtide/internal/services/qbittorrent"
-	"overtide/internal/services/radarr"
-	"overtide/internal/services/seerr"
-	"overtide/internal/services/sonarr"
-	"overtide/internal/services/tmdb"
-	"overtide/internal/store"
-	"overtide/internal/valuation"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -198,7 +198,7 @@ func New(configuration config.Config, database *store.Store) *Service {
 			}
 			for refIndex := range mediaRefs {
 				if mediaRefs[refIndex].ServiceName == "" {
-					mediaRefs[refIndex].ServiceName = serviceName(configuration, mediaRefs[refIndex].Source, strings.Title(mediaRefs[refIndex].Source))
+					mediaRefs[refIndex].ServiceName = serviceName(configuration, mediaRefs[refIndex].Source, capitalized(mediaRefs[refIndex].Source))
 				}
 				if mediaRefs[refIndex].ServiceID == "" {
 					mediaRefs[refIndex].ServiceID = svcID(configuration, mediaRefs[refIndex].Source)
@@ -909,4 +909,13 @@ func (service *Service) VerifyUnmanagedContext(ctx context.Context, paths []stri
 		}
 	}
 	return nil
+}
+
+// capitalized is s with its first letter upper case: a service type
+// ("radarr") as a default name ("Radarr").
+func capitalized(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

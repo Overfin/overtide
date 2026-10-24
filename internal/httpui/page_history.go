@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"overtide/internal/removal"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/removal"
+	"github.com/overfin/overtide/internal/store"
 )
 
 type historyEventView struct {

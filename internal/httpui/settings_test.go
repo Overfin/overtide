@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/config"
-	"overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
 )
 
 // TestSetIMDbEnabledPersistsAndRenders guards the actual wiring end to

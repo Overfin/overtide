@@ -1,7 +1,7 @@
 package filetopology
 
 import (
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 	"testing"
 )
 

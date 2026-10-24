@@ -38,22 +38,9 @@ Inherited from Stewarr, and kept:
 
 ## Quickstart
 
-```yaml
-services:
-  overtide:
-    build: https://github.com/Overfin/overtide.git
-    container_name: overtide
-    restart: unless-stopped
-    user: "${PUID:-1000}:${PGID:-1000}"
-    ports:
-      - "8088:8088"
-    volumes:
-      - ./config:/config
-      - /mnt/media:/data
-```
+[`deploy/`](deploy/) has a Compose file and its `.env.example`: set where your media is, `docker compose up -d`, open port 8088, create the admin account, then add your services under **Services**. [`deploy/README.md`](deploy/README.md) has the details. Overtide keeps its settings, database and logs in its config folder; [`config.example.json`](config.example.json) shows the settings file's shape, for debugging or scripted setups.
 
-1. `docker compose up -d`, then open `http://<host>:8088`. Overtide creates `/config/config.json`, its database and its log directory on first start.
-2. Follow the first-run screen to create the admin account, then add your services from the Services page. [`config.example.json`](config.example.json) shows the file's shape, for debugging or scripted setups.
+Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a signed attestation of how they were built. From a checkout, `docker build -t overtide .` builds one: a single static binary in a minimal image (distroless, no shell), like Overfin's.
 
 **Dry run is on by default and should stay on for now.** In dry run, Overtide plans and records what it would do, and does nothing. If you already run Stewarr or another cleanup tool on the same disks, keep Overtide in dry run: two tools removing from the same storage, each with its own logic, would remove more than either would alone.
 
@@ -105,24 +92,28 @@ Usage is measured against what Overtide can actually work with: space held by so
 
 **Every container that touches your media (Radarr, Sonarr, your torrent client and Overtide) must mount the same host directory at the same path inside.** They can live in different compose files, or on different hosts with shared storage; what matters is each container's own volume line. For example, all of them mount `/mnt/media` (on the host) at `/data` (inside).
 
-**Coming from Stewarr:** Overtide reads the same config folder layout, so a *copy* of Stewarr's `/config` brings its settings and torrent history along. Never point both at the same folder. Items protected with Stewarr's `stewarr_keep` tag stay protected. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in a `.env` file beside its `docker-compose.yml`.
+**Coming from Stewarr:** Overtide reads the same config folder layout, so a *copy* of Stewarr's `/config` brings its settings and torrent history along. Never point both at the same folder. Items protected with Stewarr's `stewarr_keep` tag stay protected. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`.
 
 Hardlink detection, file reconciliation and Unmanaged discovery depend on Overtide being able to `stat()` the exact paths the other services report. If it can't see a path, the Storage page says so, but it can't guess the right mount: that only exists in your compose files.
 
 ## Development
 
-```bash
-go test ./...
-go build ./cmd/overtide
-```
-
-The real-browser test suite uses Playwright and an installed Chromium:
+Plain Go, standard library first, like Overfin: SQLite through Go's `database/sql` with a pure-Go driver, so the build needs no C compiler.
 
 ```bash
-PLAYWRIGHT_NODE_MODULES=/path/to/node_modules make test-browser
+go test -race ./...
+go run ./cmd/overtide -config ./config.json
 ```
 
-`make deploy`/`make logs` read `REMOTE`/`REMOTE_DIR` from the environment or an optional, gitignored `Makefile.local`.
+The web assets are TypeScript, type-checked with `tsc` and bundled with esbuild's Go API; the bundles are committed, so building Overtide needs no Node. After changing `internal/httpui/static/src`:
+
+```bash
+npm --prefix internal/httpui/static/src ci
+npm --prefix internal/httpui/static/src run typecheck
+go run ./tools/buildassets
+```
+
+CI (`.github/workflows/ci.yml`) runs formatting, vet, staticcheck, govulncheck, the tests with the race detector, and checks the committed bundles match their sources. Pushing a version tag (`v0.6.0`) publishes the image and a GitHub release. The real-browser test suite uses Playwright and an installed Chromium: `node tests/ui/reactivity.mjs`.
 
 ## Further reading
 

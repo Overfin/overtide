@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/removal"
+	"github.com/overfin/overtide/internal/removal"
 )
 
 func TestRemovalAuditIsCompleteLineBasedAndSecretFree(t *testing.T) {

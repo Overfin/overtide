@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"overtide/internal/cleanup"
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/product"
-	"overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/cleanup"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/product"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 // elementID turns an arbitrary stable key (a device's representative path)
@@ -267,6 +267,11 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/settings/removal", server.setRemovalSettings)
 	return server.authGate(sameOriginWrites(mux))
 }
+
+// notice is an error whose text is shown to people as it is, a sentence.
+type notice string
+
+func (n notice) Error() string { return string(n) }
 
 func (server *Server) planningReliable(r inventory.Reliability) bool {
 	return r.Inventory && r.Valuation && r.FileModel == "reliable" && (server.tasks == nil || !server.tasks.ConsistencyPending())

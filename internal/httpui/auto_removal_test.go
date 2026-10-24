@@ -1,16 +1,17 @@
 package httpui
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"overtide/internal/cleanup"
-	"overtide/internal/config"
-	"overtide/internal/inventory"
-	"overtide/internal/model"
-	"overtide/internal/removal"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/cleanup"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
+	"github.com/overfin/overtide/internal/store"
 )
 
 // TestMediaTMDBDataStale guards the auto-removal-only exclusion added on
@@ -122,7 +123,7 @@ func TestActionIsIncompleteTorrent(t *testing.T) {
 func TestRunAutoRemovalEvaluationNoOpsWhenGloballyDisabled(t *testing.T) {
 	for _, mode := range []string{config.RemovalAutoDisabled, "", "bogus-value"} {
 		server := &Server{inv: inventory.New(config.Config{Removal: config.RemovalConfig{AutoMode: mode}}, nil)}
-		if err := server.runAutoRemovalEvaluation(nil); err != nil {
+		if err := server.runAutoRemovalEvaluation(context.TODO()); err != nil {
 			t.Fatalf("mode=%q: expected disabled (including empty/unrecognized) to short-circuit cleanly, got %v", mode, err)
 		}
 	}

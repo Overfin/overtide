@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/imdb"
 )
 
 func daysSince(timestamp time.Time) float64 { return time.Since(timestamp).Hours() / 24 }

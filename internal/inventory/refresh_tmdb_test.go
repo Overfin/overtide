@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/model"
-	"overtide/internal/services/tmdb"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/tmdb"
 )
 
 // TestRefreshTMDBDoesNotDiscardResultsWhenBaseGenerationMovesOnMidPass

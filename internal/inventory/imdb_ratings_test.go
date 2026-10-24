@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/config"
-	"overtide/internal/services/imdb"
-	"overtide/internal/store"
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func TestIMDbRatingsDue(t *testing.T) {

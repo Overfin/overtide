@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // Overfin's scores, read page by page with the key: a film by its TMDB

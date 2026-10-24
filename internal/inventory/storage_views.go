@@ -2,8 +2,8 @@ package inventory
 
 import (
 	"fmt"
-	"overtide/internal/filetopology"
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/filetopology"
+	"github.com/overfin/overtide/internal/model"
 	"sort"
 	"strings"
 	"time"

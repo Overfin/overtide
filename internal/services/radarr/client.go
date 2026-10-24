@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"overtide/internal/model"
+	"github.com/overfin/overtide/internal/model"
 )
 
 type Client struct {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"overtide/internal/store"
-	"overtide/internal/valuation"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 // TorrentHistoryRetention is how long sampled torrent readings are kept

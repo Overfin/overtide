@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"overtide/internal/services/imdb"
+	"github.com/overfin/overtide/internal/services/imdb"
 )
 
 func TestIMDbRatingsRoundTrip(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"syscall"
 
-	"overtide/internal/model"
-	"overtide/internal/storagecapabilities"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/storagecapabilities"
 )
 
 // StorageDevice reports one physical storage device known from the last file
