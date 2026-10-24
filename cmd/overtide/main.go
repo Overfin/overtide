@@ -28,6 +28,9 @@ const (
 	fileReconcileInterval      = 12 * time.Hour
 	jellyfinEnrichmentInterval = time.Hour
 	seerrEnrichmentInterval    = time.Hour
+	// overfinScoresInterval: Overfin's scores move with what people do,
+	// slowly; half an hour keeps them close without asking too often.
+	overfinScoresInterval = 30 * time.Minute
 	// tmdbEnrichmentInterval is much longer than Jellyfin/Seerr's: rating,
 	// vote, and popularity data don't need to track library changes in
 	// real time the way playback/request facts do, and refreshing less
@@ -128,6 +131,7 @@ func main() {
 		}), Advisory: inv.RefreshAdvisory, Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "jellyfin", Name: "Jellyfin enrichment", Description: "Refresh playback and favorite facts used by automatic planning.", Interval: jellyfinEnrichmentInterval, Preflight: retryable(inv.ValidateJellyfin), Runner: retryable(inv.RefreshJellyfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "seerr", Name: "Seerr enrichment", Description: "Refresh request facts used by automatic planning.", Interval: seerrEnrichmentInterval, Preflight: retryable(inv.ValidateSeerr), Runner: retryable(inv.RefreshSeerr), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
+		tasks.Definition{ID: "overfin", Name: "Overfin scores", Description: "Read each film's and season's value from Overfin, used as Retention Value.", Interval: overfinScoresInterval, Preflight: retryable(inv.ValidateOverfin), Runner: retryable(inv.RefreshOverfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "tmdb", Name: "TMDB enrichment", Description: "Refresh rating, vote, and popularity facts used by automatic planning.", Interval: tmdbEnrichmentInterval, Preflight: retryable(inv.ValidateTMDB), Runner: retryable(inv.RefreshTMDB), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "imdb", Name: "IMDb ratings refresh", Description: "Once daily, replace IMDb's own rating/vote-count dataset used to prefer its numbers over TMDB's.", Interval: imdbRatingsCheckInterval, Runner: retryable(inv.RefreshIMDbRatings), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "files", Name: "File reconciliation", Description: "Scan service storage and reconcile file ownership.", Interval: fileReconcileInterval, Preflight: retryable(inv.ValidateReconciliation), AttachCompatible: fullScanAttachCompatible, Runner: retryable(func(ctx context.Context) error {

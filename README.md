@@ -6,7 +6,7 @@ Overtide is the storage side of [Overfin](https://github.com/Overfin/server). Ov
 
 Overtide doesn't replace Radarr, Sonarr or your torrent client. They keep doing their jobs; Overtide decides what to ask of them.
 
-> **Status: early.** Overtide starts from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, a standalone storage tool for the *arr stack, which stays its own project. Today Overtide still does exactly what Stewarr does (below) and still reads Jellyfin, Seerr, TMDB and IMDb itself. The link to Overfin is being built; see [`ROADMAP.md`](ROADMAP.md). Run it in dry run (the default) until then.
+> **Status: early.** Overtide starts from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, a standalone storage tool for the *arr stack, which stays its own project. Overfin's values are in: add Overfin as a service and they become the Retention Value. Without it, Overtide still values titles as Stewarr does, from Jellyfin, Seerr, TMDB and IMDb. Requests and resource limits come next; see [`ROADMAP.md`](ROADMAP.md). Run it in dry run (the default) for now.
 
 ## How it works with Overfin
 
@@ -31,7 +31,7 @@ Inherited from Stewarr, and kept:
 
 - Correlates Radarr/Sonarr library media with qBittorrent torrents using authoritative import data, not fuzzy title matching.
 - Proves whether a torrent's files are still physically hardlinked to library media, so you know what removing it would *actually* free, not just what it appears to occupy.
-- Ranks library media by **Retention Value** to decide what's safest to remove first when storage gets tight. Today its inputs (ratings, watch activity, requests, favourites) come from Jellyfin, Seerr, TMDB and IMDb; they will come from Overfin's values instead.
+- Ranks library media by **Retention Value** to decide what's safest to remove first when storage gets tight. With Overfin added as a service, it's Overfin's score for each film and season (anything Overfin didn't score is protected); without it, it comes from Jellyfin, Seerr, TMDB and IMDb, as in Stewarr.
 - Scores torrents by their own **Torrent Value**, from the history Overtide records: ratio, contribution over time, consistency, seeding time, private trackers.
 - Finds files on disk that no service claims ("Unmanaged").
 - Plans every removal as a re-validated plan, dry run by default, carried out through the owning service's own API (Radarr, Sonarr, qBittorrent) rather than by deleting files directly.

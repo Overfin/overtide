@@ -356,6 +356,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	previousMedia, _, _ := service.Snapshot()
 	preserveJellyfinFacts(all, previousMedia)
 	preserveSeerrFacts(all, previousMedia)
+	preserveOverfinFacts(all, previousMedia)
 	preserveTMDBFacts(all, previousMedia)
 	baseTorrents := make([]model.Torrent, 0, len(torrentMap))
 	for _, t := range torrentMap {
@@ -498,7 +499,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		service.mu.Lock()
 		service.items = cloneMedia(all)
 		service.torrents = nil
-		service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.Seerr) && enrichmentReliable(service.reliability.TMDB)
+		service.reliability.Valuation = service.reliability.valuationReady()
 		if service.reliability.Valuation {
 			service.reliability.Message = "Media valuation is reliable."
 		}
@@ -669,7 +670,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	service.torrents = torrentList
 	service.updated = time.Now()
 	service.lastErr = nil
-	service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.Seerr) && enrichmentReliable(service.reliability.TMDB)
+	service.reliability.Valuation = service.reliability.valuationReady()
 	if service.reliability.Valuation {
 		service.reliability.Message = "Media valuation is reliable."
 	}

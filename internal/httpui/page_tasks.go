@@ -53,6 +53,11 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 			groups = append(groups, taskGroup{Name: "TMDB", Tasks: []tasks.Status{status}})
 		}
 	}
+	if cfg.Overfin.URL != "" {
+		if status, ok := byID["overfin"]; ok {
+			groups = append(groups, taskGroup{Name: "Overfin", Tasks: []tasks.Status{status}})
+		}
+	}
 	return groups
 }
 

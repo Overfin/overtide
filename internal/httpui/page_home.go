@@ -72,7 +72,7 @@ func (server *Server) dashboardSnapshot() homeData {
 		if server.tasks != nil && server.tasks.ConsistencyPending() {
 			d.LastErr = fmt.Errorf("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
-			d.LastErr = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.FileModel)
+			d.LastErr = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel)
 		}
 	}
 	for _, svc := range server.inv.StatusSnapshot() {

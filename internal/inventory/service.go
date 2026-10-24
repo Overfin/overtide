@@ -9,6 +9,7 @@ import (
 	"overtide/internal/model"
 	"overtide/internal/services/imdb"
 	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/overfin"
 	"overtide/internal/services/qbittorrent"
 	"overtide/internal/services/radarr"
 	"overtide/internal/services/seerr"
@@ -37,6 +38,7 @@ type Reliability struct {
 	Jellyfin  string `json:"jellyfin"`
 	Seerr     string `json:"seerr"`
 	TMDB      string `json:"tmdb"`
+	Overfin   string `json:"overfin"`
 	Valuation bool   `json:"valuation"`
 	FileModel string `json:"fileModel"`
 	Message   string `json:"message"`
@@ -103,6 +105,7 @@ type Service struct {
 	seerr      *seerr.Client
 	tmdb       *tmdb.Client
 	imdbClient *imdb.Client
+	overfin    *overfin.Client
 	qb         map[string]*qbittorrent.Client
 	db         *store.Store
 	// configPath is where a live config mutation (AddService) persists
@@ -132,7 +135,7 @@ func (service *Service) SetConfigPath(path string) {
 }
 
 func New(configuration config.Config, database *store.Store) *Service {
-	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), jf: jellyfin.New(configuration.Jellyfin.URL, configuration.Jellyfin.APIKey), seerr: seerr.New(configuration.Seerr.URL, configuration.Seerr.APIKey), tmdb: tmdb.New(configuration.TMDB.APIKey), imdbClient: imdb.New(), qb: buildQBittorrentClients(configuration), nowFunc: time.Now}
+	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), jf: jellyfin.New(configuration.Jellyfin.URL, configuration.Jellyfin.APIKey), seerr: seerr.New(configuration.Seerr.URL, configuration.Seerr.APIKey), tmdb: tmdb.New(configuration.TMDB.APIKey), imdbClient: imdb.New(), overfin: overfin.New(configuration.Overfin.URL, configuration.Overfin.APIKey), qb: buildQBittorrentClients(configuration), nowFunc: time.Now}
 	loadStarted := time.Now()
 	if database != nil {
 		if items, updated, err := database.LoadMedia(); err == nil {
@@ -156,7 +159,8 @@ func New(configuration config.Config, database *store.Store) *Service {
 				service.reliability.Jellyfin = enrichmentInitialStateFromCache(configuration.Jellyfin.URL != "")
 				service.reliability.Seerr = enrichmentInitialStateFromCache(configuration.Seerr.URL != "")
 				service.reliability.TMDB = enrichmentInitialStateFromCache(configuration.TMDB.APIKey != "")
-				service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.Seerr) && enrichmentReliable(service.reliability.TMDB)
+				service.reliability.Overfin = enrichmentInitialStateFromCache(configuration.Overfin.URL != "")
+				service.reliability.Valuation = service.reliability.valuationReady()
 				service.baseReadyOnce.Do(func() { close(service.baseReady) })
 			}
 		} else {
@@ -229,6 +233,9 @@ func New(configuration config.Config, database *store.Store) *Service {
 	}
 	if service.reliability.TMDB == "" {
 		service.reliability.TMDB = enrichmentInitialState(configuration.TMDB.APIKey != "")
+	}
+	if service.reliability.Overfin == "" {
+		service.reliability.Overfin = enrichmentInitialState(configuration.Overfin.URL != "")
 	}
 	if service.reliability.FileModel == "" {
 		service.reliability.FileModel = "pending"
@@ -304,6 +311,9 @@ func (service *Service) RefreshAdvisory() string {
 	if service.reliability.TMDB == "stale" {
 		parts = append(parts, "TMDB enrichment stale")
 	}
+	if service.reliability.Overfin == "stale" {
+		parts = append(parts, "Overfin scores stale")
+	}
 	return strings.Join(parts, "; ")
 }
 
@@ -322,6 +332,15 @@ func (service *Service) ValidateSeerr(ctx context.Context) error {
 	}
 	err := service.seerr.WithContext(ctx).Validate()
 	service.setStatus(serviceName(service.cfg, "seerr", "Seerr"), true, err == nil, err)
+	return err
+}
+
+func (service *Service) ValidateOverfin(ctx context.Context) error {
+	if service.cfg.Overfin.URL == "" {
+		return nil
+	}
+	err := service.overfin.WithContext(ctx).Validate()
+	service.setStatus(serviceName(service.cfg, "overfin", "Overfin"), true, err == nil, err)
 	return err
 }
 

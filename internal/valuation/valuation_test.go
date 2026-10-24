@@ -429,3 +429,47 @@ func TestApplyTorrentValueBothRatioAndTagCanProtectTheSameTorrent(t *testing.T) 
 		t.Fatalf("expected torrent satisfying both protection rules to be protected: %#v", items[0])
 	}
 }
+
+// With Overfin configured, its scores are the Retention Value: a film's,
+// each season's, a series' best season's; nothing else of Overtide's
+// valuation counts (not Jellyfin's favorites, not Seerr's requests), keep
+// tags still protect, and what Overfin didn't score is protected.
+func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
+	c := testConfig()
+	c.Overfin.URL = "http://overfin.lan"
+	low, high := 12.5, 80.0
+	requested := time.Now()
+	items := []model.Media{
+		{Type: model.Movie, TMDBID: 1, OverfinScore: &high, Favorite: true, Requested: true, RequestedAt: &requested},
+		{Type: model.Movie, TMDBID: 2, OverfinScore: &low, Rating: 9.5},
+		{Type: model.Movie, TMDBID: 3},
+		{Type: model.Movie, TMDBID: 4, OverfinScore: &low, Tags: []string{"keep"}},
+		{Type: model.Series, TMDBID: 5, Seasons: []model.Season{{Number: 1}, {Number: 2}, {Number: 3}},
+			OverfinSeasonScores: map[int]float64{1: 20, 2: 55}},
+	}
+	ApplyMedia(items, c, nil)
+	by := map[int]model.Media{}
+	for _, m := range items {
+		by[m.TMDBID] = m
+	}
+	if by[1].RetentionValue != 80 || by[1].Protected || by[2].RetentionValue != 12.5 || by[2].Protected {
+		t.Errorf("scored films: %+v %+v", by[1], by[2])
+	}
+	if !by[3].Protected || by[3].ProtectionReason != notValued {
+		t.Errorf("an unscored film: %+v", by[3])
+	}
+	if !by[4].Protected || by[4].ProtectionReason != "Keep tag" || by[4].RetentionValue != 12.5 {
+		t.Errorf("a kept film: %+v", by[4])
+	}
+	series := by[5]
+	if series.RetentionValue != 55 || series.Protected {
+		t.Errorf("the series: %+v", series)
+	}
+	s := series.Seasons
+	if s[0].RetentionValue != 20 || s[0].Protected || s[1].RetentionValue != 55 || !s[2].Protected || s[2].ProtectionReason != notValued {
+		t.Errorf("its seasons: %+v", s)
+	}
+	if items[0].TMDBID != 2 {
+		t.Errorf("the least valuable first: %+v", items[0])
+	}
+}

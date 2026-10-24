@@ -822,3 +822,22 @@ func TestValidateServiceRejectsDuplicateAndReservedNames(t *testing.T) {
 		t.Fatalf("expected a valid new service to be accepted, got %v", err)
 	}
 }
+
+// Overfin is a service of its own: one, with an address, and its key; it
+// fills the Overfin connection the inventory reads.
+func TestAddOverfinService(t *testing.T) {
+	var base Config
+	if _, err := AddService(base, Service{Type: "overfin", Name: "Overfin"}); err == nil {
+		t.Error("an Overfin without an address was accepted")
+	}
+	updated, err := AddService(base, Service{Type: "overfin", Name: "Overfin", URL: "http://overfin.lan:8081/", APIKey: "ofapp_k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Overfin.URL != "http://overfin.lan:8081" || updated.Overfin.APIKey != "ofapp_k" {
+		t.Errorf("connection: %+v", updated.Overfin)
+	}
+	if _, err := AddService(updated, Service{Type: "overfin", Name: "Overfin 2", URL: "http://other:8081"}); err == nil {
+		t.Error("a second Overfin was accepted")
+	}
+}

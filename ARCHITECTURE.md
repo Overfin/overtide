@@ -238,8 +238,10 @@ The long-term optimization question is:
 A service type exists only when Overtide has a defined adapter for it.
 Configuration cannot create a generic service merely by supplying a URL or
 filesystem root. The currently defined types are Radarr, Sonarr, Jellyfin,
-Seerr and qBittorrent. Overfin is the next one; Jellyfin and Seerr, and the
-TMDB and IMDb sources, go once Overfin's values replace what they provide.
+Seerr, qBittorrent and Overfin. With Overfin configured, its scores are the
+Retention Value (internal/valuation, applyOverfinValue) and its reliability
+gates automatic planning like the other enrichments'; Jellyfin and Seerr,
+and the TMDB and IMDb sources, go once nothing needs them any more.
 
 Adapters participate through explicit capabilities. An adapter need not
 subscribe to the File management layer to contribute value, request,

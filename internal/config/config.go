@@ -162,7 +162,7 @@ func validateService(service Service, seenNames map[string]bool) error {
 		return fmt.Errorf("service name %q must be unique (case-insensitive)", service.Name)
 	}
 	switch service.Type {
-	case "radarr", "sonarr", "qbittorrent", "jellyfin", "seerr":
+	case "radarr", "sonarr", "qbittorrent", "jellyfin", "seerr", "overfin":
 		if service.URL == "" {
 			return fmt.Errorf("service %q (%s) requires url", service.Name, service.Type)
 		}
@@ -200,6 +200,11 @@ func (configuration *Config) populateDerivedServiceFields() {
 		configuration.Seerr = Connection{URL: service.URL, APIKey: service.APIKey}
 	} else {
 		configuration.Seerr = Connection{}
+	}
+	if service, ok := configuration.FirstService("overfin"); ok {
+		configuration.Overfin = Connection{URL: service.URL, APIKey: service.APIKey}
+	} else {
+		configuration.Overfin = Connection{}
 	}
 	if service, ok := configuration.FirstService("qbittorrent"); ok {
 		configuration.QBittorrent = QBittorrentService{Name: service.Name, URL: service.URL, APIKey: service.APIKey, Username: service.Username, Password: service.Password}
@@ -259,6 +264,7 @@ type Config struct {
 	Sonarr      Connection         `json:"-"`
 	Jellyfin    Connection         `json:"-"`
 	Seerr       Connection         `json:"-"`
+	Overfin     Connection         `json:"-"`
 	QBittorrent QBittorrentService `json:"-"`
 	Storage     struct {
 		// DeviceThresholds is keyed by a storage device's RepresentativePath

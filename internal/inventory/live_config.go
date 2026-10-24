@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"overtide/internal/config"
 	"overtide/internal/model"
 	"overtide/internal/services/imdb"
 	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/overfin"
 	"overtide/internal/services/qbittorrent"
 	"overtide/internal/services/radarr"
 	"overtide/internal/services/seerr"
@@ -284,7 +286,7 @@ func (service *Service) SetTMDBAPIKey(apiKey string) error {
 		}
 		service.items = items
 		service.reliability.TMDB = "not configured"
-		service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.Seerr) && enrichmentReliable(service.reliability.TMDB)
+		service.reliability.Valuation = service.reliability.valuationReady()
 	}
 	service.mu.Unlock()
 	return nil
@@ -505,6 +507,12 @@ func (service *Service) activateClientLocked(svc config.Service) {
 		service.jf = jellyfin.New(svc.URL, svc.APIKey)
 	case "seerr":
 		service.seerr = seerr.New(svc.URL, svc.APIKey)
+	case "overfin":
+		// Its scores are the Retention Value: planning waits until they're
+		// read with the new address or key.
+		service.overfin = overfin.New(svc.URL, svc.APIKey)
+		service.reliability.Overfin = "stale"
+		service.reliability.Valuation = false
 	case "qbittorrent":
 		service.qb[svc.ID] = qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
 	}
@@ -527,6 +535,19 @@ func (service *Service) deactivateClientLocked(svc config.Service) {
 		service.jf = jellyfin.New("", "")
 	case "seerr":
 		service.seerr = seerr.New("", "")
+	case "overfin":
+		// Back to Overtide's own valuation at once, not Overfin's last scores.
+		service.overfin = overfin.New("", "")
+		if service.generation > 0 {
+			items := cloneMedia(service.items)
+			for i := range items {
+				items[i].OverfinScore, items[i].OverfinSeasonScores, items[i].OverfinEnrichedAt = nil, nil, time.Time{}
+			}
+			valuation.ApplyMedia(items, service.cfg, service.imdbRatings) // without Overfin already
+			service.items = items
+		}
+		service.reliability.Overfin = "not configured"
+		service.reliability.Valuation = service.reliability.valuationReady()
 	}
 }
 
@@ -540,6 +561,8 @@ func validateServiceConnection(ctx context.Context, svc config.Service) error {
 		return jellyfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "seerr":
 		return seerr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
+	case "overfin":
+		return overfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "qbittorrent":
 		return qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey).WithContext(ctx).Validate()
 	default:

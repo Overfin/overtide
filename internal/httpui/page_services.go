@@ -58,6 +58,7 @@ var allServiceTypes = []serviceTypeOption{
 	{"qbittorrent", "qBittorrent"},
 	{"jellyfin", "Jellyfin"},
 	{"seerr", "Seerr"},
+	{"overfin", "Overfin"},
 }
 
 // serviceCategory groups adapter types by the role they fill, purely for

@@ -9,6 +9,7 @@ import (
 	"overtide/internal/config"
 	"overtide/internal/model"
 	"overtide/internal/services/jellyfin"
+	"overtide/internal/services/overfin"
 	"overtide/internal/services/qbittorrent"
 	"overtide/internal/services/radarr"
 	"overtide/internal/services/seerr"
@@ -57,6 +58,8 @@ func (service *Service) validateServiceTypes(ctx context.Context, allowed map[st
 			fn = jellyfin.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "seerr":
 			fn = seerr.New(i.URL, i.APIKey).WithContext(ctx).Validate
+		case "overfin":
+			fn = overfin.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "qbittorrent":
 			fn = qbittorrent.New(i.Name, i.URL, i.Username, i.Password, i.APIKey).WithContext(ctx).Validate
 		default:

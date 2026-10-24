@@ -259,6 +259,16 @@ type Media struct {
 	// SeerrEnrichedAt mirrors JellyfinEnrichedAt for Requested/RequestedAt.
 	SeerrEnrichedAt time.Time `json:"seerrEnrichedAt,omitempty"`
 
+	// OverfinScore is a film's value from Overfin, 0 to 100, and
+	// OverfinSeasonScores a series' values by season number; nil when
+	// Overfin gave none. With Overfin configured, they are the Retention
+	// Value: Overfin weighs what people watch, ask for and like, Overtide
+	// weighs that against storage and torrents.
+	OverfinScore        *float64        `json:"overfinScore,omitempty"`
+	OverfinSeasonScores map[int]float64 `json:"overfinSeasonScores,omitempty"`
+	// OverfinEnrichedAt mirrors JellyfinEnrichedAt for the scores.
+	OverfinEnrichedAt time.Time `json:"overfinEnrichedAt,omitempty"`
+
 	// TMDBRating/TMDBVoteCount are TMDB's own rating data, populated by TMDB
 	// enrichment when configured. They are deliberately separate from
 	// Rating/VoteCount (Radarr/Sonarr's own numbers) rather than overwriting

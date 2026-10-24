@@ -254,7 +254,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 		if server.tasks != nil && server.tasks.ConsistencyPending() {
 			last = fmt.Errorf("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
-			last = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.FileModel)
+			last = fmt.Errorf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel)
 		}
 	}
 
@@ -539,7 +539,7 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 	items, updated, last := server.inv.Snapshot()
 	reliability := server.inv.ReliabilitySnapshot()
 	if !reliability.Valuation && last == nil {
-		last = fmt.Errorf("%s Jellyfin: %s; Seerr: %s", reliability.Message, reliability.Jellyfin, reliability.Seerr)
+		last = fmt.Errorf("%s Jellyfin: %s; Seerr: %s; Overfin: %s", reliability.Message, reliability.Jellyfin, reliability.Seerr, reliability.Overfin)
 	}
 	resolved, resolvedOK := mediaRefFor(items, mediaType, sourceID, serviceID)
 	if resolvedOK {

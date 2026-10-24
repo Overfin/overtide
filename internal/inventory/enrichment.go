@@ -63,7 +63,7 @@ func (service *Service) RefreshJellyfin(ctx context.Context) error {
 	}
 	service.items = items
 	service.reliability.Jellyfin = "reliable"
-	service.reliability.Valuation = enrichmentReliable(service.reliability.Seerr) && enrichmentReliable(service.reliability.TMDB)
+	service.reliability.Valuation = service.reliability.valuationReady()
 	if service.reliability.Valuation {
 		service.reliability.Message = "Media valuation is reliable."
 	} else {
@@ -119,7 +119,7 @@ func (service *Service) RefreshSeerr(ctx context.Context) error {
 	}
 	service.items = items
 	service.reliability.Seerr = "reliable"
-	service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.TMDB)
+	service.reliability.Valuation = service.reliability.valuationReady()
 	if service.reliability.Valuation {
 		service.reliability.Message = "Media valuation is reliable."
 	} else {
@@ -194,7 +194,7 @@ func (service *Service) RefreshTMDB(ctx context.Context) error {
 	}
 	service.items = items
 	service.reliability.TMDB = "reliable"
-	service.reliability.Valuation = enrichmentReliable(service.reliability.Jellyfin) && enrichmentReliable(service.reliability.Seerr)
+	service.reliability.Valuation = service.reliability.valuationReady()
 	if service.reliability.Valuation {
 		service.reliability.Message = "Media valuation is reliable."
 	} else {
@@ -337,6 +337,13 @@ func (service *Service) EnrichNewMedia(ctx context.Context) error {
 
 func enrichmentReliable(state string) bool {
 	return state == "reliable" || state == "not configured"
+}
+
+// valuationReady is whether every enrichment valuation depends on is
+// reliable (or not configured), so automatic removal may plan.
+func (reliability Reliability) valuationReady() bool {
+	return enrichmentReliable(reliability.Jellyfin) && enrichmentReliable(reliability.Seerr) &&
+		enrichmentReliable(reliability.TMDB) && enrichmentReliable(reliability.Overfin)
 }
 
 // preserveJellyfinFacts carries forward Jellyfin-sourced facts across a

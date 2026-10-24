@@ -100,6 +100,10 @@ func ApplyMedia(mediaItems []model.Media, configuration config.Config, imdbRatin
 		mediaItem.Protected = false
 		mediaItem.ProtectionReason = ""
 		mediaItem.RemovalRestricted = !serviceAllowsRemoval(configuration, mediaItem.ServiceID)
+		if configuration.Overfin.URL != "" {
+			applyOverfinValue(mediaItem, configuration)
+			continue
+		}
 		if hasTag(mediaItem.Tags, configuration.Protection.KeepTags) {
 			mediaItem.Protected = true
 			mediaItem.ProtectionReason = "Keep tag"
@@ -271,4 +275,72 @@ func applySeasonValues(mediaItem *model.Media, seriesWideValue float64, seriesWi
 		season.RetentionValue = value
 		season.RetentionValueReasons = reasons
 	}
+}
+
+// notValued is the protection of what Overfin didn't score: never removed
+// automatically on a guess.
+const notValued = "Not valued by Overfin"
+
+// applyOverfinValue makes Overfin's scores the Retention Value: a film's
+// score, each season's own, a series' best season's. Overfin weighs what
+// people watch, ask for and like; Overtide weighs that against storage and
+// torrents (Torrent Value, kept apart). Keep tags still protect; anything
+// Overfin didn't score is protected, with the highest value.
+func applyOverfinValue(mediaItem *model.Media, configuration config.Config) {
+	if hasTag(mediaItem.Tags, configuration.Protection.KeepTags) {
+		mediaItem.Protected = true
+		mediaItem.ProtectionReason = "Keep tag"
+		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Keep tag", Value: strings.Join(mediaItem.Tags, ", ")})
+	}
+	scored := func(score float64) model.Reason {
+		return model.Reason{Label: "Overfin value", Value: fmt.Sprintf("%.1f/100", score), Points: score,
+			Note: "Overfin's score: what people watch, ask for and like."}
+	}
+	unscored := model.Reason{Label: notValued, Value: "no score", Points: 100,
+		Note: "Overfin has no score for it (not in its libraries, or not matched by TMDB or TVDB ID), so it's never removed automatically."}
+	if mediaItem.Type != model.Series || len(mediaItem.Seasons) == 0 {
+		if mediaItem.OverfinScore == nil {
+			mediaItem.RetentionValue = 100
+			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, unscored)
+			if !mediaItem.Protected {
+				mediaItem.Protected, mediaItem.ProtectionReason = true, notValued
+			}
+			return
+		}
+		mediaItem.RetentionValue = *mediaItem.OverfinScore
+		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, scored(*mediaItem.OverfinScore))
+		return
+	}
+	best, found := 0.0, false
+	for i := range mediaItem.Seasons {
+		season := &mediaItem.Seasons[i]
+		season.Protected, season.ProtectionReason = mediaItem.Protected, mediaItem.ProtectionReason
+		season.RemovalRestricted = mediaItem.RemovalRestricted
+		season.RetentionValueReasons = append([]model.Reason(nil), mediaItem.RetentionValueReasons...)
+		score, ok := mediaItem.OverfinSeasonScores[season.Number]
+		if !ok {
+			season.RetentionValue = 100
+			season.RetentionValueReasons = append(season.RetentionValueReasons, unscored)
+			if !season.Protected {
+				season.Protected, season.ProtectionReason = true, notValued
+			}
+			continue
+		}
+		season.RetentionValue = score
+		season.RetentionValueReasons = append(season.RetentionValueReasons, scored(score))
+		if !found || score > best {
+			best, found = score, true
+		}
+	}
+	if !found {
+		mediaItem.RetentionValue = 100
+		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, unscored)
+		if !mediaItem.Protected {
+			mediaItem.Protected, mediaItem.ProtectionReason = true, notValued
+		}
+		return
+	}
+	mediaItem.RetentionValue = best
+	mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Overfin value", Value: fmt.Sprintf("%.1f/100", best),
+		Points: best, Note: "Its best season's score, from Overfin."})
 }
