@@ -225,3 +225,27 @@ func TestInventoryFailsClosedWhenTagsAreUnavailable(t *testing.T) {
 		t.Fatal("missing protection tags must make inventory unreliable")
 	}
 }
+
+// TestInventoryCarriesSonarrsTMDBID: Overfin knows some series by their
+// TMDB ID alone, so a series' TMDB ID from Sonarr must reach the inventory
+// beside its TVDB ID.
+func TestInventoryCarriesSonarrsTMDBID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/tag":
+			_ = json.NewEncoder(w).Encode([]any{})
+		case "/api/v3/series":
+			_, _ = io.WriteString(w, `[{"id":1,"title":"Show","tvdbId":367715,"tmdbId":118085,"imdbId":"tt1"}]`)
+		default:
+			_ = json.NewEncoder(w).Encode([]any{})
+		}
+	}))
+	defer srv.Close()
+	items, err := New(srv.URL, "key").Inventory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].TMDBID != 118085 || items[0].TVDBID != 367715 {
+		t.Fatalf("expected both IDs from Sonarr, got %#v", items)
+	}
+}

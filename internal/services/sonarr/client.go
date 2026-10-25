@@ -46,8 +46,11 @@ type series struct {
 	} `json:"statistics"`
 	Added  time.Time `json:"added"`
 	TVDBID int       `json:"tvdbId"`
-	IMDBID string    `json:"imdbId"`
-	Tags   []int     `json:"tags"`
+	// TMDBID is Sonarr's own TMDB ID for the series (Sonarr 4); Overfin
+	// knows some series by it alone.
+	TMDBID int    `json:"tmdbId"`
+	IMDBID string `json:"imdbId"`
+	Tags   []int  `json:"tags"`
 }
 type tag struct {
 	ID    int    `json:"id"`
@@ -95,7 +98,7 @@ func (client *Client) Inventory() ([]model.Media, error) {
 				labels = append(labels, x)
 			}
 		}
-		out = append(out, model.Media{Type: model.Series, SourceID: s.ID, Title: s.Title, Year: s.Year, Path: s.Path, SizeBytes: s.Statistics.SizeOnDisk, AddedAt: s.Added, Tags: labels, TVDBID: s.TVDBID, IMDBID: s.IMDBID})
+		out = append(out, model.Media{Type: model.Series, SourceID: s.ID, Title: s.Title, Year: s.Year, Path: s.Path, SizeBytes: s.Statistics.SizeOnDisk, AddedAt: s.Added, Tags: labels, TMDBID: s.TMDBID, TVDBID: s.TVDBID, IMDBID: s.IMDBID})
 	}
 	return out, nil
 }

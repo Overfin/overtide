@@ -9,6 +9,7 @@ Overtide starts from Stewarr 0.5.0, with its full history, as the storage side o
 ### 0.7.0 (not released yet)
 
 - **No valuation of its own.** A title's value is Overfin's score, as Overfin gives it; nothing of Overtide's changes it (ratings, popularity, views, favourites, requests, torrent activity, season recency, keep-tag bonuses). Keep tags still protect. What Overfin didn't score is protected, and without Overfin nothing is removed automatically.
+- Series carry Sonarr's TMDB ID too, and are matched with Overfin's scores by it first, then by TVDB ID: Overfin knows some series by their TMDB ID alone.
 - Jellyfin, Seerr, TMDB and IMDb are gone: their services, tasks, Settings sections, the IMDb ratings table, and the valuation weights. A `config.json` that still lists Jellyfin or Seerr loads without them and is saved without them. The Library page loses the Rating, Votes, Views, Last watched and Requested columns and filters; the media page shows Overfin's value and the title's IDs.
 - **Overfin's look.** The pages take Overfin's control panel's: the menu on the left (now with Storage and Services, in Media and Server groups, with icons), Overfin's colours, cards, tables, buttons and switches, and light as well as dark, following the device. The styles use Overfin's theme values instead of their own hard-coded colours.
 
