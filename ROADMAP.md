@@ -20,6 +20,14 @@ This file separates implemented behavior from intended direction. It is not a pr
 - **Variety:** a share of what's added goes to less obvious picks, so the library doesn't narrow.
 - **New releases:** a share for hyped new titles even outside people's tastes, with its own settings: the share (0 to 30%; 0 is off), how new (1, 3 or 6 months), genres never brought in. Kids' limits apply. Ignored ones fade out on their own once "Recently added" wears off.
 
+**Managed mode** (the operator's choice; off by default). Overtide manages the Radarr and Sonarr titles tagged `overtide`, and only those: whatever the operator or anything else added stays untouched, unless the operator hands it over (one title or many, which tags it).
+- **Import lists:** they stop adding by themselves. Switching managed mode on offers to turn their automatic adding off, in one confirmed step, and turning it off restores it. Overtide reads the lists instead (from the address Radarr and Sonarr use, or through Radarr for its own lists) and treats their titles as candidates, beside Overfin's values.
+- **Each title Overtide adds is followed** through the stack: wanted, downloading, stuck, imported, not found. Adding a title to Radarr or Sonarr is not having it.
+- **Search:** Overtide asks for a search of one title (Radarr's MoviesSearch; Sonarr's series, season or episode search) when it adds it and when it retries.
+- **Not found** after a set number of days: Overtide removes the title from Radarr or Sonarr (it has no files), keeps it in its own waiting list with a retry date, and adds it again when that comes. Radarr and Sonarr only hold what's really being looked for.
+- **Series:** once a series is in, Sonarr brings its new episodes as usual; Overtide steps in only when a whole season it waits for stays not found, with the same rule.
+- Later: download limits, and Overfin pausing requests when the waiting list grows too long.
+
 **Safety.** Dry run first and by default, for adding as for removing ("would add X, 12 GB; would remove Y and Z"); then the existing modes, confirm (proposals approved by hand) and automatic.
 
 **Look.** Overfin's control panel: the menu on the left, the same colours, cards, tables, forms and sliders, light and dark, no operator branding. Pages stay rendered by the server.
@@ -39,7 +47,7 @@ This file separates implemented behavior from intended direction. It is not a pr
 4. ~~**Overfin's look.**~~ Done (0.7.0): the menu on the left, Overfin's theme values, light and dark.
 5. ~~**No valuation of its own.**~~ Done (0.7.0): the Jellyfin, Seerr, TMDB and IMDb adapters, their tasks and settings, the IMDb table and the Retention Value weights are gone. A title's value is Overfin's score, unchanged; what Overfin didn't score is protected, and without Overfin nothing is removed automatically. Still open: whether Overtide keeps Overfin's scores between reads (the "Overfin scores" task, as now) or only asks Overfin when it plans, as the design above says.
 6. ~~**The removal planner.**~~ Done (0.7.0): lone torrents first, then titles by Overfin's score with their hardlinked torrents; no torrent care and no share per service; the Kept list replaces keep tags; private torrents recognized, with an optional seeding time. Asking Overfin page by page at planning time is still open (see step 5).
-7. **Adding**, as designed, in dry run: Radarr's and Sonarr's add and search, size estimates, the gap, pace, variety, the new releases lane, and dry run covering every action.
+7. **Adding**, as designed, in dry run, in this order: reading import lists; following titles through the stack (states); searching one title; not found, removed from Radarr or Sonarr and retried later; managed mode. Then Radarr's and Sonarr's add, size estimates, the gap, pace, variety, the new releases lane, every action covered by dry run. Download limits come after.
 8. **Requests from Overfin**, once Overfin keeps them itself (Overfin's roadmap): Overtide sends them first and reports their status back.
 9. **Leaving soon**, told to Overfin before a removal, so people get a last chance to watch.
 
