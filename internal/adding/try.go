@@ -45,6 +45,10 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 	}
 	client = client.WithContext(ctx)
 	lookup, err := client.LookupMovie(entry.ExternalID)
+	if radarr.IsNotFound(err) {
+		service.unknown(entry, fmt.Sprintf("Radarr doesn't know this film (TMDB ID %d)", entry.ExternalID))
+		return
+	}
 	if err != nil {
 		service.later(entry, "Couldn't look it up: "+err.Error())
 		return
@@ -115,6 +119,10 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 	}
 	client = client.WithContext(ctx)
 	lookup, err := client.LookupSeries(entry.ExternalID)
+	if sonarr.IsNotFound(err) {
+		service.unknown(entry, fmt.Sprintf("Sonarr doesn't know this series (TVDB ID %d)", entry.ExternalID))
+		return
+	}
 	if err != nil {
 		service.later(entry, "Couldn't look it up: "+err.Error())
 		return
@@ -230,6 +238,14 @@ func (service *Service) settle(entry *Entry, grabbed bool, searchErr error, remo
 	entry.Tries++
 	entry.NextTry = now.Add(retryDelay(entry.Tries))
 	entry.Result = fmt.Sprintf("Nothing found (try %d), taken out until the next try", entry.Tries)
+}
+
+// unknown is a title Radarr or Sonarr has no record of (often one too new
+// for their sources): retried like one nothing was found for.
+func (service *Service) unknown(entry *Entry, why string) {
+	entry.Tries++
+	entry.NextTry = service.now().Add(retryDelay(entry.Tries))
+	entry.Result = fmt.Sprintf("%s; try %d, tried again later", why, entry.Tries)
 }
 
 func (service *Service) later(entry *Entry, why string) {
