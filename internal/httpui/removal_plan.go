@@ -134,6 +134,7 @@ type removalData struct {
 	BackURL               string
 	MediaType             string
 	MediaID               int
+	MediaServiceID        string
 	Hash                  string
 	TorrentServiceID      string
 	UnmanagedPaths        []string
@@ -264,9 +265,13 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 			return removalData{}, fmt.Errorf("torrent is not current for this media: %s", hash)
 		}
 	}
+	// Ticked by default: the torrents holding the title's files, unless
+	// one must keep seeding (kept, or a private tracker's minimum).
 	if !selectionExplicit {
 		for hash := range physicalTorrentHashes {
-			selectedTorrents[hash] = true
+			if torrent, ok := torrentByHash[hash]; ok && torrent.Obligation == "" {
+				selectedTorrents[hash] = true
+			}
 		}
 	}
 	for hash, context := range contextByHash {
@@ -355,7 +360,7 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 		ManagedSectionLabel: managedSectionLabel(kind), SelectedFileCount: selectedFileCount,
 		SelectedLogicalBytes: selectedLogicalBytes, StorageGuidanceTitle: guidanceTitle,
 		StorageGuidanceAction: guidanceAction, BackURL: fmt.Sprintf("/library/%s/%d", kind, id),
-		MediaType: string(kind), MediaID: id,
+		MediaType: string(kind), MediaID: id, MediaServiceID: mr.ServiceID,
 	}, nil
 }
 

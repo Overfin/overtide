@@ -138,8 +138,10 @@
       {{if eq (printf "%s" .Plan.Kind) "media"}}
         <input type="hidden" name="media_type" value="{{.MediaType}}">
         <input type="hidden" name="media_id" value="{{.MediaID}}">
+        <input type="hidden" name="service_id" value="{{.MediaServiceID}}">
       {{else if eq (printf "%s" .Plan.Kind) "torrent"}}
         <input type="hidden" name="hash" value="{{.Hash}}">
+        <input type="hidden" name="service_id" value="{{.TorrentServiceID}}">
       {{end}}
       <div data-removal-target="generatedInputs">
         {{if eq (printf "%s" .Plan.Kind) "media"}}

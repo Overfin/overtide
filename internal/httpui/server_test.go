@@ -878,6 +878,17 @@ func TestMediaPlanDefaultsPhysicallyHardlinkedTorrentAndRejectsUnrelatedTorrent(
 	if !foundPreservedOwner {
 		t.Fatalf("multi-file torrent did not disclose the preserved other media owner: %#v", plan.FileGroups)
 	}
+	// A kept torrent must keep seeding: it's offered, not ticked.
+	keptServer := &Server{inv: inventory.New(config.Config{Kept: []config.KeptItem{{Key: config.KeptTorrentKey("linked"), Name: "Linked"}}}, database)}
+	keptPlan, err := keptServer.buildMediaRemovalPlan(model.Movie, 1, "", false, map[string]bool{}, map[string]bool{}, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, related := range keptPlan.Related {
+		if related.Torrent.Hash == "linked" && related.Selected {
+			t.Fatal("a kept torrent was ticked by default")
+		}
+	}
 	revalidated, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, selectedManagedSet([]string{"radarr:9"}), mapFromValues([]string{"linked"}), map[string]bool{})
 	if err != nil {
 		t.Fatal(err)
