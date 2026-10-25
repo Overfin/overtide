@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/storagecapabilities"
 )
@@ -90,6 +91,19 @@ type deviceGroup struct {
 	rootPaths map[string]map[string]bool
 }
 
+// betterRepresentative reports whether path should name its device instead
+// of current. A device's settings are saved under that name, so it must not
+// change with the order roots are found in: a root with saved settings
+// first, then the first root in alphabetical order.
+func betterRepresentative(path, current string, saved map[string]config.DeviceThreshold) bool {
+	_, pathSaved := saved[path]
+	_, currentSaved := saved[current]
+	if pathSaved != currentSaved {
+		return pathSaved
+	}
+	return path < current
+}
+
 // knownDeviceRoots groups the storage roots discovered by the last
 // successful file reconciliation by physical device (multiple service
 // roots can share one disk). It touches no file-level data, only a stat of
@@ -98,6 +112,7 @@ type deviceGroup struct {
 func (service *Service) knownDeviceRoots() (groups map[uint64]*deviceGroup, order []uint64) {
 	service.mu.RLock()
 	roots := append([]storageRoot(nil), service.storageRoots...)
+	saved := service.cfg.Storage.DeviceThresholds
 	service.mu.RUnlock()
 
 	groups = map[uint64]*deviceGroup{}
@@ -116,6 +131,9 @@ func (service *Service) knownDeviceRoots() (groups map[uint64]*deviceGroup, orde
 			group = &deviceGroup{device: device, rootLabels: map[string]bool{}, representative: root.Path, rootPaths: map[string]map[string]bool{}}
 			groups[device] = group
 			order = append(order, device)
+		}
+		if betterRepresentative(root.Path, group.representative, saved) {
+			group.representative = root.Path
 		}
 		if root.Label != "" {
 			group.rootLabels[root.Label] = true

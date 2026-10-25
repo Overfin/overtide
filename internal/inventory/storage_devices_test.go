@@ -266,3 +266,23 @@ func TestStorageDevicesEmptyWhenNoRootsKnown(t *testing.T) {
 		t.Fatalf("expected no known device paths, got %#v", paths)
 	}
 }
+
+// A device keeps the name its settings are saved under, whatever order its
+// roots are found in.
+func TestBetterRepresentative(t *testing.T) {
+	saved := map[string]config.DeviceThreshold{"/mnt/media/tv": {Name: "Media"}}
+	for _, order := range [][]string{{"/mnt/media/movies", "/mnt/media/tv"}, {"/mnt/media/tv", "/mnt/media/movies"}} {
+		representative := order[0]
+		for _, path := range order[1:] {
+			if betterRepresentative(path, representative, saved) {
+				representative = path
+			}
+		}
+		if representative != "/mnt/media/tv" {
+			t.Fatalf("order %v: got %q", order, representative)
+		}
+	}
+	if !betterRepresentative("/a", "/b", nil) || betterRepresentative("/b", "/a", nil) {
+		t.Fatal("without saved settings, the first in alphabetical order")
+	}
+}
