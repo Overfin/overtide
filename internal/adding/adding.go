@@ -33,7 +33,13 @@ const (
 	RunFor   = 14 * time.Minute
 )
 
-const storeKey = "adding.waiting"
+const (
+	storeKey     = "adding.waiting"
+	listsReadKey = "adding.lists_read_at"
+	// ListsEvery is how often the import lists are read: like Radarr, once
+	// a day. Reading them makes Radarr fetch them from where they live.
+	ListsEvery = 24 * time.Hour
+)
 
 // Source is where a title in the waiting list comes from. Requests go
 // first, then Overfin's own picks, then the rest (import lists).
@@ -202,9 +208,13 @@ func (service *Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	entries, err = service.readLists(ctx, cfg, entries)
-	if err != nil {
-		return err
+	if service.listsDue() {
+		if entries, err = service.readLists(ctx, cfg, entries); err != nil {
+			return err
+		}
+		if err := service.inv.Store().SetMeta(listsReadKey, service.now().UTC().Format(time.RFC3339)); err != nil {
+			return err
+		}
 	}
 	entries = service.match(entries)
 	service.follow(ctx, entries)
@@ -227,6 +237,17 @@ func (service *Service) Run(ctx context.Context) error {
 		}
 	}
 	return service.save(entries)
+}
+
+// listsDue reports whether the import lists haven't been read for a day
+// (or ever).
+func (service *Service) listsDue() bool {
+	raw, err := service.inv.Store().Meta(listsReadKey)
+	if err != nil || raw == "" {
+		return true
+	}
+	readAt, err := time.Parse(time.RFC3339, raw)
+	return err != nil || service.now().Sub(readAt) >= ListsEvery
 }
 
 // sortForTries orders the waiting list: by source (requests first), then

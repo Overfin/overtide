@@ -19,7 +19,7 @@
               <option value="dry_run" {{if eq .Mode "dry_run"}}selected{{end}}>Dry run</option>
               <option value="on" {{if eq .Mode "on"}}selected{{end}}>On</option>
             </select>
-            <span class="muted">Overtide reads your Radarr and Sonarr import lists every 15 minutes and tries the titles whose turn it is, one search at a time: it adds a title tagged "overtide", searches for it, and keeps it only if a download started; otherwise it takes it out again and tries later (after 1 day, then 2, 4, 8, 16, then every 30). Titles not out yet wait for their release. Nothing is added to a disk over its target. Dry run only reads. Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</span>
+            <span class="muted">Overtide reads your Radarr and Sonarr import lists once a day, and every 15 minutes tries the titles whose turn it is, one search at a time: it adds a title tagged "overtide", searches for it, and keeps it only if a download started; otherwise it takes it out again and tries later (after 1 day, then 2, 4, 8, 16, then every 30). Titles not out yet wait for their release. Nothing is added to a disk over its target. Dry run only reads. Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</span>
           </label>
           <div class="actions"><button type="submit">Save</button></div>
         </form>
