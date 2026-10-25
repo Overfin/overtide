@@ -42,6 +42,7 @@ This file separates implemented behavior from intended direction. It is not a pr
 7. **Adding**, as designed, in dry run: Radarr's and Sonarr's add and search, size estimates, the gap, pace, variety, the new releases lane, and dry run covering every action.
 8. **Requests from Overfin**, once Overfin keeps them itself (Overfin's roadmap): Overtide sends them first and reports their status back.
 9. **Leaving soon**, told to Overfin before a removal, so people get a last chance to watch.
+10. **Library folders.** Titles sorted into a few folders, kept simple: Anime, Kids, Documentaries; everything else stays where it is. Sorting comes from what Radarr and Sonarr already know (Sonarr's anime type, certifications, genres); a title that fits two goes to Kids, so a kids profile misses nothing. Overtide moves existing titles once, after a list the operator looks over, then puts each new title in its folder as Radarr or Sonarr adds it, before anything is downloaded (a path change, nothing to move), requests included. Each folder keeps films and series apart (Jellyfin libraries hold one or the other), and becomes a library in Overfin. Language or origin (Québécois, for instance) needs no folder: Overfin's catalog already browses by them. Everything stays on the same disk, so moves are renames and hardlinks survive.
 
 ## Implemented through 0.4.8
 
