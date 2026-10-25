@@ -659,3 +659,74 @@ func TestShutdownKeepsStateOwnershipUntilRunnerExits(t *testing.T) {
 	close(allowRunnerExit)
 	receive(t, manager.Done())
 }
+
+// A durable intent that also carries a periodic trigger keeps both across
+// a restart: the scheduler looks up every trigger an intent names.
+func TestRestartKeepsEveryTriggerAnIntentNames(t *testing.T) {
+	stateStore := &memoryStateStore{}
+	definition := Definition{ID: "x", Name: "X", Runner: func(context.Context) error { return nil }}
+	manager, err := newManager(stateStore, realClock{}, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = manager.Submit(Request{TaskID: "x", Kind: TriggerPeriodic, Durable: false, CoalescingKey: "same"})
+	_, _ = manager.Submit(Request{TaskID: "x", Kind: TriggerEvent, Durable: true, CoalescingKey: "same"})
+	restarted, err := newManager(stateStore, realClock{}, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.mu.Lock()
+	defer restarted.mu.Unlock()
+	if len(restarted.state.Pending) != 1 {
+		t.Fatalf("expected the intent to survive: %#v", restarted.state.Pending)
+	}
+	for _, intent := range restarted.state.Pending {
+		if len(intent.TriggerIDs) != 2 {
+			t.Fatalf("expected both triggers, got %v", intent.TriggerIDs)
+		}
+		for _, id := range intent.TriggerIDs {
+			if restarted.state.Triggers[id] == nil {
+				t.Fatalf("trigger %s is missing after restart", id)
+			}
+		}
+	}
+}
+
+// State saved by an older version can name triggers it didn't save: they
+// are dropped on load, and an intent left with none goes.
+func TestLoadDropsTriggersTheStateDoesNotHave(t *testing.T) {
+	stateStore := &memoryStateStore{value: `{"triggers":{"t1":{"id":"t1","taskId":"x","state":"pending","durable":true}},
+		"pending":{"a":{"id":"i1","taskId":"x","key":"a","triggerIds":["t1","gone"]},"b":{"id":"i2","taskId":"x","key":"b","triggerIds":["gone"]}},
+		"executions":{"e1":{"id":"e1","taskId":"x","state":"succeeded","triggerIds":["gone"]}}}`}
+	manager, err := newManager(stateStore, realClock{}, Definition{ID: "x", Name: "X", Runner: func(context.Context) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if len(manager.state.Pending) != 1 || len(manager.state.Pending["a"].TriggerIDs) != 1 {
+		t.Fatalf("unexpected pending: %#v", manager.state.Pending)
+	}
+	if len(manager.state.Executions["e1"].TriggerIDs) != 0 {
+		t.Fatalf("unexpected execution triggers: %v", manager.state.Executions["e1"].TriggerIDs)
+	}
+}
+
+// A saved workflow this version doesn't define never holds planning back,
+// and is dropped.
+func TestUnknownWorkflowDoesNotHoldPlanningBack(t *testing.T) {
+	stateStore := &memoryStateStore{value: `{"workflows":{"gone:global":{"id":"gone:global","definitionId":"gone","key":"global","state":"pending"}}}`}
+	manager, err := newManager(stateStore, realClock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manager.ConsistencyPending() {
+		t.Fatal("an unknown workflow holds planning back")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	manager.createWorkflowTriggersLocked()
+	if len(manager.state.Workflows) != 0 {
+		t.Fatalf("expected the unknown workflow dropped: %#v", manager.state.Workflows)
+	}
+}

@@ -152,6 +152,33 @@ func (manager *Manager) normalizeState() {
 	if manager.state.PeriodicNext == nil {
 		manager.state.PeriodicNext = map[string]time.Time{}
 	}
+	manager.dropMissingTriggers()
+}
+
+// dropMissingTriggers removes, from loaded intents and executions, the
+// triggers the saved state doesn't have (state saved by an older version
+// left out triggers that weren't durable). The scheduler looks every one
+// up; a missing one would crash it on every start. An intent left with no
+// trigger has nothing to run for and goes.
+func (manager *Manager) dropMissingTriggers() {
+	known := func(ids []string) []string {
+		kept := ids[:0]
+		for _, id := range ids {
+			if manager.state.Triggers[id] != nil {
+				kept = append(kept, id)
+			}
+		}
+		return kept
+	}
+	for key, intent := range manager.state.Pending {
+		intent.TriggerIDs = known(intent.TriggerIDs)
+		if len(intent.TriggerIDs) == 0 {
+			delete(manager.state.Pending, key)
+		}
+	}
+	for _, execution := range manager.state.Executions {
+		execution.TriggerIDs = known(execution.TriggerIDs)
+	}
 }
 
 func (manager *Manager) Register(definition Definition) error {
@@ -1083,8 +1110,10 @@ func (manager *Manager) createWorkflowTriggersLocked() {
 		}
 		definition, exists := manager.workflowDefinitions[instance.DefinitionID]
 		if !exists {
-			instance.State = "attention"
-			instance.UpdatedAt = now
+			// Saved by a version that had this workflow: it can't run or
+			// finish now, and it would hold cleanup planning back forever
+			// (see ConsistencyPending).
+			delete(manager.state.Workflows, instance.ID)
 			continue
 		}
 		if instance.CurrentStep >= len(definition.Steps) {
@@ -1152,7 +1181,7 @@ func (manager *Manager) ConsistencyPending() bool {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	for _, instance := range manager.state.Workflows {
-		if instance.State != "succeeded" {
+		if _, known := manager.workflowDefinitions[instance.DefinitionID]; known && instance.State != "succeeded" {
 			return true
 		}
 	}
@@ -1290,6 +1319,21 @@ func (manager *Manager) persistenceViewLocked() persistedState {
 		if durable {
 			view.Pending[key] = intent
 		}
+	}
+	// Every trigger a saved intent or execution refers to is saved too,
+	// durable or not: the scheduler looks them all up after a restart.
+	keep := func(ids []string) {
+		for _, id := range ids {
+			if trigger := manager.state.Triggers[id]; trigger != nil {
+				view.Triggers[id] = trigger
+			}
+		}
+	}
+	for _, intent := range view.Pending {
+		keep(intent.TriggerIDs)
+	}
+	for _, execution := range view.Executions {
+		keep(execution.TriggerIDs)
 	}
 	return view
 }
