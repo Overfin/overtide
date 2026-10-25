@@ -158,6 +158,10 @@ func TestHandOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(inventory.New(config.Config{}, database))
+	// The series only waits from a list: it's handed over, not doubled.
+	if err := service.save([]Entry{{Key: seriesKey(14), ServiceID: "s", Kind: model.Series, Source: FromList, State: Waiting}}); err != nil {
+		t.Fatal(err)
+	}
 	if got := service.WithoutFiles(); got != 2 {
 		t.Fatalf("without files: %d", got)
 	}
@@ -166,10 +170,17 @@ func TestHandOver(t *testing.T) {
 		t.Fatalf("handed %d, %v", handed, err)
 	}
 	entries, _ := service.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("%d entries", len(entries))
+	}
 	for _, entry := range entries {
 		if !entry.Ours || entry.State != Waiting || entry.ArrID == 0 || entry.Source != HandedOver {
 			t.Errorf("%#v", entry)
 		}
+	}
+	// Handed over, they're no longer counted, though not tagged yet.
+	if got := service.WithoutFiles(); got != 0 {
+		t.Errorf("still counted: %d", got)
 	}
 	if _, err := service.HandOver(); err == nil {
 		t.Error("handed the same titles twice")

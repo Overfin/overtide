@@ -147,22 +147,26 @@ func (service *Service) HandOver() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	known := map[string]bool{}
-	for _, entry := range entries {
-		known[entry.ServiceID+"|"+entry.Key] = true
+	at := map[string]int{}
+	for i, entry := range entries {
+		at[entry.ServiceID+"|"+entry.Key] = i
 	}
 	now := service.now()
 	handed := 0
-	for _, m := range service.withoutFiles() {
+	items, _, _ := service.inv.Snapshot()
+	for _, m := range withoutFiles(items, entries) {
 		key := titleKey(m)
-		if known[m.ServiceID+"|"+key] {
-			continue
-		}
 		external := m.TMDBID
 		if m.Type == model.Series {
 			external = m.TVDBID
 		}
-		entries = append(entries, Entry{Key: key, Kind: m.Type, ServiceID: m.ServiceID, ExternalID: external, Title: m.Title, Year: m.Year, Source: HandedOver, From: "Handed over", State: Waiting, Ours: true, ArrID: m.SourceID, NextTry: now, Result: "Handed over to Overtide", UpdatedAt: now})
+		entry := Entry{Key: key, Kind: m.Type, ServiceID: m.ServiceID, ExternalID: external, Title: m.Title, Year: m.Year, Source: HandedOver, From: "Handed over", State: Waiting, Ours: true, ArrID: m.SourceID, NextTry: now, Result: "Handed over to Overtide", UpdatedAt: now}
+		// One only waiting from a list becomes the handed-over title.
+		if i, there := at[m.ServiceID+"|"+key]; there {
+			entries[i] = entry
+		} else {
+			entries = append(entries, entry)
+		}
 		handed++
 	}
 	if handed == 0 {
@@ -174,14 +178,30 @@ func (service *Service) HandOver() (int, error) {
 // WithoutFiles counts the titles Radarr and Sonarr have without files that
 // aren't Overtide's: what HandOver would take.
 func (service *Service) WithoutFiles() int {
-	return len(service.withoutFiles())
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	entries, err := service.load()
+	if err != nil {
+		return 0
+	}
+	items, _, _ := service.inv.Snapshot()
+	return len(withoutFiles(items, entries))
 }
 
-func (service *Service) withoutFiles() []model.Media {
-	items, _, _ := service.inv.Snapshot()
+// withoutFiles lists the titles without files that aren't Overtide's:
+// neither tagged nor already in the waiting list as its own (a handed-over
+// title carries the tag only from its first live try).
+func withoutFiles(items []model.Media, entries []Entry) []model.Media {
+	ours := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Ours {
+			ours[entry.ServiceID+"|"+entry.Key] = true
+		}
+	}
 	var out []model.Media
 	for _, m := range items {
-		if m.SizeBytes == 0 && !hasTag(m.Tags, Tag) && titleKey(m) != "" {
+		key := titleKey(m)
+		if m.SizeBytes == 0 && !hasTag(m.Tags, Tag) && key != "" && !ours[m.ServiceID+"|"+key] {
 			out = append(out, m)
 		}
 	}
