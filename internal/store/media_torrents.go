@@ -72,31 +72,9 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 	now := rfc3339(time.Now())
 	rows := make([][]any, 0, len(items))
 	for _, p := range items {
-		// Persist only the torrent index Overtide needs for lists, valuation,
-		// relationships and storage work. Client-owned diagnostics are lazy.
-		// Private, SeedingTime and AddedOn stay: protections depend on them, and
-		// qBittorrent's incremental sync only resends what changes.
-		p.Tracker = ""
-		p.TotalSizeBytes = 0
-		p.CompletedBytes = 0
-		p.AmountLeftBytes = 0
-		p.DownloadedBytes = 0
-		p.UploadedBytes = 0
-		p.DownloadedSession = 0
-		p.UploadedSession = 0
-		p.DownloadLimit = 0
-		p.UploadLimit = 0
-		p.MaxRatio = 0
-		p.Availability = 0
-		p.CompletionOn = 0
-		p.SeenComplete = 0
-		p.TimeActive = 0
-		p.ETA = 0
-		p.Reannounce = 0
-		p.ForceStart = false
-		p.AutoTMM = false
-		p.Sequential = false
-		p.SuperSeeding = false
+		// Everything qBittorrent sent is kept: its incremental sync only
+		// resends what changes, so a field left out would stay empty after
+		// a restart.
 		b, e := json.Marshal(p)
 		if e != nil {
 			return e
