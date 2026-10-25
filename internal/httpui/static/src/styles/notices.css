@@ -1,22 +1,14 @@
 [data-filter-clear][hidden] {
   display: none !important;
 }
-.operation-indicator {
-  margin-left: auto;
-  padding: 6px 10px;
-  border: 1px solid #40576a;
-  border-radius: 999px;
-  background: #1b2a35;
-  color: var(--accent-strong) !important;
-  font-size: 13px;
-  text-decoration: none;
-}
 .signout-form {
-  margin-left: 10px;
+  margin: 0;
 }
 .signout-button {
-  padding: 6px 10px;
-  font-size: 13px;
+  min-height: 2rem;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 .updates-available {
   position: sticky;
@@ -31,10 +23,10 @@
 }
 .updates-available button {
   transform: translateY(12px);
-  border-color: #52718a;
-  background: #1f3443;
-  color: #dcedfa;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow);
 }
 .persistent-notices {
   position: fixed;
@@ -47,11 +39,11 @@
 }
 .persistent-notice {
   display: block;
-  padding: 11px 13px;
-  border: 1px solid rgba(240, 120, 120, 0.35);
-  border-radius: 8px;
-  background: #2a1d21;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(var(--danger-rgb), 0.35);
+  border-radius: var(--radius-s);
+  background: var(--panel-3);
+  box-shadow: var(--shadow);
   text-decoration: none;
 }
 .visually-hidden {
@@ -90,7 +82,7 @@
   margin: 48px auto;
 }
 .operation-card {
-  padding: 24px !important;
+  padding: 1.5rem;
 }
 .operation-card h1 {
   margin: 10px 0 8px;

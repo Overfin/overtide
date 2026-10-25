@@ -1,44 +1,37 @@
 .panel {
-  background: var(--surface) !important;
-  border: 1px solid var(--border-soft) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
-  border-radius: 9px;
-  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
 }
 .section {
-  background: var(--surface) !important;
-  border: 1px solid var(--border-soft) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
-  border-radius: 9px;
-  padding: 14px 16px;
-  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-top: 1.25rem;
 }
-.panel h2 {
-  color: #f0f3f5;
-  font-size: 16px;
-  margin: 0 0 10px;
-}
+.panel h2,
 .section h2 {
-  color: #f0f3f5;
-  font-size: 16px;
-  margin: 0 0 10px;
+  font-size: 1.08rem;
+  margin: 0 0 0.6rem;
 }
 .page {
   max-width: 1380px;
-  margin: 0 auto;
-  padding: 20px 0 32px;
+  padding: 0 0 2rem;
 }
 .hero {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 28px;
-  border-bottom: 1px solid #2e2e2e;
-  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.1rem;
 }
 .hero h1 {
-  font-size: 30px;
-  margin: 0 0 6px;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.3rem;
 }
 .summary {
   display: grid;
@@ -53,7 +46,7 @@
 }
 .reasons td {
   padding: 6px 2px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
 .reasons td:last-child {
@@ -72,11 +65,11 @@
   margin: 0;
 }
 .count {
-  color: #aaa;
+  color: var(--muted);
   font-weight: 400;
 }
 .row {
-  border-top: 1px solid #303030;
+  border-top: 1px solid var(--border);
   padding: 9px 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -85,9 +78,8 @@
 }
 .owner {
   font-weight: 400;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    sans-serif;
-  font-size: 13px;
+  font-family: var(--font);
+  font-size: 0.82rem;
 }
 .row-action {
   white-space: nowrap;
@@ -95,12 +87,11 @@
 .group-title {
   font-size: 14px;
   margin: 14px 0 2px;
-  color: #ddd;
 }
 .footer {
   margin-top: 16px;
-  font-size: 13px;
-  color: #888;
+  font-size: 0.82rem;
+  color: var(--faint);
 }
 @media (max-width: 900px) {
   .summary {

@@ -4,9 +4,10 @@
   gap: 16px;
 }
 .service {
-  padding: 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .service-title {
   display: flex;

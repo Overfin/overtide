@@ -1,67 +1,18 @@
-.pager {
-  gap: 7px !important;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 14px 0;
-}
-.pager a {
-  background: var(--surface-soft);
-  border-color: var(--border) !important;
-  color: var(--accent) !important;
-  padding: 6px 9px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  text-decoration: none;
-}
-.pager span {
-  background: var(--surface-soft);
-  border-color: var(--border) !important;
-  color: var(--accent) !important;
-  padding: 6px 9px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  text-decoration: none;
-}
-.pager a:hover {
-  background: #1d2832;
-  text-decoration: none;
-}
-.pager .current {
-  background: #263440 !important;
-  border-color: #587086 !important;
-  color: #fff !important;
-}
-.pager .active {
-  background: #263440 !important;
-  border-color: #587086 !important;
-  color: #fff !important;
-}
-.pager .disabled {
-  background: transparent;
-  color: var(--faint) !important;
-}
-.pagesize {
-  color: var(--muted);
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
 table {
   font-variant-numeric: tabular-nums;
   border-collapse: collapse;
   width: 100%;
-  margin-top: 18px;
+  margin-top: 1rem;
 }
 th {
-  border-bottom-color: var(--border-soft) !important;
-  background: var(--bg) !important;
-  color: #cdd5dd !important;
-  font-size: 13px !important;
-  letter-spacing: 0.018em;
-  padding: 10px;
-  border-bottom: 1px solid #333;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   text-align: left;
   position: sticky;
   top: 0;
@@ -69,36 +20,34 @@ th {
   vertical-align: top;
 }
 td {
-  border-bottom-color: var(--border-soft) !important;
-  color: #dce2e7;
-  padding: 10px;
-  border-bottom: 1px solid #333;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
   text-align: left;
-  font-size: 14px;
+  font-size: 0.9rem;
   vertical-align: top;
 }
 tbody tr {
-  transition: background-color 0.12s ease;
+  transition: background-color 0.1s;
 }
 tbody tr:hover {
-  background: rgba(112, 183, 237, 0.045);
+  background: var(--panel-2);
 }
 .status {
-  font-size: 12px;
-  letter-spacing: 0.055em !important;
-  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  font-weight: 700;
 }
 .current-status {
-  color: var(--good) !important;
+  color: var(--ok);
 }
 .superseded {
-  color: #c6a0e8 !important;
+  color: #a35ff0;
 }
 .orphaned {
-  color: #e8b878 !important;
+  color: var(--warn);
 }
 .unassociated {
-  color: #ee9292 !important;
+  color: var(--danger);
 }
 table:has(thead th:nth-child(11):last-child) {
   table-layout: fixed;
@@ -106,7 +55,7 @@ table:has(thead th:nth-child(11):last-child) {
 table:has(thead th:nth-child(13):last-child) {
   table-layout: fixed;
 }
-table:has(thead th:nth-child(7):last-child) {
+table:has(#unmanagedAll) {
   table-layout: fixed;
 }
 table:has(thead th:nth-child(11):last-child) th:first-child {
@@ -118,7 +67,7 @@ table:has(thead th:nth-child(13):last-child) th:nth-child(3) {
 table:has(thead th:nth-child(13):last-child) th:nth-child(4) {
   width: 17%;
 }
-table:has(thead th:nth-child(7):last-child) th:nth-child(2) {
+table:has(#unmanagedAll) th:nth-child(2) {
   width: 48%;
 }
 td:has(> a[href^="/library/"]) {
@@ -140,29 +89,23 @@ td:has(> a > strong) > a {
   white-space: nowrap;
 }
 .path {
-  max-width: min(720px, 48vw) !important;
+  max-width: min(720px, 48vw);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 th a {
-  color: #eee;
+  color: inherit;
   text-decoration: none;
+}
+th a:hover {
+  color: var(--text);
 }
 .value {
   font-weight: 700;
 }
-.current {
-  background: #2b2b2b;
-  font-weight: 700;
-}
 .disabled {
-  color: #666;
-}
-.active {
-  font-weight: 800;
-  color: #fff !important;
-  border-color: #777 !important;
+  color: var(--faint);
 }
 .inventory-summary {
   margin: 0 0 12px;
@@ -173,7 +116,7 @@ th a {
 }
 .summary-line {
   margin: 0 0 14px;
-  color: #aaa;
+  color: var(--muted);
 }
 @media (max-width: 760px) {
   .pagesize {

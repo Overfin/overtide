@@ -1,128 +1,175 @@
+/* The shell, as in Overfin's control panel: the menu on the left, the page
+   beside it. The sidebar is fixed and the body leaves room for it, so pages
+   keep their markup; on narrow screens it becomes a bar along the top. */
+
+:root {
+  --sidebar: 15rem;
+}
+body:has(> .appbar) {
+  padding: 2rem clamp(1rem, 3vw, 2.5rem) 4rem calc(var(--sidebar) + clamp(1rem, 3vw, 2.5rem));
+}
 .appbar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 18px 16px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(18, 24, 30, 0.94);
-  position: relative;
+  position: fixed;
+  inset: 0 auto 0 0;
   z-index: 10;
-  margin: -24px -16px 0;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(12px);
+  width: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 0.9rem;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
 }
 .appbrand {
-  font-size: 24px;
-  font-weight: 800;
-  color: #f6f8fa !important;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0 0.4rem;
+  color: var(--text);
   text-decoration: none;
-  margin-right: 8px;
-  letter-spacing: -0.035em;
+}
+.appbrand img {
+  display: block;
+  flex: none;
+  width: 2.3rem;
+  height: 2.3rem;
+}
+.appbrand strong {
+  display: block;
+  font-size: 1rem;
+}
+.appbrand small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 .appnav {
   display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.appnav .group {
+  margin: 0.9rem 0.6rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.appnav .group:first-child {
+  margin-top: 0;
 }
 .appnav a {
-  color: var(--muted) !important;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-s);
+  color: var(--muted);
   text-decoration: none;
-  padding: 7px 10px;
-  border-radius: 7px;
-  font-weight: 520;
+  font-weight: 500;
 }
-.appnav a.active {
-  color: #fff !important;
-  font-weight: 700;
-  background: #202b35;
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-.page-title {
-  margin: 28px 0 18px;
-  font-size: 34px;
-  line-height: 1.15;
-}
-.trash {
-  border: 1px solid transparent !important;
-  background: transparent;
-  color: #e36f74 !important;
-  cursor: pointer;
-  font-size: 18px;
-  padding: 2px 5px;
-  border-radius: 7px !important;
-  filter: none;
-}
-.trash:disabled {
-  color: #59636d !important;
-  cursor: not-allowed;
+.appnav a svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  opacity: 0.85;
 }
 .appnav a:hover {
-  color: var(--text) !important;
-  background: #1b242d;
+  background: var(--panel-2);
+  color: var(--text);
+}
+.appnav a.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.appnav a.active svg {
+  color: var(--accent);
+  opacity: 1;
+}
+.appfoot {
+  margin-top: auto;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.8rem 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+.operation-indicator {
+  display: block;
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-s);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.82rem;
   text-decoration: none;
 }
-.card {
-  background: var(--surface) !important;
-  border: 1px solid var(--border-soft) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
-  border-radius: 11px !important;
-  padding: 16px;
-  margin-top: 18px;
-  margin: 16px 0;
+.operation-indicator[hidden] {
+  display: none;
 }
-.grid {
-  gap: 18px !important;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  margin-top: 20px;
+.page-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+/* Cards, as Overfin's. */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.4rem;
+  margin: 0 0 1.25rem;
 }
 .card h2 {
-  color: #f0f3f5;
-  margin: 0 0 12px;
-  font-size: 18px;
+  margin: 0 0 0.75rem;
+  font-size: 1.08rem;
 }
-.trash:hover:not(:disabled) {
-  background: rgba(227, 111, 116, 0.11) !important;
-  border-color: rgba(227, 111, 116, 0.25) !important;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1.25rem;
+  align-items: start;
 }
-.nav {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.nav h1 {
-  margin-right: 12px;
+.grid > .card {
+  margin: 0;
 }
 .card-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
-.card-head h2 {
+.card-head h2,
+.card-head .page-title {
   margin: 0;
+}
+.card-head:has(.page-title) {
+  margin-bottom: 1.5rem;
 }
 .card-head-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.4rem;
 }
 .card-link {
-  font-size: 13px;
+  font-size: 0.85rem;
   white-space: nowrap;
+  text-decoration: none;
 }
 .kv {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 8px 14px;
-  font-size: 14px;
+  gap: 0.35rem 1rem;
+  font-size: 0.9rem;
+}
+.kv > :nth-child(odd) {
+  color: var(--muted);
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 .full {
@@ -130,29 +177,77 @@
 }
 .top {
   display: flex;
-  gap: 14px;
+  gap: 0.9rem;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 18px;
-}
-.kv div:nth-child(odd) {
-  color: #aaa;
+  margin-bottom: 1rem;
 }
 .row-title {
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .row-meta {
-  font-size: 13px;
-  color: #aaa;
+  font-size: 0.82rem;
+  color: var(--muted);
   margin-top: 2px;
 }
-@media (max-width: 760px) {
-  .appbar {
-    margin: -16px -8px 0;
-    padding: 14px 8px;
+.trash {
+  border-color: transparent;
+  background: transparent;
+  color: var(--danger);
+  font-size: 1.1rem;
+  padding: 0.1rem 0.35rem;
+  min-height: 0;
+}
+.trash:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+.trash:disabled {
+  color: var(--faint);
+}
+
+@media (max-width: 860px) {
+  body:has(> .appbar) {
+    padding: 0 1rem 3rem;
   }
-  .page-title {
-    font-size: 29px;
+  .appbar {
+    position: sticky;
+    top: 0;
+    width: auto;
+    margin: 0 -1rem 1.25rem;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .appbrand small,
+  .appnav .group {
+    display: none;
+  }
+  .appnav {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: 1;
+  }
+  .appnav::-webkit-scrollbar {
+    display: none;
+  }
+  .appnav a {
+    white-space: nowrap;
+    padding: 0.45rem 0.6rem;
+  }
+  .appnav a svg {
+    display: none;
+  }
+  .appfoot {
+    margin: 0;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
   }
 }

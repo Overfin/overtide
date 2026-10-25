@@ -67,7 +67,7 @@
       {{else if not .FilesUpdated.IsZero}}
       <div class=card>
         <strong>Files {{if .FileCount}}({{.FileCount}}){{end}}</strong>{{range .Files}}
-        <div style="padding:8px 0;border-top:1px solid #333">
+        <div style="padding:8px 0;border-top:1px solid var(--border)">
           <div class=mono title="{{.File.Path}}">{{shortPath .File.Path}}{{if fileOwner .File.StorageContexts}} <span class="muted owner">· {{fileOwner .File.StorageContexts}}</span>{{end}}</div>
           {{if and .File.Exists .File.IdentityKnown (gt .File.Links 1)}}{{range .SharedWith}}
           <div class=mono title="{{.Path}}">{{shortPath .Path}}{{if peerOwner .}} <span class="muted owner">· {{peerOwner .}}</span>{{end}}</div>

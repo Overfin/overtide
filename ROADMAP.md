@@ -36,7 +36,7 @@ This file separates implemented behavior from intended direction. It is not a pr
 1. ~~**Overtide's name in the code.**~~ Done (0.6.0).
 2. ~~**Overfin as a service.**~~ Done (0.6.0): address and a key with Values, a connection test.
 3. ~~**Built like Overfin.**~~ Done (0.6.0): module, pure-Go SQLite, distroless image, CI and releases, `deploy/`.
-4. **Overfin's look**, first, since every page changes after it.
+4. ~~**Overfin's look.**~~ Done (0.7.0): the menu on the left, Overfin's theme values, light and dark.
 5. **No valuation of its own.** The stored scores (0.6.0's "Overfin scores" task) and Overtide's own valuation go: the Jellyfin, Seerr, TMDB and IMDb adapters and their tasks, the IMDb table, the Retention Value weights. Pages show no values; the Storage page's plan shows what would go, in Overfin's order.
 6. **The removal planner**, as designed: bundles weighed with Torrent Value, Overfin asked page by page, seeding obligations, the threshold kept.
 7. **Adding**, as designed, in dry run: Radarr's and Sonarr's add and search, size estimates, the gap, pace, variety, the new releases lane, and dry run covering every action.

@@ -6,7 +6,11 @@ Notable changes worth calling out beyond ordinary bug fixes. See `git log` for f
 
 Overtide starts from Stewarr 0.5.0, with its full history, as the storage side of [Overfin](https://github.com/Overfin/server); Stewarr stays a standalone project. The entries below this section are Stewarr's.
 
-### 0.6.0 (not released yet)
+### 0.7.0 (not released yet)
+
+- **Overfin's look.** The pages take Overfin's control panel's: the menu on the left (now with Storage and Services, in Media and Server groups, with icons), Overfin's colours, cards, tables, buttons and switches, and light as well as dark, following the device. The styles use Overfin's theme values instead of their own hard-coded colours.
+
+### 0.6.0
 
 - **Overfin's values.** Overfin is a service type: its scores become the Retention Value (a film's, each season's, a series' best season's); what Overfin didn't score is protected; reading the scores gates automatic planning like the other enrichments.
 - **Same build and tooling as Overfin.** Module `github.com/overfin/overtide`; SQLite through `database/sql` and the pure-Go driver Overfin uses (no cgo; checked on a real database: everything reads the same as before); one static binary on a distroless image, for amd64 and arm64, published by a release workflow; CI with staticcheck and govulncheck; the version from the git tag; a `deploy/` Compose folder. The Makefile and release manifest are gone.

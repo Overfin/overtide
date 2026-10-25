@@ -1,7 +1,7 @@
 .wizard-progress-bar {
   height: 6px;
   border-radius: 3px;
-  background: #333;
+  background: var(--panel-3);
   overflow: hidden;
   margin: 12px 0;
 }
@@ -9,13 +9,13 @@
   height: 100%;
   width: 40%;
   border-radius: 3px;
-  background: var(--accent, #70b7ed);
+  background: var(--accent);
   animation: wizard-progress-indeterminate 1.2s ease-in-out infinite;
 }
 .wizard-progress-bar-fill.done {
   width: 100%;
   animation: none;
-  background: var(--good, #79d495);
+  background: var(--ok);
 }
 @keyframes wizard-progress-indeterminate {
   0% {
