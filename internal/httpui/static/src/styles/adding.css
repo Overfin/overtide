@@ -1,6 +1,77 @@
-/* The Adding page: one line per title, groups that fold. */
+/* The Adding page: settings, a filter, then groups that fold. */
+.adding-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 2rem;
+}
+.adding-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 16rem;
+  max-width: 26rem;
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+.adding-settings .muted {
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+.adding-settings select {
+  width: auto;
+  min-width: 10rem;
+}
+.adding-settings .with-unit {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+}
+.adding-settings input[type=number] {
+  width: 5rem;
+}
+.adding-settings .actions {
+  align-self: flex-end;
+  flex-basis: 100%;
+}
+.adding-how {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.adding-how > summary {
+  cursor: pointer;
+  font-weight: 550;
+}
+.adding-how p {
+  margin: 0.5rem 0 0;
+  max-width: 60rem;
+}
+.adding-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0;
+}
+.adding-summary {
+  display: inline-block;
+  margin: 0.75rem 0;
+}
+.adding-run {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
 table.compact {
   margin-top: 0.5rem;
+}
+table.compact th {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  text-align: left;
+  color: var(--muted);
+  font-weight: 550;
 }
 table.compact td {
   padding: 0.3rem 0.6rem;
@@ -14,9 +85,34 @@ table.compact button {
   padding: 0.15rem 0.6rem;
   font-size: 0.8rem;
 }
+.adding-table .result {
+  font-size: 0.8rem;
+}
+.adding-table .dry-result {
+  color: var(--muted);
+  opacity: 0.7;
+}
 .adding-group > summary {
   cursor: pointer;
 }
-.adding-count {
-  margin: 0.5rem 0;
+.adding-more {
+  margin: 0.5rem 0 0;
+}
+@media (max-width: 640px) {
+  .adding-table thead {
+    display: none;
+  }
+  .adding-table tr {
+    display: block;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .adding-table td {
+    display: block;
+    padding: 0.1rem 0;
+    border: none;
+  }
+  .adding-table td[data-label]:not(:empty)::before {
+    content: attr(data-label) " ";
+  }
 }

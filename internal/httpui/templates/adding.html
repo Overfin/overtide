@@ -8,56 +8,78 @@
   </head>
   <body data-controller="shell revisions">
     {{chrome "adding"}}
-    <main id="adding-content" data-reactive-fragment data-live-policy="stable-list">
-      <h1 class="page-title">Adding {{if eq .Mode "dry_run"}}<span class="dry">DRY RUN</span>{{end}}</h1>
-      {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
-      <section class="card">
-        <form method="post" action="/adding/mode" class="field-stack">
-          <label for="adding-mode">Adding titles
-            <select id="adding-mode" name="mode">
-              <option value="off" {{if eq .Mode "off"}}selected{{end}}>Off</option>
-              <option value="dry_run" {{if eq .Mode "dry_run"}}selected{{end}}>Dry run</option>
-              <option value="on" {{if eq .Mode "on"}}selected{{end}}>On</option>
-            </select>
-            <span class="muted">Overtide reads Overfin's suggestions and your Radarr and Sonarr import lists once a day, and every 15 minutes tries the titles whose turn it is, one search at a time: it adds a title tagged "overtide", searches for it, and keeps it only if a download started; otherwise it takes it out again and tries later (after 1 day, then 2, 4, 8, 16, then every 30). Titles not out yet wait for their release. Nothing is added to a disk over its target. Dry run only reads. Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</span>
-          </label>
-          <label for="adding-discovery">Discovery share %<input id="adding-discovery" name="discovery_share" type="number" min="0" max="100" step="1" value="{{.DiscoveryShare}}">
-            <span class="muted">Of the titles Overfin suggests, the part that comes from TMDB's trending and popular titles whatever their value, so people have new things to discover and the titles they hear about come in. The rest are Overfin's picks, by value. 0 turns discovery off. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out.</span>
-          </label>
-          <div class="actions"><button type="submit">Save</button></div>
-        </form>
-        {{if and .SelfAdding (ne .Mode "off")}}
-        <p class="warn">These import lists still add titles on their own, so they can bring back what Overtide takes out: {{join .SelfAdding ", "}}. Turn off their automatic adding in Radarr and Sonarr for Overtide to manage them.</p>
-        {{end}}
-        {{if ne .Mode "off"}}
-        <form method="post" action="/adding/run"><button type="submit" class="ghost">Run now</button></form>
-        {{end}}
-      </section>
-      {{if not .Groups}}
-        <p class="muted">{{if eq .Mode "off"}}Adding is off.{{else}}Nothing yet: the lists are read at the next run.{{end}}</p>
-      {{end}}
-      {{if .WithoutFiles}}
-      <form method="post" action="/adding/hand-over" class="card adding-count" onsubmit="return confirm('Hand these {{.WithoutFiles}} titles to Overtide? Once adding is on, each is searched for, and taken out of Radarr or Sonarr if nothing is found, to be tried again later.')">
-        Radarr and Sonarr have <b>{{.WithoutFiles}}</b> titles without files that aren't Overtide's. <button type="submit">Hand them all to Overtide</button>
+    <h1 class="page-title">Adding {{if eq .Mode "dry_run"}}<span class="dry">DRY RUN</span>{{end}}</h1>
+    {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
+    <section class="card">
+      <form method="post" action="/adding/mode" class="adding-settings">
+        <label for="adding-mode">Adding titles
+          <select id="adding-mode" name="mode">
+            <option value="off" {{if eq .Mode "off"}}selected{{end}}>Off</option>
+            <option value="dry_run" {{if eq .Mode "dry_run"}}selected{{end}}>Dry run</option>
+            <option value="on" {{if eq .Mode "on"}}selected{{end}}>On</option>
+          </select>
+          <span class="muted">Dry run only reads: nothing is added or searched for.</span>
+        </label>
+        <label for="adding-discovery">Discovery share
+          <span class="with-unit"><input id="adding-discovery" name="discovery_share" type="number" min="0" max="100" step="1" value="{{.DiscoveryShare}}"> %</span>
+          <span class="muted">Of Overfin's suggestions, the part taken from trending and popular titles. 0 turns it off.</span>
+        </label>
+        <div class="actions"><button type="submit">Save</button></div>
       </form>
-      {{end}}
+      <details class="adding-how">
+        <summary>How adding works</summary>
+        <p>Once a day, Overtide reads Overfin's suggestions: its picks, the titles your libraries lack, by value, and, by the discovery share, TMDB's trending and popular titles, so people have new things to discover. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out.</p>
+        <p>Every 15 minutes it tries the titles whose turn it is, one search at a time: it adds the title to Radarr or Sonarr, tagged "overtide", searches for it, and keeps it only if a download started. Otherwise it takes it out again and tries later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release. Nothing is added to a disk over its target.</p>
+        <p>Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</p>
+      </details>
+    </section>
+    {{if .WithoutFiles}}
+    <form method="post" action="/adding/hand-over" class="card adding-count" onsubmit="return confirm('Hand these {{.WithoutFiles}} titles to Overtide? Once adding is on, each is searched for, and taken out of Radarr or Sonarr if nothing is found, to be tried again later.')">
+      <span>Radarr and Sonarr have <b>{{.WithoutFiles}}</b> titles without files that aren't Overtide's.</span> <button type="submit" class="ghost">Hand them all to Overtide</button>
+    </form>
+    {{end}}
+    {{if .Total}}
+    <div class="card">
+      <form class="filters" data-auto-filter method="get" action="/adding">
+        <label>Search<input type="search" name="q" value="{{.Query}}" placeholder="Title…"></label>
+        <label>Source<select name="source">
+          <option value="" {{if eq $.Source ""}}selected{{end}}>All ({{.Total}})</option>
+          {{range .Sources}}<option value="{{.Value}}" {{if eq $.Source .Value}}selected{{end}}>{{.Label}} ({{.Count}})</option>{{end}}
+        </select></label>
+        <a class="clear" data-filter-clear href="/adding">Clear</a>
+      </form>
+    </div>
+    {{end}}
+    <div id="adding-results" data-reactive-fragment data-live-policy="stable-list" data-filter-results>
+      <p class="adding-summary muted">
+        {{if eq .Mode "off"}}Adding is off.{{else}}{{if .Total}}<b>{{.Matching}}</b>{{if ne .Matching .Total}} of {{.Total}}{{end}} titles{{else}}Nothing yet: Overfin's suggestions are read at the next run.{{end}}{{if not .NextRun.IsZero}} · next run {{.NextRun.Local.Format "15:04"}}{{end}}{{end}}
+      </p>
+      {{if ne .Mode "off"}}<form method="post" action="/adding/run" class="adding-run"><button type="submit" class="ghost">Run now</button></form>{{end}}
       {{range .Groups}}
       <details class="card adding-group"{{if .Open}} open{{end}}>
-        <summary><b>{{.Label}}</b> <span class="count">{{len .Entries}}</span></summary>
+        <summary><b>{{.Label}}</b> <span class="count">{{.Count}}</span></summary>
         <p class="muted">{{.Hint}}</p>
-        <table class="compact">
+        <table class="compact adding-table">
+          <thead>
+            <tr><th>Title</th><th>Source</th><th>{{.WhenLabel}}</th><th>Last result</th></tr>
+          </thead>
           <tbody>
-            {{range .Entries}}
+            {{$when := .WhenLabel}}
+            {{range .Rows}}
             <tr>
-              <td><b>{{.Title}}</b>{{if .Year}} <span class="muted">{{.Year}}</span>{{end}} <span class="muted">· {{if eq (printf "%s" .Kind) "series"}}Series{{else}}Film{{end}} · {{.From}}{{if .Tries}} · {{.Tries}} tr{{if eq .Tries 1}}y{{else}}ies{{end}}{{end}}</span></td>
-              <td class="muted nowrap">{{if and (not .NextTry.IsZero) (or (eq (printf "%s" .State) "waiting") (eq (printf "%s" .State) "not released"))}}{{.NextTry.Local.Format "Jan 2 15:04"}}{{end}}</td>
-              <td class="muted">{{.Result}}</td>
+              <td><b>{{.Title}}</b>{{if .Year}} <span class="muted">{{.Year}}</span>{{end}} <span class="muted">· {{.Kind}}</span></td>
+              <td class="muted">{{.Source}}</td>
+              <td class="muted nowrap" data-label="{{$when}}">{{if not .When.IsZero}}{{.When.Local.Format "Jan 2 15:04"}}{{end}}</td>
+              <td class="result{{if .DryRun}} dry-result{{end}}">{{.Result}}</td>
             </tr>
             {{end}}
           </tbody>
         </table>
+        {{if .MoreURL}}<p class="adding-more"><a href="{{.MoreURL}}">Show all {{.Count}}</a></p>{{end}}
       </details>
+      {{else}}
+      {{if and .Total (ne .Mode "off")}}<p class="muted">No title matches these filters.</p>{{end}}
       {{end}}
-    </main>
+    </div>
   </body>
 </html>
