@@ -73,31 +73,8 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 				// still acts through the normal manual removal flow.
 				continue
 			}
-			for _, action := range expandGroup(group) {
-				form, err := server.formForAction(action)
-				if err != nil {
-					log.Printf("[auto-removal] skipped action kind=%s: %v", action.Kind, err)
-					continue
-				}
-				// removal_execution.go's execution step scopes each of these to
-				// the right media type/source internally (unmonitor_movies only
-				// touches Radarr-owned refs, exclude_series only fires for
-				// model.Series, etc.), but validateRemovalScope's admission gate
-				// runs first and hard-forbids all four fields for a bare torrent
-				// action — so they must only be set for media-kind actions.
-				if action.Kind != cleanup.StandaloneTorrent {
-					if cfg.Removal.AutoUnmonitor {
-						form.Set("unmonitor_movies", "1")
-						form.Set("unmonitor_episodes", "1")
-					}
-					if cfg.Removal.AutoExcludeFromImportLists {
-						form.Set("exclude_movies", "1")
-						form.Set("exclude_series", "1")
-					}
-				}
-				if err := server.submitAutoRemoval(form, action, "Automatic cleanup: "); err != nil {
-					log.Printf("[auto-removal] submit failed kind=%s: %v", action.Kind, err)
-				}
+			if err := server.queueCleanup(group, cfg, "Automatic cleanup: "); err != nil {
+				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
 		}
 	}
@@ -274,25 +251,54 @@ func (server *Server) formForAction(action cleanup.Action) (url.Values, error) {
 	return form, nil
 }
 
-// submitAutoRemoval journals and schedules a decided removal through the
-// exact same admission/durable-history/scheduler path a manual browser
-// submission uses (executeRemoval) — no new execution code, so it
-// inherits every existing safety mechanism, including live final-boundary
-// revalidation inside runScheduledRemoval and respecting removal.dry_run
-// (read live from config at both admission and execution, never from the
-// form). Shared between the periodic Auto-mode evaluation and a manual
-// batch Clean from the cleanup-plan overlay (page_storage.go) — cause
-// distinguishes the two in the resulting task/audit trail (e.g.
-// "Automatic cleanup: " vs. "Manual cleanup: ").
-func (server *Server) submitAutoRemoval(form url.Values, action cleanup.Action, cause string) error {
-	descriptor, err := server.admitRemoval(form)
-	if err != nil {
-		return fmt.Errorf("admission rejected (the action may have gone stale since this plan was computed): %w", err)
-	}
+// queueCleanup queues the removals of one cleanup plan row: one removal,
+// or one per torrent for a cross-seed group. Every removal is admitted
+// before any is queued, so a group goes whole or not at all. They go
+// through the same admission, history and scheduler as a removal from the
+// browser, and are checked again just before running (cleanupStillEligible).
+// cause tells automatic and manual cleanup apart in history and tasks.
+func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause string) error {
 	database := server.inv.Store()
 	if database == nil {
 		return fmt.Errorf("durable operation history unavailable")
 	}
+	type admitted struct {
+		form       url.Values
+		descriptor removalAdmission
+	}
+	var removals []admitted
+	for _, action := range expandGroup(row) {
+		form, err := server.formForAction(action)
+		if err != nil {
+			return err
+		}
+		// Admission refuses these fields on a bare torrent removal.
+		if action.Kind != cleanup.StandaloneTorrent {
+			if cfg.Removal.AutoUnmonitor {
+				form.Set("unmonitor_movies", "1")
+				form.Set("unmonitor_episodes", "1")
+			}
+			if cfg.Removal.AutoExcludeFromImportLists {
+				form.Set("exclude_movies", "1")
+				form.Set("exclude_series", "1")
+			}
+		}
+		descriptor, err := server.admitRemoval(form)
+		if err != nil {
+			return fmt.Errorf("admission rejected (the plan may have changed): %w", err)
+		}
+		removals = append(removals, admitted{form, descriptor})
+	}
+	for _, removal := range removals {
+		if err := server.queueRemoval(database, removal.form, removal.descriptor, cause); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// queueRemoval records an admitted removal in history, then schedules it.
+func (server *Server) queueRemoval(database *store.Store, form url.Values, descriptor removalAdmission, cause string) error {
 	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun, Cleanup: true}
 	queuedPayload, err := json.Marshal(queuedRemovalPayload{Command: command})
 	if err != nil {

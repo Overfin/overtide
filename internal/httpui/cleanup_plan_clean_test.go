@@ -61,7 +61,7 @@ func TestExcludedSetFromParsesRepeatedValuesAndIgnoresBlanks(t *testing.T) {
 // (auto_removal_test.go) but also wires a real, working tasks.Manager with
 // the "removal" task registered (a no-op PayloadRunner — this test cares
 // about which actions get submitted, not the actual removal execution,
-// which is already covered elsewhere) so submitAutoRemoval's
+// which is already covered elsewhere) so queueCleanup's
 // journal-then-schedule path can actually run instead of panicking on a
 // nil server.tasks.
 func newTestServerWithRemovalTask(t *testing.T) (*Server, *store.Store) {
@@ -145,5 +145,25 @@ func TestCleanActionsTorrentActionSucceedsWithAutoUnmonitorAndExcludeEnabled(t *
 	}
 	if len(events) != 1 {
 		t.Fatalf("expected exactly 1 submitted removal, got %#v", events)
+	}
+}
+
+// A cross-seed group is queued whole or not at all: if one of its torrents
+// is refused, none is queued.
+func TestCleanActionsQueuesAGroupWholeOrNotAtAll(t *testing.T) {
+	server, database := newTestServerWithRemovalTask(t)
+	group := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{
+		{Hash: "oldhash", Name: "Old Release", ServiceID: "qbittorrent-1"},
+		{Hash: "gonehash", Name: "Gone", ServiceID: "qbittorrent-1"},
+	}}
+	if errs := server.cleanActions([]cleanup.Action{group}, config.Config{}); len(errs) != 1 {
+		t.Fatalf("expected the group to be refused, got %#v", errs)
+	}
+	events, err := database.HistoryEvents(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected nothing queued, got %#v", events)
 	}
 }

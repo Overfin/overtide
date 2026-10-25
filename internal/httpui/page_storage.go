@@ -262,7 +262,7 @@ func (server *Server) cleanupPlanForm(w http.ResponseWriter, r *http.Request) {
 // auto_removal.go) — those substitute for human
 // judgment during *unattended* execution; a human explicitly reviewing
 // this list and clicking Clean already is that judgment. It does still
-// apply removal.dry_run (read live inside submitAutoRemoval's own
+// apply removal.dry_run (read live inside queueCleanup's own
 // admission path) and the AutoUnmonitor/AutoExcludeFromImportLists
 // config toggles, the same as Auto mode.
 func (server *Server) cleanupPlanClean(w http.ResponseWriter, r *http.Request) {
@@ -324,36 +324,12 @@ func shownActions(actions []cleanup.Action, shown []string) (kept []cleanup.Acti
 	return kept, len(wanted)
 }
 
-// cleanActions submits every given action through the existing
-// formForAction/submitAutoRemoval pipeline, and returns one error string
-// per action that failed — factored out of cleanupPlanClean so it's
-// testable independent of a real cleanup.Plan/device, which requires far
-// heavier fixtures (StorageDevices, real disk stats) than this logic
-// itself depends on.
+// cleanActions queues every given plan row (see queueCleanup) and returns
+// one error per row that couldn't be queued.
 func (server *Server) cleanActions(actions []cleanup.Action, cfg config.Config) []string {
 	var errs []string
-	for _, action := range expandActions(actions) {
-		form, err := server.formForAction(action)
-		if err != nil {
-			errs = append(errs, err.Error())
-			continue
-		}
-		// removal_execution.go's execution step scopes each of these to the
-		// right media type/source internally, but validateRemovalScope's
-		// admission gate runs first and hard-forbids all four fields for a
-		// bare torrent action — so they must only be set for media-kind
-		// actions. See runAutoRemovalEvaluation.
-		if action.Kind != cleanup.StandaloneTorrent {
-			if cfg.Removal.AutoUnmonitor {
-				form.Set("unmonitor_movies", "1")
-				form.Set("unmonitor_episodes", "1")
-			}
-			if cfg.Removal.AutoExcludeFromImportLists {
-				form.Set("exclude_movies", "1")
-				form.Set("exclude_series", "1")
-			}
-		}
-		if err := server.submitAutoRemoval(form, action, "Manual cleanup: "); err != nil {
+	for _, action := range actions {
+		if err := server.queueCleanup(action, cfg, "Manual cleanup: "); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
