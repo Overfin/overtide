@@ -274,8 +274,9 @@ func (service *Service) syncTorrents(ctx context.Context) (map[string]model.Torr
 
 // qbittorrentSyncFields counts the changes to the torrent fields Overtide
 // reads from qBittorrent's sync: raising it makes the next sync a full one,
-// so a newly read field arrives for every torrent. 2: the private flag.
-const qbittorrentSyncFields = 2
+// so a newly read field arrives for every torrent. 2: the private flag;
+// 3: the private flag and seeding time, now kept in the database.
+const qbittorrentSyncFields = 3
 
 func (service *Service) Refresh(ctx context.Context) error {
 	defer service.publishChange()

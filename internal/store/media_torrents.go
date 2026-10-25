@@ -74,6 +74,8 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 	for _, p := range items {
 		// Persist only the torrent index Overtide needs for lists, valuation,
 		// relationships and storage work. Client-owned diagnostics are lazy.
+		// Private and SeedingTime stay: protections depend on them, and
+		// qBittorrent's incremental sync only resends what changes.
 		p.Tracker = ""
 		p.TotalSizeBytes = 0
 		p.CompletedBytes = 0
@@ -90,14 +92,12 @@ func (s *Store) saveTorrents(items []model.Torrent) error {
 		p.CompletionOn = 0
 		p.SeenComplete = 0
 		p.TimeActive = 0
-		p.SeedingTime = 0
 		p.ETA = 0
 		p.Reannounce = 0
 		p.ForceStart = false
 		p.AutoTMM = false
 		p.Sequential = false
 		p.SuperSeeding = false
-		p.Private = false
 		b, e := json.Marshal(p)
 		if e != nil {
 			return e
