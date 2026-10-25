@@ -1,12 +1,15 @@
 # Overtide
 
-**The storage side of [Overfin](https://github.com/Overfin/server): it keeps your disks under their limit by removing what your people value least.**
+**The storage side of [Overfin](https://github.com/Overfin/server): it fills your disks with what your people want, and keeps the library rolling.**
 
-Overfin knows which titles people watch, ask for and like. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. When a disk goes over its limit, Overtide removes the titles Overfin values least, with every torrent that shares their files, and it works through Radarr, Sonarr and qBittorrent, never behind their backs.
+Overfin knows your titles and your people: what they watch, ask for and like, and what's worth having that you don't have yet. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. Together they keep a library that evolves toward the people using it:
 
-Overtide doesn't replace Radarr, Sonarr or your torrent client. They keep doing their jobs; Overtide decides what to ask of them.
+- **Adding.** Every hour, Overtide asks Overfin what to add, and adds it through Radarr and Sonarr.
+- **Removing.** When a disk goes over its target, Overtide removes the titles Overfin values least, with every torrent that shares their files.
 
-> **Status: early.** Overtide starts in dry run, and should stay there for now: it plans and records what it would remove, and removes nothing. Adding titles and handling Overfin's requests come next; see [`ROADMAP.md`](ROADMAP.md).
+Overfin decides; Overtide manages. Radarr, Sonarr and qBittorrent keep doing their jobs, and Overtide works through them, never behind their backs.
+
+> **Status: early.** Overtide starts in dry run, for adding as for removing: it plans and records what it would do, and changes nothing. See [`ROADMAP.md`](ROADMAP.md) for what's next.
 
 ## Starting it
 
@@ -23,37 +26,54 @@ Open the machine's address on port 8088 and create the admin account. Then, unde
 
 Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a signed attestation of how they were built.
 
-## What it does
+## How it works with Overfin
 
-- **Values come from Overfin, unchanged.** A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. Overtide adds nothing and changes nothing. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
-- **It knows what a removal really frees.** It reads your file system and proves which files are hardlinks of which: a title in your library, the torrent it came from, its cross-seeds. Removing a title alone, while a torrent still holds the same file, frees nothing, so Overtide never proposes it that way.
+| | Overfin | Overtide |
+|---|---|---|
+| Knows | titles, people's wishes and viewing | disks, files, hardlinks, torrents |
+| Decides | each title's value, and what's worth adding | when to add, when to make room, and how |
+| Gives the other | what to add, in order; each title's value | (planned) what's leaving soon, and requests' status |
+
+Overfin values a title the same way whether it's on the server or not, and a title's size never counts: files and space are entirely Overtide's concern. Overfin never tells Overtide who watched or wanted what.
+
+## Adding
+
+Adding is off until you switch it on, on the **Adding** page (off, dry run, on).
+
+- **One source: Overfin.** Every hour, the **Overfin suggestions** task reads what Overfin says to add, in its order: the titles your libraries lack, the most valuable first, with trending and popular titles mixed in by the discovery share you set in Overfin. People's requests will always go first (coming).
+- **A waiting list.** Every 15 minutes, Overtide tries the titles whose turn it is, one search at a time. A try adds the title to Radarr or Sonarr, tagged `overtide`, with their root folder and quality profile, asks for a search of that one title, and keeps it only if a download started. Otherwise the title leaves Radarr or Sonarr at once and is tried again later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release.
+- **Only its own titles.** Overtide manages the titles tagged `overtide`, and only those. Whatever you or anything else adds stays untouched.
+- **Import lists are yours.** Overtide doesn't read them or work around them. Keep them in Radarr and Sonarr if you like; when Overtide removes a title, the removal can add it to their exclusions so a list doesn't bring it back.
+
+## Removing
+
+- **Values come from Overfin, unchanged.** A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
+- **It knows what a removal really frees.** Overtide reads your file system and proves which files are hardlinks of which: a title in your library, the torrent it came from, its cross-seeds. Removing a title alone, while a torrent still holds the same file, frees nothing, so Overtide never proposes it that way.
 - **Bundles, removed together.** A title goes with every torrent that shares its files, cross-seeds included. Torrents that back nothing in the library (superseded, orphaned, unassociated) go first, the one inactive the longest first; cross-seeds of one another are removed together, since each alone frees nothing. A torrent added less than seven days ago is never removed on its own.
-- **Copies instead of hardlinks.** If your library holds copies of your torrents' files, each torrent is a spare copy: removing it frees its whole size and the library loses nothing, so by default copies go before any title. In Settings, "Ordered with their title" places each copy by its title's Overfin score instead, so you keep seeding what people value.
-- **Each disk has its own limit.** Overtide finds your disks from the folders your services report, and keeps each under its own target (90% by default). Space used by things outside its view is set aside, not counted against it.
+- **Copies instead of hardlinks.** If your library holds copies of your torrents' files, each torrent is a spare copy: removing it frees its whole size and the library loses nothing, so by default copies go before any title. In Settings, "Ordered with their title" places each copy by its title's value instead, so you keep seeding what people value.
 - **You keep what you want.** **Keep** on a title's page or in the cleanup plan puts it on the Kept list, on the Storage page; nothing kept is ever planned for removal until you take it off the list.
 - **Private trackers.** An optional setting keeps private torrents, and the titles they share files with, until they've seeded a number of days. Off by default.
 - **Every removal is a plan first.** It shows exactly what would happen and how much it frees, and it's checked again just before running. Library files are removed through Radarr or Sonarr, torrents through qBittorrent. Overtide deletes a file itself only when no service claims it.
 - **Three modes for automatic removal:** off, confirm (it picks, you approve) and automatic. And dry run, on by default, over everything.
-- **Housekeeping:** files on disk no service claims (**Unmanaged files**), and torrents qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
+
+## Disks
+
+Overtide finds your disks from the folders your services report, and gives each two thresholds:
+
+- **Target** (90% by default): the usage Overtide steers toward. It isn't a wall: Overtide adds first, and removal brings the disk back under its target. So your space stays used, and titles keep rolling.
+- **Critical** (95% by default): the one hard stop. Past it, nothing more is added until removal catches up, so a run of downloads can't fill the disk.
+
+Space used by things outside Overtide's view is set aside, not counted against it.
 
 ## The pages
 
 - **Home**: each disk's state, the library and torrent totals, services' health, what cleanup has done so far.
 - **Library**: your films and series, searchable, with Overfin's value.
 - **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds.
-- **Unmanaged files**: files no service claims. Removed by hand only.
-- **Storage**: each disk with its limit and its cleanup plan, and the Kept list.
+- **Unmanaged files**: files on disk no service claims, removed by hand only; and torrents qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
+- **Adding**: the waiting list, what's downloading, what's waiting for its release, and what came in.
+- **Storage**: each disk with its target and its cleanup plan, and the Kept list.
 - **Services**, **Tasks** (the background work, with **Run now**), **History** (every removal, simulated or real), **Settings**.
-
-## How it works with Overfin
-
-| | Overfin | Overtide |
-|---|---|---|
-| Knows | titles, people's wishes and viewing | disks, files, hardlinks, torrents |
-| Decides | each title's value; who may request what | what the disks keep |
-| Gives the other | values per title, never who watched or wanted what | (planned) what's leaving soon, and requests' status |
-
-Overfin values a title the same way whether it's on the server or not; files and space are entirely Overtide's concern.
 
 ## Concepts
 
@@ -76,7 +96,7 @@ Overtide finds files where Radarr, Sonarr and qBittorrent say they are, so **eve
 
 ## Coming from Stewarr
 
-Overtide reads the same config folder layout as [Stewarr](https://github.com/C0PT3R/stewarr), so a *copy* of Stewarr's `/config` brings its settings along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on the Kept list after the first inventory, and the tags aren't read after that. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`, and keep it in dry run: two tools removing from the same disks would remove more than either alone.
+Overtide reads the same config folder layout as [Stewarr](https://github.com/C0PT3R/stewarr), so a *copy* of Stewarr's `/config` brings its settings along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on the Kept list after the first inventory, and the tags aren't read after that. To run both on one host, give Overtide another port (`OVERTIDE_PORT=8089` in its `.env`) and keep it in dry run: two tools removing from the same disks would remove more than either alone.
 
 ## Development
 
