@@ -107,24 +107,44 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddMovie adds the film, monitored and tagged, to the root folder with
-// the quality profile, without searching: the search is asked for apart,
-// to follow it. It returns the film's ID in Radarr.
-func (client *Client) AddMovie(lookup MovieLookup, rootFolder string, qualityProfileID int, minimumAvailability string, tagID int) (int, error) {
+// AddMovie adds the film, unmonitored and tagged, to the root folder with
+// the quality profile: Radarr grabs nothing for it until it's monitored
+// (SetMonitored; unmonitored, Radarr still imports a download already
+// started). It returns the film's ID in Radarr.
+func (client *Client) AddMovie(lookup MovieLookup, rootFolder string, qualityProfileID int, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
 		body[key] = value
 	}
 	body["rootFolderPath"] = rootFolder
 	body["qualityProfileId"] = qualityProfileID
-	body["monitored"] = true
-	body["minimumAvailability"] = minimumAvailability
+	body["monitored"] = false
+	body["minimumAvailability"] = "released"
 	body["tags"] = []int{tagID}
-	body["addOptions"] = map[string]any{"searchForMovie": false, "monitor": "movieOnly"}
+	body["addOptions"] = map[string]any{"searchForMovie": false, "monitor": "none"}
 	var added struct {
 		ID int `json:"id"`
 	}
 	return added.ID, client.send(http.MethodPost, "/api/v3/movie", body, &added)
+}
+
+// TagAll adds the tag to every film in Radarr, and returns how many there
+// are.
+func (client *Client) TagAll(tagID int) (int, error) {
+	var movies []struct {
+		ID int `json:"id"`
+	}
+	if err := client.send(http.MethodGet, "/api/v3/movie", nil, &movies); err != nil {
+		return 0, err
+	}
+	if len(movies) == 0 {
+		return 0, nil
+	}
+	ids := make([]int, len(movies))
+	for i, m := range movies {
+		ids[i] = m.ID
+	}
+	return len(ids), client.send(http.MethodPut, "/api/v3/movie/editor", map[string]any{"movieIds": ids, "tags": []int{tagID}, "applyTags": "add"}, nil)
 }
 
 // TagMovie adds a tag to a film already in Radarr.
@@ -194,12 +214,6 @@ func (client *Client) MovieHasFile(movieID int) (bool, error) {
 		HasFile bool `json:"hasFile"`
 	}
 	return movie.HasFile, client.send(http.MethodGet, fmt.Sprintf("/api/v3/movie/%d", movieID), nil, &movie)
-}
-
-// DeleteMovie takes a film out of Radarr, leaving any file in place and
-// adding no exclusion: it's for a film with no file, to be tried again.
-func (client *Client) DeleteMovie(movieID int) error {
-	return client.send(http.MethodDelete, fmt.Sprintf("/api/v3/movie/%d?deleteFiles=false&addImportExclusion=false", movieID), nil, nil)
 }
 
 // Destination is where a title Overtide adds goes: Radarr's root folder

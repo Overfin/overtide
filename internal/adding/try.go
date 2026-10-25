@@ -24,147 +24,207 @@ const (
 	dryRunAgain = 24 * time.Hour
 )
 
-// try tries one title: not out yet, it waits for its release; otherwise
-// it's added (unless it's already there), searched for, and kept if a
-// download started, else taken out again to be retried later. In dry run,
-// only the reading is done.
-func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) {
-	if entry.Kind == model.Series {
-		service.trySeries(ctx, cfg, entry, dryRun)
-		return
-	}
-	service.tryMovie(ctx, cfg, entry, dryRun)
+// arr is what a try needs from Radarr or Sonarr for one title. For a
+// series, monitoring and searching are the entry's seasons'.
+type arr struct {
+	name string
+	// lookup reads the title before anything else: unknown when the
+	// service has no record of it, released false with when it comes out.
+	lookup func() (unknown bool, released bool, at time.Time, err error)
+	// destination is the root folder and quality profile.
+	destination func() (string, int, error)
+	// add puts the title in, unmonitored and tagged; tag tags it.
+	add       func(rootFolder string, profileID, tagID int) (int, error)
+	tag       func(id, tagID int) error
+	ensureTag func() (int, error)
+	monitor   func(id int, on bool) error
+	// search asks for the search and says whether a download started.
+	search   func(ctx context.Context, id int) (bool, error)
+	grabbed  func(id int, since time.Time) (bool, error)
+	hasFiles func(id int) (bool, error)
+	gone     func(error) bool
 }
 
-func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) {
-	now := service.now()
+func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
+	if entry.Kind == model.Series {
+		client, err := service.inv.SonarrClient(entry.ServiceID)
+		if err != nil {
+			return arr{}, err
+		}
+		client = client.WithContext(ctx)
+		var lookup sonarr.SeriesLookup
+		seasons := entry.Seasons
+		return arr{
+			name: "Sonarr",
+			lookup: func() (bool, bool, time.Time, error) {
+				var err error
+				lookup, err = client.LookupSeries(entry.ExternalID)
+				if sonarr.IsNotFound(err) {
+					return true, false, time.Time{}, nil
+				}
+				released, at := seriesReleased(lookup, service.now())
+				return false, released, at, err
+			},
+			destination: client.Destination,
+			add: func(root string, profile, tag int) (int, error) {
+				return client.AddSeries(lookup, root, profile, tag)
+			},
+			tag:       client.TagSeries,
+			ensureTag: func() (int, error) { return client.EnsureTag(Tag) },
+			monitor: func(id int, on bool) error {
+				return client.SetSeasonsMonitored(id, seasons, on)
+			},
+			search: func(ctx context.Context, id int) (bool, error) {
+				started := service.now()
+				for _, season := range seasons {
+					if _, err := searchAndCheck(ctx,
+						func() (int, error) { return client.SearchSeason(id, season) },
+						client.CommandStatus,
+						func() (bool, error) { return false, nil }); err != nil {
+						return false, err
+					}
+				}
+				return client.GrabbedSince(id, started)
+			},
+			grabbed:  client.GrabbedSince,
+			hasFiles: func(id int) (bool, error) { return client.SeasonsHaveFiles(id, seasons) },
+			gone:     sonarr.IsNotFound,
+		}, nil
+	}
 	client, err := service.inv.RadarrClient(entry.ServiceID)
 	if err != nil {
-		service.later(entry, err.Error())
-		return
+		return arr{}, err
 	}
 	client = client.WithContext(ctx)
-	lookup, err := client.LookupMovie(entry.ExternalID)
-	if radarr.IsNotFound(err) {
-		service.unknown(entry, fmt.Sprintf("Radarr doesn't know this film (TMDB ID %d)", entry.ExternalID))
-		return
-	}
-	if err != nil {
-		service.later(entry, "Couldn't look it up: "+err.Error())
-		return
-	}
-	if released, at := movieReleased(lookup, now); !released {
-		service.notReleased(entry, at)
-		return
-	}
-	var rootFolder string
-	var profileID int
-	if entry.ArrID == 0 {
-		if rootFolder, profileID, err = client.Destination(); err != nil {
-			service.later(entry, err.Error())
-			return
-		}
-		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
-			service.later(entry, stop)
-			return
-		}
-	}
-	if dryRun {
-		entry.State, entry.NextTry = Waiting, now.Add(dryRunAgain)
-		entry.Result = "Dry run: would add it to Radarr and search for it"
-		if entry.ArrID != 0 {
-			entry.Result = "Dry run: would tag it and search for it"
-		}
-		return
-	}
-	tagID, err := client.EnsureTag(Tag)
-	if err != nil {
-		service.later(entry, "Couldn't make the tag: "+err.Error())
-		return
-	}
-	if entry.ArrID == 0 {
-		// Released: tries wait for the release already (movieReleased).
-		id, err := client.AddMovie(lookup, rootFolder, profileID, "released", tagID)
-		if err != nil {
-			service.later(entry, "Couldn't add it: "+err.Error())
-			return
-		}
-		entry.ArrID, entry.Ours = id, true
-	} else if err := client.TagMovie(entry.ArrID, tagID); err != nil {
-		service.later(entry, "Couldn't tag it: "+err.Error())
-		return
-	}
-	started := service.now()
-	grabbed, err := searchAndCheck(ctx,
-		func() (int, error) { return client.SearchMovie(entry.ArrID) },
-		client.CommandStatus,
-		func() (bool, error) { return client.GrabbedSince(entry.ArrID, started) })
-	service.settle(entry, grabbed, err, func() error { return client.DeleteMovie(entry.ArrID) })
+	var lookup radarr.MovieLookup
+	return arr{
+		name: "Radarr",
+		lookup: func() (bool, bool, time.Time, error) {
+			var err error
+			lookup, err = client.LookupMovie(entry.ExternalID)
+			if radarr.IsNotFound(err) {
+				return true, false, time.Time{}, nil
+			}
+			released, at := movieReleased(lookup, service.now())
+			return false, released, at, err
+		},
+		destination: client.Destination,
+		add: func(root string, profile, tag int) (int, error) {
+			return client.AddMovie(lookup, root, profile, tag)
+		},
+		tag:       client.TagMovie,
+		ensureTag: func() (int, error) { return client.EnsureTag(Tag) },
+		monitor:   client.SetMonitored,
+		search: func(ctx context.Context, id int) (bool, error) {
+			started := service.now()
+			return searchAndCheck(ctx,
+				func() (int, error) { return client.SearchMovie(id) },
+				client.CommandStatus,
+				func() (bool, error) { return client.GrabbedSince(id, started) })
+		},
+		grabbed:  client.GrabbedSince,
+		hasFiles: client.MovieHasFile,
+		gone:     radarr.IsNotFound,
+	}, nil
 }
 
-func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) {
+// try tries one title. Out more than ReleaseWindow from now, it waits,
+// unmonitored. Otherwise it goes in Radarr or Sonarr (added once,
+// unmonitored and tagged, if it isn't there) and is monitored: about to
+// come out, without a search, so their RSS catches the release (follow
+// looks for the grab); out, with a search of that title, and if nothing
+// started it's unmonitored again until its next try. In dry run, only the
+// reading is done.
+func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) {
 	now := service.now()
-	client, err := service.inv.SonarrClient(entry.ServiceID)
+	if entry.Kind == model.Series && len(entry.Seasons) == 0 {
+		// Saved by an older version: the seasons come with Overfin's next read.
+		service.later(entry, "Waiting for the seasons Overfin suggests")
+		return
+	}
+	a, err := service.arrFor(ctx, entry)
 	if err != nil {
 		service.later(entry, err.Error())
 		return
 	}
-	client = client.WithContext(ctx)
-	lookup, err := client.LookupSeries(entry.ExternalID)
-	if sonarr.IsNotFound(err) {
-		service.unknown(entry, fmt.Sprintf("Sonarr doesn't know this series (TVDB ID %d)", entry.ExternalID))
-		return
-	}
-	if err != nil {
+	unknown, released, at, err := a.lookup()
+	switch {
+	case err != nil:
 		service.later(entry, "Couldn't look it up: "+err.Error())
 		return
-	}
-	if released, at := seriesReleased(lookup, now); !released {
-		service.notReleased(entry, at)
+	case unknown:
+		service.failed(entry, fmt.Sprintf("%s doesn't know this title (ID %d)", a.name, entry.ExternalID))
+		return
+	case !released && at.Sub(now) > ReleaseWindow:
+		entry.State, entry.NextTry = NotReleased, at.Add(-ReleaseWindow)
+		entry.Result = "Not out yet (" + at.Format("2006-01-02") + "); monitored two days before"
 		return
 	}
-	var rootFolder string
-	var profileID int
-	if entry.ArrID == 0 {
-		if rootFolder, profileID, err = client.Destination(); err != nil {
-			service.later(entry, err.Error())
-			return
-		}
-		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
-			service.later(entry, stop)
-			return
-		}
+	rootFolder, profileID, err := a.destination()
+	if err != nil {
+		service.later(entry, err.Error())
+		return
+	}
+	disk := service.diskStop
+	if service.disk != nil {
+		disk = service.disk
+	}
+	if stop := disk(cfg, rootFolder, dryRun); stop != "" {
+		service.later(entry, stop)
+		return
 	}
 	if dryRun {
-		entry.State, entry.NextTry = Waiting, now.Add(dryRunAgain)
-		entry.Result = "Dry run: would add it to Sonarr and search for it"
-		if entry.ArrID != 0 {
-			entry.Result = "Dry run: would tag it and search for it"
+		entry.NextTry = now.Add(dryRunAgain)
+		what := "monitor it and search for it"
+		if !released {
+			what = "monitor it for its release on " + at.Format("2006-01-02")
 		}
+		if entry.ArrID == 0 {
+			what = "add it to " + a.name + ", " + what
+		}
+		entry.Result = "Dry run: would " + what
 		return
 	}
-	tagID, err := client.EnsureTag(Tag)
+	tagID, err := a.ensureTag()
 	if err != nil {
 		service.later(entry, "Couldn't make the tag: "+err.Error())
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddSeries(lookup, rootFolder, profileID, tagID)
+		id, err := a.add(rootFolder, profileID, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
 		}
-		entry.ArrID, entry.Ours = id, true
-	} else if err := client.TagSeries(entry.ArrID, tagID); err != nil {
+		entry.ArrID = id
+	} else if err := a.tag(entry.ArrID, tagID); err != nil {
 		service.later(entry, "Couldn't tag it: "+err.Error())
 		return
 	}
-	started := service.now()
-	grabbed, err := searchAndCheck(ctx,
-		func() (int, error) { return client.SearchSeries(entry.ArrID) },
-		client.CommandStatus,
-		func() (bool, error) { return client.GrabbedSince(entry.ArrID, started) })
-	service.settle(entry, grabbed, err, func() error { return client.DeleteSeries(entry.ArrID) })
+	if err := a.monitor(entry.ArrID, true); err != nil {
+		service.later(entry, "Couldn't monitor it: "+err.Error())
+		return
+	}
+	if !released {
+		entry.State, entry.ReleaseAt, entry.MonitoredAt = NotReleased, at, now
+		entry.NextTry = at.Add(ReleaseGrace)
+		entry.Result = "Monitored for its release on " + at.Format("2006-01-02")
+		return
+	}
+	grabbed, err := a.search(ctx, entry.ArrID)
+	if err == nil && grabbed {
+		entry.State, entry.Result = Downloading, "Downloading"
+		return
+	}
+	if unmonitorErr := a.monitor(entry.ArrID, false); unmonitorErr != nil {
+		service.later(entry, "Nothing started, and couldn't unmonitor it: "+unmonitorErr.Error())
+		return
+	}
+	if err != nil {
+		service.later(entry, "Unmonitored: "+err.Error())
+		return
+	}
+	service.failed(entry, "Nothing found")
 }
 
 // searchAndCheck asks for the search, waits for it to finish, then says
@@ -198,46 +258,18 @@ func searchAndCheck(ctx context.Context, search func() (int, error), status func
 	return grabbed()
 }
 
-// settle ends a live try: a download started, the title is downloading;
-// none, it's taken out of Radarr or Sonarr to be tried again later. A
-// search that went wrong takes it out too, and it's tried again sooner.
-func (service *Service) settle(entry *Entry, grabbed bool, searchErr error, remove func() error) {
-	now := service.now()
-	if searchErr == nil && grabbed {
-		entry.State, entry.Result = Downloading, "Downloading"
-		return
-	}
-	if err := remove(); err != nil {
-		// Still there: the next run tries it again as a title it has.
-		service.later(entry, "Nothing started, and couldn't take it out: "+err.Error())
-		return
-	}
-	entry.ArrID, entry.State = 0, Waiting
-	if searchErr != nil {
-		entry.NextTry = now.Add(laterOnError)
-		entry.Result = "Taken out: " + searchErr.Error()
-		return
-	}
-	entry.Tries++
-	entry.NextTry = now.Add(retryDelay(entry.Tries))
-	entry.Result = fmt.Sprintf("Nothing found (try %d), taken out until the next try", entry.Tries)
-}
-
-// unknown is a title Radarr or Sonarr has no record of (often one too new
-// for their sources): retried like one nothing was found for.
-func (service *Service) unknown(entry *Entry, why string) {
+// failed counts a try that found nothing (or a title Radarr or Sonarr has
+// no record of, often one too new for their sources): it's tried again
+// after retryDelay, unless the lifecycle takes it out first.
+func (service *Service) failed(entry *Entry, why string) {
+	entry.State = Waiting
 	entry.Tries++
 	entry.NextTry = service.now().Add(retryDelay(entry.Tries))
-	entry.Result = fmt.Sprintf("%s; try %d, tried again later", why, entry.Tries)
+	entry.Result = fmt.Sprintf("%s (try %d)", why, entry.Tries)
 }
 
 func (service *Service) later(entry *Entry, why string) {
 	entry.NextTry, entry.Result = service.now().Add(laterOnError), why
-}
-
-func (service *Service) notReleased(entry *Entry, at time.Time) {
-	entry.State, entry.NextTry = NotReleased, at
-	entry.Result = "Not out yet; tried once it is, " + at.Format("2006-01-02")
 }
 
 // diskStop says why nothing may be added to the root folder's disk now, or

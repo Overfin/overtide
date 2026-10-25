@@ -9,11 +9,11 @@ import (
 )
 
 // Adding sends the lookup back with the folder and profile, tagged,
-// monitored, and without searching; taking out keeps files and adds no
-// exclusion; a grab is seen in the history.
+// unmonitored, and without searching; tagging everything is one call; a
+// grab is seen in the history.
 func TestAddingCalls(t *testing.T) {
 	var added map[string]any
-	deleted := ""
+	var editor map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v3/movie/lookup/tmdb":
@@ -21,8 +21,10 @@ func TestAddingCalls(t *testing.T) {
 		case r.URL.Path == "/api/v3/movie" && r.Method == http.MethodPost:
 			_ = json.NewDecoder(r.Body).Decode(&added)
 			_, _ = w.Write([]byte(`{"id":42}`))
-		case r.URL.Path == "/api/v3/movie/42" && r.Method == http.MethodDelete:
-			deleted = r.URL.RawQuery
+		case r.URL.Path == "/api/v3/movie" && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`[{"id":1},{"id":42}]`))
+		case r.URL.Path == "/api/v3/movie/editor" && r.Method == http.MethodPut:
+			_ = json.NewDecoder(r.Body).Decode(&editor)
 		case r.URL.Path == "/api/v3/queue/details":
 			_, _ = w.Write([]byte(`[]`))
 		case r.URL.Path == "/api/v3/history/movie":
@@ -38,12 +40,12 @@ func TestAddingCalls(t *testing.T) {
 	if err != nil || lookup.DigitalRelease == nil || lookup.Title != "Film" {
 		t.Fatalf("lookup: %#v %v", lookup, err)
 	}
-	id, err := client.AddMovie(lookup, "/data/Films", 7, "released", 3)
+	id, err := client.AddMovie(lookup, "/data/Films", 7, 3)
 	if err != nil || id != 42 {
 		t.Fatalf("add: %d %v", id, err)
 	}
 	options, _ := added["addOptions"].(map[string]any)
-	if added["rootFolderPath"] != "/data/Films" || added["qualityProfileId"] != float64(7) || added["monitored"] != true || options["searchForMovie"] != false || added["title"] != "Film" {
+	if added["rootFolderPath"] != "/data/Films" || added["qualityProfileId"] != float64(7) || added["monitored"] != false || options["searchForMovie"] != false || added["title"] != "Film" {
 		t.Fatalf("added with %#v", added)
 	}
 	if tags, _ := added["tags"].([]any); len(tags) != 1 || tags[0] != float64(3) {
@@ -57,8 +59,8 @@ func TestAddingCalls(t *testing.T) {
 	if grabbed, _ := client.GrabbedSince(42, after); grabbed {
 		t.Fatal("an older grab counted")
 	}
-	if err := client.DeleteMovie(42); err != nil || deleted != "deleteFiles=false&addImportExclusion=false" {
-		t.Fatalf("delete: %q %v", deleted, err)
+	if n, err := client.TagAll(3); err != nil || n != 2 || editor["applyTags"] != "add" || len(editor["movieIds"].([]any)) != 2 {
+		t.Fatalf("tag all: %d %v %#v", n, err, editor)
 	}
 }
 

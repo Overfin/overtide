@@ -108,10 +108,10 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddSeries adds the series, every season monitored, in season folders,
-// tagged, to the root folder with the quality profile, without searching:
-// the search is asked for apart, to follow it. It returns the series' ID
-// in Sonarr.
+// AddSeries adds the series, tagged, in season folders, to the root
+// folder with the quality profile, with no season monitored: Sonarr grabs
+// nothing for it until seasons are (SetSeasonsMonitored). It returns the
+// series' ID in Sonarr.
 func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityProfileID int, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
@@ -123,11 +123,82 @@ func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityP
 	body["seasonFolder"] = true
 	body["seriesType"] = "standard"
 	body["tags"] = []int{tagID}
-	body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
+	body["addOptions"] = map[string]any{"monitor": "none", "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
 	var added struct {
 		ID int `json:"id"`
 	}
 	return added.ID, client.send(http.MethodPost, "/api/v3/series", body, &added)
+}
+
+// SetSeasonsMonitored monitors some of a series' seasons, or stops (Sonarr
+// carries a season's change to its episodes); the series itself stays
+// monitored, so its monitored seasons get new episodes and upgrades.
+// Unmonitored, Sonarr grabs nothing for a season, but still imports a
+// download already started.
+func (client *Client) SetSeasonsMonitored(seriesID int, seasons []int, monitored bool) error {
+	var series map[string]any
+	if err := client.send(http.MethodGet, fmt.Sprintf("/api/v3/series/%d", seriesID), nil, &series); err != nil {
+		return err
+	}
+	wanted := map[int]bool{}
+	for _, n := range seasons {
+		wanted[n] = true
+	}
+	list, _ := series["seasons"].([]any)
+	for _, raw := range list {
+		season, _ := raw.(map[string]any)
+		if number, ok := season["seasonNumber"].(float64); ok && wanted[int(number)] {
+			season["monitored"] = monitored
+		}
+	}
+	series["monitored"] = true
+	return client.send(http.MethodPut, fmt.Sprintf("/api/v3/series/%d", seriesID), series, nil)
+}
+
+// SeasonsHaveFiles reports whether each of the seasons has at least one
+// episode file. A series no longer in Sonarr gives an error IsNotFound
+// recognizes.
+func (client *Client) SeasonsHaveFiles(seriesID int, seasons []int) (bool, error) {
+	var series struct {
+		Seasons []struct {
+			SeasonNumber int `json:"seasonNumber"`
+			Statistics   struct {
+				EpisodeFileCount int `json:"episodeFileCount"`
+			} `json:"statistics"`
+		} `json:"seasons"`
+	}
+	if err := client.send(http.MethodGet, fmt.Sprintf("/api/v3/series/%d", seriesID), nil, &series); err != nil {
+		return false, err
+	}
+	files := map[int]int{}
+	for _, season := range series.Seasons {
+		files[season.SeasonNumber] = season.Statistics.EpisodeFileCount
+	}
+	for _, n := range seasons {
+		if files[n] == 0 {
+			return false, nil
+		}
+	}
+	return len(seasons) > 0, nil
+}
+
+// TagAll adds the tag to every series in Sonarr, and returns how many
+// there are.
+func (client *Client) TagAll(tagID int) (int, error) {
+	var all []struct {
+		ID int `json:"id"`
+	}
+	if err := client.send(http.MethodGet, "/api/v3/series", nil, &all); err != nil {
+		return 0, err
+	}
+	if len(all) == 0 {
+		return 0, nil
+	}
+	ids := make([]int, len(all))
+	for i, s := range all {
+		ids[i] = s.ID
+	}
+	return len(ids), client.send(http.MethodPut, "/api/v3/series/editor", map[string]any{"seriesIds": ids, "tags": []int{tagID}, "applyTags": "add"}, nil)
 }
 
 // TagSeries adds a tag to a series already in Sonarr.
@@ -146,13 +217,13 @@ func (client *Client) TagSeries(seriesID, tagID int) error {
 	return client.send(http.MethodPut, fmt.Sprintf("/api/v3/series/%d", seriesID), series, nil)
 }
 
-// SearchSeries asks Sonarr to search for a series' monitored episodes, and
-// returns the command's ID to follow it.
-func (client *Client) SearchSeries(seriesID int) (int, error) {
+// SearchSeason asks Sonarr to search for a season's monitored episodes,
+// and returns the command's ID to follow it.
+func (client *Client) SearchSeason(seriesID, season int) (int, error) {
 	var command struct {
 		ID int `json:"id"`
 	}
-	body := map[string]any{"name": "SeriesSearch", "seriesId": seriesID}
+	body := map[string]any{"name": "SeasonSearch", "seriesId": seriesID, "seasonNumber": season}
 	return command.ID, client.send(http.MethodPost, "/api/v3/command", body, &command)
 }
 
@@ -189,23 +260,6 @@ func (client *Client) GrabbedSince(seriesID int, since time.Time) (bool, error) 
 		}
 	}
 	return false, nil
-}
-
-// SeriesHasFiles reports whether the series has at least one episode file.
-// A series no longer in Sonarr gives an error IsNotFound recognizes.
-func (client *Client) SeriesHasFiles(seriesID int) (bool, error) {
-	var series struct {
-		Statistics struct {
-			EpisodeFileCount int `json:"episodeFileCount"`
-		} `json:"statistics"`
-	}
-	return series.Statistics.EpisodeFileCount > 0, client.send(http.MethodGet, fmt.Sprintf("/api/v3/series/%d", seriesID), nil, &series)
-}
-
-// DeleteSeries takes a series out of Sonarr, leaving any file in place and
-// adding no exclusion: it's for a series with no file, to be tried again.
-func (client *Client) DeleteSeries(seriesID int) error {
-	return client.send(http.MethodDelete, fmt.Sprintf("/api/v3/series/%d?deleteFiles=false&addImportListExclusion=false", seriesID), nil, nil)
 }
 
 // Destination is where a title Overtide adds goes: Sonarr's root folder

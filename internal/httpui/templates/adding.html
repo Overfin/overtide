@@ -18,16 +18,17 @@
             <option value="dry_run" {{if eq .Mode "dry_run"}}selected{{end}}>Dry run</option>
             <option value="on" {{if eq .Mode "on"}}selected{{end}}>On</option>
           </select>
-          <span class="muted">Dry run only reads: nothing is added or searched for.</span>
+          <span class="muted">Dry run only reads: nothing is added or searched for. On, Overtide first tags every title Radarr and Sonarr have with "overtide" and manages them all.</span>
         </label>
         <div class="actions"><button type="submit">Save</button></div>
       </form>
       <details class="adding-how">
         <summary>How adding works</summary>
         <p>Every hour, Overtide asks Overfin what to add: the titles your libraries lack, in the order Overfin gives them (its most valuable, with trending and popular titles mixed in by the discovery share set in Overfin). Requests go before them.</p>
-        <p>Every 15 minutes it tries the titles whose turn it is, one search at a time: it adds the title to Radarr or Sonarr (their root folder and quality profile), tagged "overtide", searches for it, and keeps it only if a download started. Otherwise it takes it out again and tries later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release.</p>
+        <p>Every 15 minutes it tries the titles whose turn it is, one search at a time. A title goes in Radarr or Sonarr once (their root folder and quality profile), unmonitored and tagged "overtide", and is never deleted from them. A try monitors it (for a series, the seasons Overfin suggests) and searches for it; if nothing started, it's unmonitored again and tried later: after 1 day, then 2, 4, 8, 16, then every 30. Two days before its release, a title is monitored without a search, so Radarr's or Sonarr's RSS catches the release. Once imported, a title stays monitored, for upgrades.</p>
+        <p>At most 200 suggestions wait. One leaves after 5 tries that found nothing, or 60 days in the list. A title that left the libraries, or the list unfinished, isn't taken again for 6 months.</p>
         <p>A disk's usage target is what Overtide steers toward: it adds first, and removal brings the disk back under the target. Only the critical threshold stops adding, until removal catches up.</p>
-        <p>Overtide manages only the titles tagged "overtide": what you add yourself is never touched. Import lists are yours: Overtide doesn't read them.</p>
+        <p>What you add yourself afterwards isn't managed until it has to be removed to make room. Import lists are yours: Overtide doesn't read them.</p>
       </details>
     </section>
     {{if .Total}}

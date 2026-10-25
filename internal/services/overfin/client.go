@@ -185,6 +185,8 @@ type Missing struct {
 	Name string
 	TMDB int
 	TVDB int // series; 0 when Overfin doesn't know it
+	// Seasons are the series' seasons Overfin suggests, in its order.
+	Seasons []int
 	// Score is the film's, or the series' best season's.
 	Score float64
 }
@@ -223,11 +225,16 @@ func (client *Client) Suggestions(max int) ([]Missing, error) {
 					out = append(out, Missing{Kind: model.Movie, Name: t.Name, TMDB: tmdb, Score: score})
 				}
 			case t.Kind == "season":
+				season := 0
+				if t.Season != nil {
+					season = *t.Season
+				}
 				if i, ok := series[tmdb]; ok {
 					out[i].Score = math.Max(out[i].Score, score)
+					out[i].Seasons = append(out[i].Seasons, season)
 				} else if len(out) < max {
 					series[tmdb] = len(out)
-					out = append(out, Missing{Kind: model.Series, Name: t.Name, TMDB: tmdb, TVDB: tvdb, Score: score})
+					out = append(out, Missing{Kind: model.Series, Name: t.Name, TMDB: tmdb, TVDB: tvdb, Seasons: []int{season}, Score: score})
 				}
 			}
 		}

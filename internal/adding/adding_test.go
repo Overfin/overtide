@@ -2,7 +2,6 @@ package adding
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -101,35 +100,5 @@ func TestSearchAndCheck(t *testing.T) {
 	failed := func(int) (string, error) { return "failed", nil }
 	if _, err := searchAndCheck(context.Background(), func() (int, error) { return 7, nil }, failed, func() (bool, error) { return true, nil }); err == nil {
 		t.Fatal("a failed search went through")
-	}
-}
-
-func TestSettle(t *testing.T) {
-	service := &Service{now: func() time.Time { return *day("2026-10-25") }}
-	removed := 0
-	remove := func() error { removed++; return nil }
-
-	entry := Entry{ArrID: 4}
-	service.settle(&entry, true, nil, remove)
-	if entry.State != Downloading || removed != 0 {
-		t.Fatalf("grabbed: %#v, removed %d", entry, removed)
-	}
-
-	entry = Entry{ArrID: 4, Tries: 1}
-	service.settle(&entry, false, nil, remove)
-	if entry.State != Waiting || entry.ArrID != 0 || entry.Tries != 2 || removed != 1 || !entry.NextTry.Equal(day("2026-10-25").Add(2*24*time.Hour)) {
-		t.Fatalf("nothing found: %#v, removed %d", entry, removed)
-	}
-
-	entry = Entry{ArrID: 4}
-	service.settle(&entry, false, errors.New("the search failed"), remove)
-	if entry.ArrID != 0 || entry.Tries != 0 || removed != 2 {
-		t.Fatalf("search error: %#v", entry)
-	}
-
-	entry = Entry{ArrID: 4}
-	service.settle(&entry, false, nil, func() error { return errors.New("down") })
-	if entry.ArrID != 4 {
-		t.Fatalf("a title that couldn't be taken out lost its ID: %#v", entry)
 	}
 }

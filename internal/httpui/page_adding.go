@@ -91,7 +91,7 @@ var addingGroups = []struct {
 }{
 	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", "Since", true},
 	{adding.Waiting, "Waiting", "In the order they're tried: requests, then Overfin's suggestions, in Overfin's order.", "Next try", true},
-	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", "Out", false},
+	{adding.NotReleased, "Not out yet", "Monitored two days before their release, so Radarr's or Sonarr's RSS catches it.", "Next step", false},
 	{adding.Imported, "Imported", "Overtide's, with their files.", "Since", false},
 }
 
