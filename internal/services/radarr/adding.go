@@ -149,9 +149,9 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddMovie adds the film, monitored and tagged, to the list's root folder
-// with its quality profile, without searching: the search is asked for
-// apart, to follow it. It returns the film's ID in Radarr.
+// AddMovie adds the film, monitored and tagged, to the root folder with
+// the quality profile, without searching: the search is asked for apart,
+// to follow it. It returns the film's ID in Radarr.
 func (client *Client) AddMovie(lookup MovieLookup, rootFolder string, qualityProfileID int, minimumAvailability string, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
@@ -242,4 +242,24 @@ func (client *Client) MovieHasFile(movieID int) (bool, error) {
 // adding no exclusion: it's for a film with no file, to be tried again.
 func (client *Client) DeleteMovie(movieID int) error {
 	return client.send(http.MethodDelete, fmt.Sprintf("/api/v3/movie/%d?deleteFiles=false&addImportExclusion=false", movieID), nil, nil)
+}
+
+// Destination is where a title Overtide adds goes: Radarr's root folder
+// and quality profile. With several of either, which one isn't Overtide's
+// guess, so it's an error.
+func (client *Client) Destination() (string, int, error) {
+	var folders []RootFolder
+	if err := client.send(http.MethodGet, "/api/v3/rootfolder", nil, &folders); err != nil {
+		return "", 0, err
+	}
+	var profiles []struct {
+		ID int `json:"id"`
+	}
+	if err := client.send(http.MethodGet, "/api/v3/qualityprofile", nil, &profiles); err != nil {
+		return "", 0, err
+	}
+	if len(folders) != 1 || len(profiles) != 1 {
+		return "", 0, fmt.Errorf("found %d root folders and %d quality profiles in Radarr; Overtide adds only with one of each", len(folders), len(profiles))
+	}
+	return folders[0].Path, profiles[0].ID, nil
 }

@@ -57,23 +57,14 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		service.notReleased(entry, at)
 		return
 	}
-	lists, err := client.ImportLists()
-	if err != nil {
-		service.later(entry, "Couldn't read the import lists: "+err.Error())
-		return
-	}
-	var list radarr.ImportList
-	for _, candidate := range lists {
-		if candidate.ID == entry.ListID {
-			list = candidate
-		}
-	}
+	var rootFolder string
+	var profileID int
 	if entry.ArrID == 0 {
-		if list.ID == 0 {
-			service.later(entry, "Its import list is gone")
+		if rootFolder, profileID, err = client.Destination(); err != nil {
+			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -92,7 +83,8 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddMovie(lookup, list.RootFolderPath, list.QualityProfileID, list.MinimumAvailability, tagID)
+		// Released: tries wait for the release already (movieReleased).
+		id, err := client.AddMovie(lookup, rootFolder, profileID, "released", tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
@@ -131,23 +123,14 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		service.notReleased(entry, at)
 		return
 	}
-	lists, err := client.ImportLists()
-	if err != nil {
-		service.later(entry, "Couldn't read the import lists: "+err.Error())
-		return
-	}
-	var list sonarr.ImportList
-	for _, candidate := range lists {
-		if candidate.ID == entry.ListID {
-			list = candidate
-		}
-	}
+	var rootFolder string
+	var profileID int
 	if entry.ArrID == 0 {
-		if list.ID == 0 {
-			service.later(entry, "Its import list is gone")
+		if rootFolder, profileID, err = client.Destination(); err != nil {
+			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -166,7 +149,7 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddSeries(lookup, list, tagID)
+		id, err := client.AddSeries(lookup, rootFolder, profileID, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return

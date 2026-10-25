@@ -214,29 +214,22 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddSeries adds the series, tagged, with the list's root folder, quality
-// profile and monitoring, without searching: the search is asked for
-// apart, to follow it. It returns the series' ID in Sonarr.
-func (client *Client) AddSeries(lookup SeriesLookup, list ImportList, tagID int) (int, error) {
+// AddSeries adds the series, every season monitored, in season folders,
+// tagged, to the root folder with the quality profile, without searching:
+// the search is asked for apart, to follow it. It returns the series' ID
+// in Sonarr.
+func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityProfileID int, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
 		body[key] = value
 	}
-	monitor := list.ShouldMonitor
-	if monitor == "" {
-		monitor = "all"
-	}
-	seriesType := list.SeriesType
-	if seriesType == "" {
-		seriesType = "standard"
-	}
-	body["rootFolderPath"] = list.RootFolderPath
-	body["qualityProfileId"] = list.QualityProfileID
+	body["rootFolderPath"] = rootFolder
+	body["qualityProfileId"] = qualityProfileID
 	body["monitored"] = true
-	body["seasonFolder"] = list.SeasonFolder
-	body["seriesType"] = seriesType
+	body["seasonFolder"] = true
+	body["seriesType"] = "standard"
 	body["tags"] = []int{tagID}
-	body["addOptions"] = map[string]any{"monitor": monitor, "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
+	body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
 	var added struct {
 		ID int `json:"id"`
 	}
@@ -319,4 +312,24 @@ func (client *Client) SeriesHasFiles(seriesID int) (bool, error) {
 // adding no exclusion: it's for a series with no file, to be tried again.
 func (client *Client) DeleteSeries(seriesID int) error {
 	return client.send(http.MethodDelete, fmt.Sprintf("/api/v3/series/%d?deleteFiles=false&addImportListExclusion=false", seriesID), nil, nil)
+}
+
+// Destination is where a title Overtide adds goes: Sonarr's root folder
+// and quality profile. With several of either, which one isn't Overtide's
+// guess, so it's an error.
+func (client *Client) Destination() (string, int, error) {
+	var folders []RootFolder
+	if err := client.send(http.MethodGet, "/api/v3/rootfolder", nil, &folders); err != nil {
+		return "", 0, err
+	}
+	var profiles []struct {
+		ID int `json:"id"`
+	}
+	if err := client.send(http.MethodGet, "/api/v3/qualityprofile", nil, &profiles); err != nil {
+		return "", 0, err
+	}
+	if len(folders) != 1 || len(profiles) != 1 {
+		return "", 0, fmt.Errorf("found %d root folders and %d quality profiles in Sonarr; Overtide adds only with one of each", len(folders), len(profiles))
+	}
+	return folders[0].Path, profiles[0].ID, nil
 }

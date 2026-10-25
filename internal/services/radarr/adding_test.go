@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Adding sends the lookup back with the list's folder and profile, tagged,
+// Adding sends the lookup back with the folder and profile, tagged,
 // monitored, and without searching; taking out keeps files and adds no
 // exclusion; a grab is seen in the history.
 func TestAddingCalls(t *testing.T) {
@@ -59,5 +59,30 @@ func TestAddingCalls(t *testing.T) {
 	}
 	if err := client.DeleteMovie(42); err != nil || deleted != "deleteFiles=false&addImportExclusion=false" {
 		t.Fatalf("delete: %q %v", deleted, err)
+	}
+}
+
+// A title goes to Radarr's root folder with its quality profile; with
+// several of either, Overtide doesn't pick one.
+func TestDestination(t *testing.T) {
+	folders := `[{"path":"/data/Films"}]`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/rootfolder":
+			_, _ = w.Write([]byte(folders))
+		case "/api/v3/qualityprofile":
+			_, _ = w.Write([]byte(`[{"id":7,"name":"Default"}]`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := New(server.URL, "key")
+	if root, profile, err := client.Destination(); err != nil || root != "/data/Films" || profile != 7 {
+		t.Fatalf("%q %d %v", root, profile, err)
+	}
+	folders = `[{"path":"/data/Films"},{"path":"/data/Other"}]`
+	if _, _, err := client.Destination(); err == nil {
+		t.Fatal("picked one of two root folders")
 	}
 }
