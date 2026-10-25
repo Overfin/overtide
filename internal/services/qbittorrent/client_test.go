@@ -334,3 +334,22 @@ func TestAddTagPostsHashAndTag(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestInventoryReadsPrivateFlag: qBittorrent's torrent list says whether a
+// torrent comes from a private tracker as "private".
+func TestInventoryReadsPrivateFlag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]any{
+			map[string]any{"hash": "aaa", "name": "Private", "private": true},
+			map[string]any{"hash": "bbb", "name": "Public", "private": false},
+		})
+	}))
+	defer srv.Close()
+	torrents, err := New("qBittorrent", srv.URL, "", "", "token").Inventory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !torrents["aaa"].Private || torrents["bbb"].Private {
+		t.Fatalf("private flags: %#v / %#v", torrents["aaa"].Private, torrents["bbb"].Private)
+	}
+}
