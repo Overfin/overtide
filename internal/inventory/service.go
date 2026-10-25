@@ -410,8 +410,6 @@ func (service *Service) TorrentDetail(hash, svcID string) (model.Torrent, error)
 	}
 	// Preserve Overtide-owned interpretations and expensive reconciliation facts.
 	live.ServiceID = indexed.ServiceID
-	live.TorrentValue = indexed.TorrentValue
-	live.TorrentValueReasons = indexed.TorrentValueReasons
 	live.AssociationStatus = indexed.AssociationStatus
 	live.AssociationReason = indexed.AssociationReason
 	live.MediaItems = indexed.MediaItems
@@ -426,6 +424,14 @@ func (service *Service) TorrentDetail(hash, svcID string) (model.Torrent, error)
 	live.InspectedFiles = indexed.InspectedFiles
 	live.SharedFiles = indexed.SharedFiles
 	live.StorageError = indexed.StorageError
+	live.FilesMissing = indexed.FilesMissing
+	live.SharesFilesWith = indexed.SharesFilesWith
+	live.GroupReclaimableKnown = indexed.GroupReclaimableKnown
+	live.GroupReclaimableBytes = indexed.GroupReclaimableBytes
+	live.Protected = indexed.Protected
+	live.ProtectionReason = indexed.ProtectionReason
+	live.Obligation = indexed.Obligation
+	live.RemovalRestricted = indexed.RemovalRestricted
 	return live, nil
 }
 

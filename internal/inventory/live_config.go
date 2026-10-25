@@ -330,10 +330,9 @@ func mediaName(m model.Media) string {
 // changed what's kept or a protection setting: it takes effect at once,
 // not at the next inventory refresh.
 func (service *Service) revalue() {
-	history := service.recentTorrentHistory()
 	service.mu.Lock()
 	items, torrents := cloneMedia(service.items), cloneTorrents(service.torrents)
-	valuation.ApplyTorrentValue(torrents, service.cfg, history)
+	valuation.ApplyTorrentProtections(torrents, service.cfg, time.Now())
 	projectTorrentRelations(items, torrents)
 	valuation.ApplyMedia(items, service.cfg)
 	service.items, service.torrents = items, torrents

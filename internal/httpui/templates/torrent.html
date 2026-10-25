@@ -23,16 +23,17 @@
         <span class=status>{{.Torrent.AssociationStatus}}</span> · {{.Torrent.Client}} · {{.Torrent.State}} · {{pct .Torrent.Progress}}
       </p>
       <div class=card>
-        <strong>Torrent Value · {{printf "%.1f" .Torrent.TorrentValue}}</strong>{{if .Torrent.TorrentValueReasons}}
+        <strong>Removal</strong>
         <div class=kv style="margin-top:10px">
-          {{range .Torrent.TorrentValueReasons}}
-          <div>{{.Label}}</div>
-          <div>{{.Value}} · {{printf "%+.1f" .Points}}</div>
-          {{end}}
+          <div>Protected</div>
+          <div>{{if .Torrent.Protected}}{{.Torrent.ProtectionReason}}{{if .Torrent.Obligation}} <span class=muted>· holds its title back too</span>{{end}}{{else}}no{{end}}</div>
+          {{if .Torrent.SharesFilesWith}}<div>Cross-seeds</div>
+          <div>{{len .Torrent.SharesFilesWith}} torrent{{if ne (len .Torrent.SharesFilesWith) 1}}s{{end}} with the same files{{if .Torrent.GroupReclaimableKnown}} · removing them together frees {{human .Torrent.GroupReclaimableBytes}}{{end}}</div>{{end}}
+          {{if .Torrent.FilesMissing}}<div>Files</div>
+          <div class=warn>gone from disk; it takes no space</div>{{end}}
+          <div>Last activity</div>
+          <div>{{unixTime .Torrent.LastActivity}}</div>
         </div>
-        {{else}}
-        <p class=muted>No current swarm-value signals.</p>
-        {{end}}
       </div>
       {{if or .Torrent.ReclaimableKnown .Torrent.StorageError}}
       <div class=card>

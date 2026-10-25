@@ -2,7 +2,7 @@
 
 **The storage side of [Overfin](https://github.com/Overfin/server): it keeps your disks under their limit by removing what your people value least.**
 
-Overfin knows which titles people watch, ask for and like. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and each torrent's history. When a disk goes over its limit, Overtide removes the titles Overfin values least, with every torrent that shares their files, and it works through Radarr, Sonarr and qBittorrent, never behind their backs.
+Overfin knows which titles people watch, ask for and like. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. When a disk goes over its limit, Overtide removes the titles Overfin values least, with every torrent that shares their files, and it works through Radarr, Sonarr and qBittorrent, never behind their backs.
 
 Overtide doesn't replace Radarr, Sonarr or your torrent client. They keep doing their jobs; Overtide decides what to ask of them.
 
@@ -27,7 +27,7 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 
 - **Values come from Overfin, unchanged.** A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. Overtide adds nothing and changes nothing. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
 - **It knows what a removal really frees.** It reads your file system and proves which files are hardlinks of which: a title in your library, the torrent it came from, its cross-seeds. Removing a title alone, while a torrent still holds the same file, frees nothing, so Overtide never proposes it that way.
-- **Bundles, removed together.** A title goes with every torrent that shares its files, cross-seeds included. Torrents that back nothing in the library (superseded, orphaned, unassociated) go first; cross-seeds of one another are removed together, since each alone frees nothing.
+- **Bundles, removed together.** A title goes with every torrent that shares its files, cross-seeds included. Torrents that back nothing in the library (superseded, orphaned, unassociated) go first, the one inactive the longest first; cross-seeds of one another are removed together, since each alone frees nothing. A torrent added less than seven days ago is never removed on its own.
 - **Each disk has its own limit.** Overtide finds your disks from the folders your services report, and keeps each under its own target (90% by default). Space used by things outside its view is set aside, not counted against it.
 - **You keep what you want.** **Keep** on a title's page or in the cleanup plan puts it on the Kept list, on the Storage page; nothing kept is ever planned for removal until you take it off the list.
 - **Private trackers.** An optional setting keeps private torrents, and the titles they share files with, until they've seeded a number of days. Off by default.
@@ -65,9 +65,9 @@ Every torrent Overtide knows is in one of four states:
 - **Orphaned**: it was imported for a title Radarr or Sonarr no longer has.
 - **Unassociated**: nothing links it to the library. That isn't proof it's safe to remove; Overtide just has no basis to tie it to anything.
 
-### Torrent Value
+### Torrents and titles
 
-A score for each torrent from its own history: ratio, recent activity, what it uploaded over the last days and how steadily, seeding time, private trackers. It only orders torrents that back nothing in the library, among themselves: a torrent never adds to a title's value or takes from it.
+A torrent has no value of its own: it never adds to a title's value or takes from it. A torrent goes with the title whose files it shares, and holds that title back only when something requires its files to stay: you kept it, its private tracker's seeding time isn't reached yet, or its ratio is under the minimum you set. Everything about a torrent comes from what qBittorrent reports: when it was added and last active, its seeding time, its ratio, whether its tracker is private.
 
 ## Paths
 
@@ -75,7 +75,7 @@ Overtide finds files where Radarr, Sonarr and qBittorrent say they are, so **eve
 
 ## Coming from Stewarr
 
-Overtide reads the same config folder layout as [Stewarr](https://github.com/C0PT3R/stewarr), so a *copy* of Stewarr's `/config` brings its settings and torrent history along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on the Kept list after the first inventory, and the tags aren't read after that. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`, and keep it in dry run: two tools removing from the same disks would remove more than either alone.
+Overtide reads the same config folder layout as [Stewarr](https://github.com/C0PT3R/stewarr), so a *copy* of Stewarr's `/config` brings its settings along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on the Kept list after the first inventory, and the tags aren't read after that. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`, and keep it in dry run: two tools removing from the same disks would remove more than either alone.
 
 ## Development
 

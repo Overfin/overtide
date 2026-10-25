@@ -75,8 +75,9 @@ func Open(path string) (*Store, error) {
 		`CREATE INDEX IF NOT EXISTS idx_cleanup_actions_run ON cleanup_actions(run_id);`,
 		`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);`,
-		`CREATE TABLE IF NOT EXISTS torrent_history (client TEXT NOT NULL, hash TEXT NOT NULL, sampled_at TEXT NOT NULL, ratio REAL NOT NULL, seeds_swarm INTEGER NOT NULL, leechers_swarm INTEGER NOT NULL, uploaded_bytes INTEGER NOT NULL, downloaded_bytes INTEGER NOT NULL, state TEXT NOT NULL, last_activity INTEGER NOT NULL);`,
-		`CREATE INDEX IF NOT EXISTS idx_torrent_history_hash_time ON torrent_history(client,hash,sampled_at);`,
+		// Torrents' history, sampled every 30 minutes while Overtide scored
+		// torrents on it: nothing reads it any more.
+		`DROP TABLE IF EXISTS torrent_history;`,
 		// IMDb's ratings dataset, from before Overtide stopped valuing titles
 		// itself: over a million rows nothing reads any more.
 		`DROP TABLE IF EXISTS imdb_ratings;`,

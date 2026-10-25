@@ -3,28 +3,15 @@ package valuation
 import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/store"
 	"testing"
 	"time"
 )
 
-// sufficientTorrentHistory gives every "client|hash" key in keys a single
-// sample old enough to satisfy torrentHistorySufficient's elapsed-time
-// path, so tests unrelated to that gate aren't tripped by it.
 func testConfig() config.Config {
 	var c config.Config
 	c.Overfin.URL = "http://overfin.example.org"
 	c.Kept = []config.KeptItem{{Key: config.KeptMediaKey("movie", "", 4)}, {Key: config.KeptTorrentKey("kept")}}
 	return c
-}
-
-func sufficientTorrentHistory(keys ...string) map[string][]store.TorrentHistorySample {
-	sample := store.TorrentHistorySample{SampledAt: time.Now().Add(-TorrentContributionWindow - time.Hour)}
-	history := make(map[string][]store.TorrentHistorySample, len(keys))
-	for _, key := range keys {
-		history[key] = []store.TorrentHistorySample{sample}
-	}
-	return history
 }
 
 func TestApplyMediaSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
@@ -54,14 +41,14 @@ func TestApplyMediaSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValueSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
+func TestTorrentProtectionSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
 	c := testConfig()
 	c.Services = []config.Service{{ID: "qbittorrent-in", AllowAutomaticRemoval: true}}
 	torrents := []model.Torrent{
 		{Hash: "in", ServiceID: "qbittorrent-in"},
 		{Hash: "out", ServiceID: "does-not-exist"},
 	}
-	ApplyTorrentValue(torrents, c, nil)
+	protect(torrents, c)
 	if torrents[0].RemovalRestricted {
 		t.Fatalf("expected an opted-in service's torrent to not be removal-restricted: %#v", torrents[0])
 	}
@@ -88,11 +75,11 @@ func TestApplyMediaSeasonsInheritSeriesWideProtection(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValueProtectsBelowMinimumRatio(t *testing.T) {
+func TestTorrentProtectionProtectsBelowMinimumRatio(t *testing.T) {
 	c := testConfig()
 	c.Protection.MinTorrentRatio = 1.0
 	items := []model.Torrent{{Name: "low", Ratio: 0.5}, {Name: "high", Ratio: 2.0}}
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|"))
+	protect(items, c)
 	if !items[0].Protected || items[0].ProtectionReason != "Below minimum ratio" {
 		t.Fatalf("expected below-ratio torrent to be protected: %#v", items[0])
 	}
@@ -101,10 +88,10 @@ func TestApplyTorrentValueProtectsBelowMinimumRatio(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValueKeptTorrentHasAnObligation(t *testing.T) {
+func TestTorrentProtectionKeptTorrentHasAnObligation(t *testing.T) {
 	c := testConfig()
 	items := []model.Torrent{{Name: "kept", Hash: "KEPT", Ratio: 5}, {Name: "other", Hash: "other", Ratio: 5}}
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|KEPT", "|other"))
+	protect(items, c)
 	if !items[0].Protected || items[0].Obligation != "Kept" {
 		t.Fatalf("expected the kept torrent to be protected with an obligation: %#v", items[0])
 	}
@@ -113,7 +100,7 @@ func TestApplyTorrentValueKeptTorrentHasAnObligation(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValuePrivateSeedingDays(t *testing.T) {
+func TestTorrentProtectionPrivateSeedingDays(t *testing.T) {
 	c := testConfig()
 	c.Protection.PrivateMinSeedingDays = 10
 	items := []model.Torrent{
@@ -121,41 +108,31 @@ func TestApplyTorrentValuePrivateSeedingDays(t *testing.T) {
 		{Name: "old private", Hash: "b", Private: true, SeedingTime: 30 * 86400},
 		{Name: "young public", Hash: "c", SeedingTime: 3 * 86400},
 	}
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|a", "|b", "|c"))
+	protect(items, c)
 	if items[0].Obligation == "" || items[1].Obligation != "" || items[2].Obligation != "" {
 		t.Fatalf("only the young private torrent has to keep seeding: %q %q %q", items[0].Obligation, items[1].Obligation, items[2].Obligation)
 	}
 	c.Protection.PrivateMinSeedingDays = 0
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|a", "|b", "|c"))
+	protect(items, c)
 	if items[0].Obligation != "" {
 		t.Fatalf("0 days is off: %q", items[0].Obligation)
 	}
 }
 
-// A torrent too new to judge is protected, without an obligation.
-func TestApplyTorrentValueInsufficientHistoryIsNoObligation(t *testing.T) {
-	c := testConfig()
-	items := []model.Torrent{{Name: "new", Hash: "n"}}
-	ApplyTorrentValue(items, c, nil)
-	if !items[0].Protected || items[0].Obligation != "" {
-		t.Fatalf("expected protected without obligation: %#v", items[0])
-	}
-}
-
-func TestApplyTorrentValueMinRatioZeroProtectsNothing(t *testing.T) {
+func TestTorrentProtectionMinRatioZeroProtectsNothing(t *testing.T) {
 	c := testConfig()
 	items := []model.Torrent{{Name: "zero-ratio", Ratio: 0}}
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|"))
+	protect(items, c)
 	if items[0].Protected {
 		t.Fatalf("MinTorrentRatio of zero (unset) must never protect anything: %#v", items[0])
 	}
 }
 
-func TestApplyTorrentValueBothRatioAndKeepCanProtectTheSameTorrent(t *testing.T) {
+func TestTorrentProtectionBothRatioAndKeepCanProtectTheSameTorrent(t *testing.T) {
 	c := testConfig()
 	c.Protection.MinTorrentRatio = 1.0
 	items := []model.Torrent{{Name: "both", Hash: "kept", Ratio: 0.1}}
-	ApplyTorrentValue(items, c, nil)
+	protect(items, c)
 	if !items[0].Protected {
 		t.Fatalf("expected torrent satisfying both protection rules to be protected: %#v", items[0])
 	}
@@ -233,5 +210,39 @@ func TestSizeBreaksEqualValueTie(t *testing.T) {
 	ApplyMedia(items, c)
 	if items[0].Title != "Large" {
 		t.Fatalf("larger equal-value media should fall first: %#v", items)
+	}
+}
+
+// protect applies the torrent protections to torrents dated 30 days back
+// unless a test gave them a date, so the "too new" rule only shows where a
+// test is about it.
+func protect(torrents []model.Torrent, c config.Config) {
+	now := time.Now()
+	for i := range torrents {
+		if torrents[i].AddedOn == 0 {
+			torrents[i].AddedOn = now.Add(-30 * 24 * time.Hour).Unix()
+		}
+	}
+	ApplyTorrentProtections(torrents, c, now)
+}
+
+// A torrent added less than NewTorrentDays ago is kept, without an
+// obligation (it doesn't hold its title back); one with no date is kept too.
+func TestNewTorrentIsProtectedWithoutObligation(t *testing.T) {
+	now := time.Now()
+	items := []model.Torrent{
+		{Hash: "new", AddedOn: now.Add(-2 * 24 * time.Hour).Unix()},
+		{Hash: "old", AddedOn: now.Add(-8 * 24 * time.Hour).Unix()},
+		{Hash: "undated"},
+	}
+	ApplyTorrentProtections(items, testConfig(), now)
+	if !items[0].Protected || items[0].Obligation != "" {
+		t.Fatalf("new: %#v", items[0])
+	}
+	if items[1].Protected {
+		t.Fatalf("old: %#v", items[1])
+	}
+	if !items[2].Protected || items[2].ProtectionReason != "Date added unknown" {
+		t.Fatalf("undated: %#v", items[2])
 	}
 }

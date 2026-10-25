@@ -46,10 +46,13 @@ type Action struct {
 	// Torrents has length 1 for StandaloneTorrent, one or more for
 	// HardlinkedBundle, and is nil for StandaloneMedia/StandaloneSeason.
 	Torrents []model.Torrent `json:"torrents,omitempty"`
-	// Value is what orders actions of the same kind: a title's (or
-	// season's) Overfin score, or a lone torrent's Torrent Value. Lone
-	// torrents always come before titles, whatever their values.
-	Value            float64        `json:"value"`
+	// Value is a title's (or season's) Overfin score, which orders titles.
+	Value float64 `json:"value"`
+	// LastActivity is when a lone torrent (or the most recently active of
+	// a cross-seed group) last sent or received data, which orders lone
+	// torrents: the one inactive the longest goes first. Lone torrents
+	// always come before titles.
+	LastActivity     int64          `json:"lastActivity,omitempty"`
 	ReclaimableBytes int64          `json:"reclaimableBytes"`
 	Reasons          []model.Reason `json:"reasons,omitempty"`
 }
@@ -211,7 +214,7 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		if !t.ReclaimableKnown || t.ReclaimableBytes <= 0 {
 			continue
 		}
-		torrentTier = append(torrentTier, Action{Kind: StandaloneTorrent, Torrents: []model.Torrent{t}, Value: t.TorrentValue, ReclaimableBytes: t.ReclaimableBytes, Reasons: t.TorrentValueReasons})
+		torrentTier = append(torrentTier, Action{Kind: StandaloneTorrent, Torrents: []model.Torrent{t}, LastActivity: t.LastActivity, ReclaimableBytes: t.ReclaimableBytes})
 	}
 
 	return mediaTier, torrentTier
@@ -232,18 +235,18 @@ func shareGroup(t model.Torrent, byHash map[string]model.Torrent) []model.Torren
 	return group
 }
 
-// groupAction makes one lone-torrent action of a cross-seed group: worth
-// its best torrent's value, freeing what the group frees together. None of
-// them may be protected or held back, and none may back a title.
+// groupAction makes one lone-torrent action of a cross-seed group: as
+// recently active as its most recently active torrent, freeing what the
+// group frees together. None of them may be protected or held back, and
+// none may back a title.
 func groupAction(group []model.Torrent) (Action, bool) {
 	action := Action{Kind: StandaloneTorrent, Torrents: group, ReclaimableBytes: group[0].GroupReclaimableBytes}
-	for i, t := range group {
+	for _, t := range group {
 		if t.Protected || t.RemovalRestricted || model.NormalizeTorrentStatus(t.AssociationStatus) == model.TorrentCurrent || !t.GroupReclaimableKnown {
 			return Action{}, false
 		}
-		if i == 0 || t.TorrentValue > action.Value {
-			action.Value = t.TorrentValue
-			action.Reasons = t.TorrentValueReasons
+		if t.LastActivity > action.LastActivity {
+			action.LastActivity = t.LastActivity
 		}
 	}
 	if action.ReclaimableBytes <= 0 {
@@ -271,12 +274,18 @@ func filterExcluded(tier []Action, excluded map[string]bool) []Action {
 	return out
 }
 
-// order puts lone torrents first, lowest Torrent Value first, since they
-// back nothing in the library, then titles and seasons, lowest Overfin
-// score first, the larger first on a tie. Returns a new slice.
+// order puts lone torrents first, since they back nothing in the library:
+// the one inactive the longest first, the larger first on a tie. Then
+// titles and seasons, lowest Overfin score first, the larger first on a
+// tie. Returns a new slice.
 func order(mediaTier, torrentTier []Action) []Action {
 	torrents := append([]Action(nil), torrentTier...)
-	sort.SliceStable(torrents, func(i, j int) bool { return torrents[i].Value < torrents[j].Value })
+	sort.SliceStable(torrents, func(i, j int) bool {
+		if torrents[i].LastActivity != torrents[j].LastActivity {
+			return torrents[i].LastActivity < torrents[j].LastActivity
+		}
+		return torrents[i].ReclaimableBytes > torrents[j].ReclaimableBytes
+	})
 	media := append([]Action(nil), mediaTier...)
 	sort.SliceStable(media, func(i, j int) bool {
 		if media[i].Value != media[j].Value {

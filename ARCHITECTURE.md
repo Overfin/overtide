@@ -26,7 +26,7 @@ Core principles:
 Overfin's values are about titles and never about files or sizes: a title
 is valued the same way whether it's on the server or not. Overfin gives
 values and counts per title, never who wanted or watched what. Size, physical
-identity, torrent value and resource limits are Overtide's alone. The
+identity, torrents and resource limits are Overtide's alone. The
 current state, and the steps from it, are in [`ROADMAP.md`](ROADMAP.md),
 "Toward Overfin". Overtide no longer reads Jellyfin, Seerr, TMDB or IMDb:
 a title's value is Overfin's score, unchanged.
@@ -54,10 +54,7 @@ A Library-media retention score: Overfin's score, unchanged. Higher means a stro
 Protection is an eligibility fact, not a very large Retention Value. What the operator kept (the Kept list), and titles Overfin didn't score, are absolute protection states and are excluded from automatic candidates regardless of storage pressure.
 
 ### Torrent
-A download/share representation managed by a torrent client. Torrent Value is conceptually separate from media Retention Value.
-
-### Torrent Value
-An independent, explainable retention score derived from a torrent's own history — ratio, realized contribution over time, consistency, seeding time, and private-tracker status. Entirely client-agnostic: every signal is derivable from any torrent-client adapter, not just qBittorrent. It is not inherited from media Retention Value and does not include storage cost.
+A download/share representation managed by a torrent client. Torrents have no value of their own: a lone torrent (one backing nothing in the library) is ordered by how long it has been inactive, from the client's own last-activity time, and a torrent added less than seven days ago isn't removed alone.
 
 ### Provenance
 Historical relationships between downloads/torrents and managed media. Preserve history even after a release is replaced or its media disappears; former association is historical context, not a current torrent state.
@@ -150,7 +147,6 @@ Current tasks:
 
 - Base inventory — Radarr/Sonarr/qBittorrent plus incremental provenance, frequent.
 - Overfin scores — each title's value, every 30 minutes and removal-isolated.
-- Torrent history sampling — torrent health over time, every 30 minutes.
 - File reconciliation — service/file-identity reconciliation, sparse (currently 12h).
 
 Future tasks may include full reconciliation, storage capability scans, statistics maintenance and service-specific reconciliation. Schedules should eventually be configurable through the GUI.
@@ -224,7 +220,7 @@ Possible reclamation sources include:
 - lower-cost media representations/quality changes (future);
 - low-Retention-Value Library media.
 
-Torrent Value and Retention Value are never compared. Lone torrents (superseded, orphaned, unassociated, or proven independent copies) back nothing in the library, so they come first, lowest Torrent Value first; then titles and seasons, lowest Overfin score first, each with its hardlinked torrents. A hardlinked torrent doesn't change its title's value; it only holds the title back when it has an obligation: kept by the operator, a private tracker's seeding time (`private_min_seeding_days`, off by default), or the minimum ratio. Candidates are taken in that order until the device is back under its target.
+Lone torrents (superseded, orphaned, unassociated, or proven independent copies) back nothing in the library, so they come first: the one inactive the longest first, the larger first on a tie; cross-seeds of one another are one candidate, removed together. Then titles and seasons, lowest Overfin score first, each with its hardlinked torrents. A hardlinked torrent doesn't change its title's value; it only holds the title back when it has an obligation: kept by the operator, a private tracker's seeding time (`private_min_seeding_days`, off by default), or the minimum ratio. Candidates are taken in that order until the device is back under its target.
 
 The long-term optimization question is:
 

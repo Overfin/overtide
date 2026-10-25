@@ -275,8 +275,9 @@ func (service *Service) syncTorrents(ctx context.Context) (map[string]model.Torr
 // qbittorrentSyncFields counts the changes to the torrent fields Overtide
 // reads from qBittorrent's sync: raising it makes the next sync a full one,
 // so a newly read field arrives for every torrent. 2: the private flag;
-// 3: the private flag and seeding time, now kept in the database.
-const qbittorrentSyncFields = 3
+// 3: the private flag and seeding time, now kept in the database; 4: the
+// date added, kept too.
+const qbittorrentSyncFields = 4
 
 func (service *Service) Refresh(ctx context.Context) error {
 	defer service.publishChange()
@@ -635,7 +636,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	attachSeasons(all, mediaFileRefs, files)
 	applySeasonFileEstimates(all, files, mediaFileRefs)
 	applySeasonBundleEstimates(all, torrentList, files, mediaFileRefs, torrentFileRefs)
-	valuation.ApplyTorrentValue(torrentList, service.cfg, service.recentTorrentHistory())
+	valuation.ApplyTorrentProtections(torrentList, service.cfg, time.Now())
 	service.setStageTiming("relationships", relationshipsStarted)
 
 	sort.SliceStable(torrentList, func(i, j int) bool {
@@ -659,7 +660,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	applySeasonFileEstimates(all, service.files, service.mediaFileRefs)
 	applySeasonBundleEstimates(all, torrentList, service.files, service.mediaFileRefs, service.torrentFileRefs)
 	projectTorrentRelations(all, torrentList)
-	valuation.ApplyTorrentValue(torrentList, service.cfg, service.recentTorrentHistory())
+	valuation.ApplyTorrentProtections(torrentList, service.cfg, time.Now())
 	valuation.ApplyMedia(all, service.cfg)
 	// setStageTiming locks service.mu itself, and it is already held here.
 	service.stageTimings["relationships merge"] = time.Since(relationshipsMergeStarted)

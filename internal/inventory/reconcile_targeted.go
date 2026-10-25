@@ -281,7 +281,7 @@ func (service *Service) reconcileTargeted(ctx context.Context) error {
 	attachSeasons(mc, mediaRefs, files)
 	applySeasonFileEstimates(mc, files, mediaRefs)
 	projectTorrentRelations(mc, tc)
-	valuation.ApplyTorrentValue(tc, cfg, service.recentTorrentHistory())
+	valuation.ApplyTorrentProtections(tc, cfg, time.Now())
 	valuation.ApplyMedia(mc, cfg)
 
 	stageStarted = time.Now()

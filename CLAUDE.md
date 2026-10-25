@@ -38,7 +38,7 @@ part of the Overfin project: it works the way Overfin's server does.
 - `internal/httpui`: the web UI, server-rendered (templates, htmx, Stimulus)
 - `internal/inventory`: what the services report, reconciled
 - `internal/valuation`: Retention Value (Overfin's scores, unchanged) and
-  Torrent Value
+  torrent protections
 - `internal/services/*`: one client per service (Radarr, Sonarr,
   qBittorrent, Overfin…)
 - `internal/store`: SQLite

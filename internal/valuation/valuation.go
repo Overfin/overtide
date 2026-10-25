@@ -3,22 +3,10 @@ package valuation
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 )
-
-func daysSince(timestamp time.Time) float64 { return time.Since(timestamp).Hours() / 24 }
-func clamp(value, minimum, maximum float64) float64 {
-	if value < minimum {
-		return minimum
-	}
-	if value > maximum {
-		return maximum
-	}
-	return value
-}
 
 // serviceAllowsRemoval reports whether serviceID's own service has checked
 // "Allow automatic removal" — an unknown or empty serviceID fails closed,

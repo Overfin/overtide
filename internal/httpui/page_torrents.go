@@ -47,7 +47,7 @@ type torrentData struct {
 
 func validTorrentSort(v string) bool {
 	switch v {
-	case "status", "value", "name", "media", "state", "size", "reclaimable", "ratio", "seeds", "leechers", "activity":
+	case "status", "name", "media", "state", "size", "reclaimable", "ratio", "seeds", "leechers", "activity":
 		return true
 	}
 	return false
@@ -62,12 +62,6 @@ func sortTorrents(items []model.Torrent, key, order string) {
 		a, b := items[i], items[j]
 		cmp := 0
 		switch key {
-		case "value":
-			if a.TorrentValue < b.TorrentValue {
-				cmp = -1
-			} else if a.TorrentValue > b.TorrentValue {
-				cmp = 1
-			}
 		case "status":
 			cmp = strings.Compare(normalizeTorrentStatus(a.AssociationStatus), normalizeTorrentStatus(b.AssociationStatus))
 		case "name":
@@ -278,7 +272,7 @@ func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
 		return "/torrents?" + q.Encode()
 	}
 	sortURLs := map[string]string{}
-	for _, k := range []string{"status", "value", "name", "media", "state", "size", "reclaimable", "ratio", "seeds", "leechers", "activity"} {
+	for _, k := range []string{"status", "name", "media", "state", "size", "reclaimable", "ratio", "seeds", "leechers", "activity"} {
 		no := "asc"
 		if k == "size" || k == "reclaimable" || k == "ratio" || k == "seeds" || k == "leechers" || k == "activity" {
 			no = "desc"

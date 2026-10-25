@@ -8,6 +8,7 @@ Overtide starts from Stewarr 0.5.0, with its full history, as the storage side o
 
 ### 0.7.0 (not released yet)
 
+- **No Torrent Value, no torrent history.** Torrents that back nothing in the library go first, the one inactive the longest first (qBittorrent's last activity), the larger first on a tie; a torrent added less than seven days ago isn't removed alone. The history sampled every 30 minutes, its table (millions of rows) and the Torrent Value column and breakdown are gone.
 - **Cross-seeds.** Torrents with the same files on disk are grouped. A cross-seed of a torrent that backs a title joins that title's bundle; lone torrents sharing files (a superseded torrent and its cross-seed, say) are one candidate, removed together, freeing what they free together, where each alone frees nothing. The Torrents page shows a group's figure and counts it once in the totals.
 - **Torrents whose files are gone.** A torrent still listed by qBittorrent after its files left the disk is marked "files missing", counts no space, and is listed on the Torrents page with a button to remove them all from qBittorrent (dry run applies).
 - **The removal planner, simplified.** Torrents with no title behind them go first, lowest Torrent Value first; then titles, lowest Overfin score first, each with its hardlinked torrents. A torrent no longer adds to its title's value, and only an obligation holds a title back (kept, a private tracker's seeding time, the minimum ratio), not a torrent merely too new to judge. "Torrent care" and the share per service are gone.

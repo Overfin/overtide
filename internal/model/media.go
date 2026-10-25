@@ -69,11 +69,9 @@ type MediaRef struct {
 }
 
 type Torrent struct {
-	ServiceID           string   `json:"serviceId,omitempty"`
-	TorrentValue        float64  `json:"torrentValue"`
-	TorrentValueReasons []Reason `json:"torrentValueReasons,omitempty"`
-	Protected           bool     `json:"protected,omitempty"`
-	ProtectionReason    string   `json:"protectionReason,omitempty"`
+	ServiceID        string `json:"serviceId,omitempty"`
+	Protected        bool   `json:"protected,omitempty"`
+	ProtectionReason string `json:"protectionReason,omitempty"`
 	// Obligation, when set, says why this torrent's files must stay: kept
 	// by the operator, a private tracker's seeding time, the minimum ratio.
 	// Unlike a torrent merely protected for being too new to judge, an
