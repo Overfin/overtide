@@ -3,7 +3,6 @@ package httpui
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/config"
@@ -14,10 +13,8 @@ const addingTaskID = "adding"
 type addingGroup struct {
 	Label string
 	Hint  string
-	Adopt bool
-	// Open groups show unfolded; Count groups show their count alone.
+	// Open groups show unfolded.
 	Open    bool
-	Count   bool
 	Entries []adding.Entry
 }
 
@@ -25,6 +22,9 @@ type addingPageData struct {
 	Mode   string
 	Groups []addingGroup
 	Total  int
+	// WithoutFiles counts what Radarr and Sonarr have without files that
+	// isn't Overtide's: what "Hand them all over" takes.
+	WithoutFiles int
 	// SelfAdding names the import lists that still add titles on their
 	// own: with adding on, they can bring back what Overtide took out.
 	SelfAdding []string
@@ -34,22 +34,20 @@ type addingPageData struct {
 // addingGroups is the page's order: what's moving first, then what waits,
 // then what's already there.
 var addingGroups = []struct {
-	State       adding.State
-	Label       string
-	Hint        string
-	Open, Count bool
+	State adding.State
+	Label string
+	Hint  string
+	Open  bool
 }{
-	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", true, false},
-	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's picks, then lists. A try adds the title, searches for it, and takes it out again if nothing started.", true, false},
-	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", false, false},
-	{adding.WantedElsewhere, "In Radarr or Sonarr, without files", "Added by hand or by a list on its own: not Overtide's. Hand them over and Overtide tries them like its own (and takes each out if nothing is found).", false, false},
-	{adding.Imported, "Imported", "Overtide's, with their files.", false, false},
-	{adding.InLibrary, "Already in the library", "Your lists' titles already in Radarr or Sonarr with their files, not Overtide's: nothing to do.", false, true},
+	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", true},
+	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's picks, then the rest. A try adds the title, searches for it, and takes it out again if nothing started.", true},
+	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", false},
+	{adding.Imported, "Imported", "Overtide's, with their files.", false},
 }
 
 func (server *Server) addingData() addingPageData {
 	cfg := server.inv.Config()
-	data := addingPageData{Mode: cfg.Adding.Mode}
+	data := addingPageData{Mode: cfg.Adding.Mode, WithoutFiles: server.adder.WithoutFiles()}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
 	}
@@ -59,7 +57,7 @@ func (server *Server) addingData() addingPageData {
 	}
 	data.Total = len(entries)
 	for _, group := range addingGroups {
-		view := addingGroup{Label: group.Label, Hint: group.Hint, Adopt: group.State == adding.WantedElsewhere, Open: group.Open, Count: group.Count}
+		view := addingGroup{Label: group.Label, Hint: group.Hint, Open: group.Open}
 		for _, entry := range entries {
 			if entry.State == group.State {
 				view.Entries = append(view.Entries, entry)
@@ -108,7 +106,7 @@ func (server *Server) addingPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addingPost handles the page's three forms: the mode, handing a title
+// addingPost handles the page's three forms: the mode, handing titles
 // over, and running a pass now.
 func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	if server.adder == nil {
@@ -127,8 +125,8 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/adding/mode":
 		err = server.inv.SetAddingMode(r.FormValue("mode"))
-	case "/adding/adopt":
-		err = server.adder.Adopt(strings.TrimSpace(r.FormValue("key")))
+	case "/adding/hand-over":
+		_, err = server.adder.HandOver()
 	case "/adding/run":
 		if server.tasks == nil {
 			http.Error(w, "task manager unavailable", http.StatusServiceUnavailable)

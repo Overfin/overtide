@@ -43,6 +43,9 @@ const (
 	FromRequest Source = "request"
 	FromOverfin Source = "overfin"
 	FromList    Source = "list"
+	// HandedOver: in Radarr or Sonarr without files, handed over by the
+	// operator (HandOver).
+	HandedOver Source = "handed over"
 )
 
 func (source Source) rank() int {
@@ -67,12 +70,6 @@ const (
 	Downloading State = "downloading"
 	// Imported: the title has its files.
 	Imported State = "imported"
-	// InLibrary: in Radarr or Sonarr with files, not Overtide's.
-	InLibrary State = "in library"
-	// WantedElsewhere: in Radarr or Sonarr without files, not Overtide's
-	// (added by hand, or by a list on its own). The operator can hand it
-	// over (Adopt).
-	WantedElsewhere State = "wanted elsewhere"
 )
 
 // Entry is one title of the waiting list.
@@ -128,36 +125,67 @@ func (service *Service) Entries() ([]Entry, error) {
 	return entries, nil
 }
 
-// Adopt hands a title that's in Radarr or Sonarr without files over to
-// Overtide: from its next try, it's handled as one Overtide added. With
-// key "", every such title is handed over.
-func (service *Service) Adopt(key string) error {
+// HandOver hands every title Radarr and Sonarr have without files, and
+// that isn't Overtide's, over to Overtide: from its next try, each is
+// handled as one Overtide added. It returns how many it handed over.
+func (service *Service) HandOver() (int, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	entries, err := service.load()
 	if err != nil {
-		return err
+		return 0, err
 	}
+	known := map[string]bool{}
+	for _, entry := range entries {
+		known[entry.ServiceID+"|"+entry.Key] = true
+	}
+	now := service.now()
 	handed := 0
-	for i := range entries {
-		entry := &entries[i]
-		if key != "" && entry.Key != key {
+	for _, m := range service.withoutFiles() {
+		key := titleKey(m)
+		if known[m.ServiceID+"|"+key] {
 			continue
 		}
-		if entry.State != WantedElsewhere {
-			if key != "" {
-				return fmt.Errorf("%s isn't waiting in Radarr or Sonarr without files", entry.Title)
-			}
-			continue
+		external := m.TMDBID
+		if m.Type == model.Series {
+			external = m.TVDBID
 		}
-		entry.Ours, entry.State, entry.NextTry = true, Waiting, service.now()
-		entry.Result, entry.UpdatedAt = "Handed over to Overtide", service.now()
+		entries = append(entries, Entry{Key: key, Kind: m.Type, ServiceID: m.ServiceID, ExternalID: external, Title: m.Title, Year: m.Year, Source: HandedOver, From: "Handed over", State: Waiting, Ours: true, ArrID: m.SourceID, NextTry: now, Result: "Handed over to Overtide", UpdatedAt: now})
 		handed++
 	}
 	if handed == 0 {
-		return fmt.Errorf("no title to hand over")
+		return 0, fmt.Errorf("no title to hand over")
 	}
-	return service.save(entries)
+	return handed, service.save(entries)
+}
+
+// WithoutFiles counts the titles Radarr and Sonarr have without files that
+// aren't Overtide's: what HandOver would take.
+func (service *Service) WithoutFiles() int {
+	return len(service.withoutFiles())
+}
+
+func (service *Service) withoutFiles() []model.Media {
+	items, _, _ := service.inv.Snapshot()
+	var out []model.Media
+	for _, m := range items {
+		if m.SizeBytes == 0 && !hasTag(m.Tags, Tag) && titleKey(m) != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// titleKey is a Radarr film's or Sonarr series' key in the waiting list,
+// or "" without the ID it needs.
+func titleKey(m model.Media) string {
+	switch {
+	case m.Type == model.Movie && m.TMDBID > 0:
+		return movieKey(m.TMDBID)
+	case m.Type == model.Series && m.TVDBID > 0:
+		return seriesKey(m.TVDBID)
+	}
+	return ""
 }
 
 // Run is the adding task: it reads the import lists, follows what's
@@ -178,7 +206,7 @@ func (service *Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	service.match(entries)
+	entries = service.match(entries)
 	service.follow(ctx, entries)
 	sortForTries(entries)
 	stopAt := service.now().Add(RunFor)
@@ -215,40 +243,38 @@ func sortForTries(entries []Entry) {
 	})
 }
 
-// match sets, from the inventory, the state of the titles already in
-// Radarr or Sonarr that aren't Overtide's: in the library with files, or
-// wanted elsewhere without. One carrying Overtide's tag becomes Overtide's,
-// followed from then on (follow). Overtide's own titles aren't matched
-// here: the inventory may not have caught up with a title just added.
-func (service *Service) match(entries []Entry) {
+// match drops from the waiting list the titles already in Radarr or
+// Sonarr that aren't Overtide's: the lists are only a source of titles to
+// add. One there carrying Overtide's tag is Overtide's, followed from then
+// on (follow). Overtide's own titles aren't matched here: the inventory may
+// not have caught up with a title just added.
+func (service *Service) match(entries []Entry) []Entry {
 	items, _, _ := service.inv.Snapshot()
 	present := map[string]model.Media{}
 	for _, m := range items {
-		switch {
-		case m.Type == model.Movie && m.TMDBID > 0:
-			present[m.ServiceID+"|"+movieKey(m.TMDBID)] = m
-		case m.Type == model.Series && m.TVDBID > 0:
-			present[m.ServiceID+"|"+seriesKey(m.TVDBID)] = m
+		if key := titleKey(m); key != "" {
+			present[m.ServiceID+"|"+key] = m
 		}
 	}
-	now := service.now()
-	for i := range entries {
-		entry := &entries[i]
-		if entry.Ours {
-			continue
-		}
+	kept := entries[:0]
+	for _, entry := range entries {
 		m, there := present[entry.ServiceID+"|"+entry.Key]
 		switch {
-		case there && hasTag(m.Tags, Tag):
+		case entry.Ours:
+		case !there:
+			// A state the waiting list no longer has (saved by an older
+			// version) waits for a try like any new title.
+			if entry.State != Waiting && entry.State != NotReleased {
+				entry.State, entry.NextTry = Waiting, service.now()
+			}
+		case hasTag(m.Tags, Tag):
 			entry.Ours, entry.ArrID, entry.State = true, m.SourceID, Downloading
-		case there && m.SizeBytes > 0:
-			entry.State, entry.ArrID = InLibrary, m.SourceID
-		case there:
-			entry.State, entry.ArrID = WantedElsewhere, m.SourceID
-		case entry.State == InLibrary || entry.State == WantedElsewhere:
-			entry.State, entry.ArrID, entry.NextTry = Waiting, 0, now
+		default:
+			continue
 		}
+		kept = append(kept, entry)
 	}
+	return kept
 }
 
 // follow asks Radarr and Sonarr about Overtide's titles that are

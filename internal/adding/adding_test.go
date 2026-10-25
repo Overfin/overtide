@@ -9,6 +9,7 @@ import (
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/store"
 
 	"github.com/overfin/overtide/internal/services/radarr"
@@ -139,29 +140,38 @@ func TestSettle(t *testing.T) {
 	}
 }
 
-// Handing everything over takes only the titles without files that aren't
-// Overtide's.
-func TestAdoptAll(t *testing.T) {
+// Handing everything over takes what Radarr and Sonarr have without files
+// and that isn't Overtide's, once.
+func TestHandOver(t *testing.T) {
 	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	service := New(inventory.New(config.Config{}, database))
-	if err := service.save([]Entry{{Key: "movie:1", State: WantedElsewhere}, {Key: "movie:2", State: InLibrary}, {Key: "movie:3", State: WantedElsewhere}}); err != nil {
+	media := []model.Media{
+		{Type: model.Movie, SourceID: 1, ServiceID: "r", TMDBID: 11, Title: "Empty"},
+		{Type: model.Movie, SourceID: 2, ServiceID: "r", TMDBID: 12, Title: "Full", SizeBytes: 5},
+		{Type: model.Movie, SourceID: 3, ServiceID: "r", TMDBID: 13, Title: "Ours", Tags: []string{"overtide"}},
+		{Type: model.Series, SourceID: 4, ServiceID: "s", TVDBID: 14, Title: "Empty show"},
+	}
+	if err := database.PublishInventory(1, nil, nil, media); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Adopt(""); err != nil {
-		t.Fatal(err)
+	service := New(inventory.New(config.Config{}, database))
+	if got := service.WithoutFiles(); got != 2 {
+		t.Fatalf("without files: %d", got)
+	}
+	handed, err := service.HandOver()
+	if err != nil || handed != 2 {
+		t.Fatalf("handed %d, %v", handed, err)
 	}
 	entries, _ := service.Entries()
 	for _, entry := range entries {
-		handed := entry.Ours && entry.State == Waiting
-		if handed != (entry.Key != "movie:2") {
-			t.Errorf("%s: %#v", entry.Key, entry)
+		if !entry.Ours || entry.State != Waiting || entry.ArrID == 0 || entry.Source != HandedOver {
+			t.Errorf("%#v", entry)
 		}
 	}
-	if err := service.Adopt(""); err == nil {
-		t.Error("nothing left to hand over, yet no error")
+	if _, err := service.HandOver(); err == nil {
+		t.Error("handed the same titles twice")
 	}
 }
