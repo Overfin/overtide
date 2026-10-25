@@ -430,48 +430,35 @@ type File struct {
 	Progress float64 `json:"progress"`
 }
 
-// TorrentFileRoot returns the base directory a torrent's file names (as
-// reported by /torrents/files) should be joined against. ContentPath is
-// preferred over SavePath since it reflects where the content actually
-// currently lives — the incomplete-downloads temp path while a torrent is
-// still downloading (when that's configured separately from SavePath),
-// SavePath itself once complete — while SavePath alone is always the
-// torrent's final destination regardless of its current state. Using
-// SavePath unconditionally meant a still-downloading torrent's real files,
-// sitting under the temp path, never matched the reconstructed path —
-// silently misclassifying live, in-progress download data as Unmanaged
-// (and, worse, letting VerifyUnmanaged's ownership check miss it too).
+// TorrentFileRoot returns the folder a torrent's file names (from
+// /torrents/files) are relative to. It comes from ContentPath, which is
+// where the content is now (the incomplete-downloads folder while
+// downloading, if there is one), not SavePath, where it ends up.
+// qBittorrent's ContentPath is:
+//   - one file: the file itself, so the root is what's left once its name
+//     is cut off the end;
+//   - several files in a subfolder: that subfolder, whose name starts every
+//     file name, so the root is its parent;
+//   - several files without a subfolder: the root itself.
 //
-// ContentPath is not reliably "the containing folder", though: for a
-// torrent with a single file wrapped in an auto-created root folder,
-// qBittorrent reports ContentPath as the path to that one file, not the
-// folder — so naively taking filepath.Dir(ContentPath) lands one level too
-// deep (inside the root folder), and since /torrents/files still reports
-// that file's Name relative to the true root (root-folder-prefixed), a
-// blind Dir()+Join() doubles the root folder segment and never matches the
-// real path on disk. When one of the torrent's own reported file names is
-// a suffix of ContentPath, stripping that suffix off recovers the true
-// root directly and sidesteps the ambiguity; otherwise (typically
-// multi-file torrents, where ContentPath is genuinely the shared folder)
-// Dir(ContentPath) remains correct. Falls back to SavePath when
-// ContentPath hasn't been populated yet (e.g. stale/partial torrent
-// metadata).
+// Without a ContentPath yet, SavePath.
 func TorrentFileRoot(t model.Torrent, files []File) string {
 	cp := strings.TrimSpace(t.ContentPath)
 	if cp == "" {
 		return strings.TrimSpace(t.SavePath)
 	}
 	cp = filepath.Clean(cp)
-	for _, f := range files {
-		name := filepath.FromSlash(strings.TrimSpace(f.Name))
-		if name == "" {
-			continue
+	if len(files) == 1 {
+		name := filepath.FromSlash(strings.TrimSpace(files[0].Name))
+		if root := strings.TrimSuffix(cp, string(filepath.Separator)+name); root != cp && root != "" {
+			return root
 		}
-		if root := strings.TrimSuffix(cp, name); root != cp {
-			root = strings.TrimRight(root, string(filepath.Separator))
-			if root != "" {
-				return root
-			}
+		return filepath.Dir(cp)
+	}
+	subfolder := filepath.Base(cp) + string(filepath.Separator)
+	for _, f := range files {
+		if !strings.HasPrefix(filepath.FromSlash(strings.TrimSpace(f.Name)), subfolder) {
+			return cp
 		}
 	}
 	return filepath.Dir(cp)

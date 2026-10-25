@@ -63,6 +63,12 @@ func TestTorrentFileRoot(t *testing.T) {
 	if got := TorrentFileRoot(singleFileNoFolder, singleFileNoFolderFiles); got != "/data/complete" {
 		t.Fatalf("expected SavePath-equivalent for a single file with no root folder, got %q", got)
 	}
+	// Several files without a subfolder: ContentPath is the root itself.
+	noSubfolder := model.Torrent{SavePath: "/data/complete", ContentPath: "/data/complete"}
+	noSubfolderFiles := []File{{Name: "file1.mkv"}, {Name: "Extras/file2.mkv"}}
+	if got := TorrentFileRoot(noSubfolder, noSubfolderFiles); got != "/data/complete" {
+		t.Fatalf("expected ContentPath itself for files without a subfolder, got %q", got)
+	}
 	// No ContentPath at all (stale/partial metadata) falls back to SavePath.
 	noContentPath := model.Torrent{SavePath: "/data/complete"}
 	if got := TorrentFileRoot(noContentPath, nil); got != "/data/complete" {
