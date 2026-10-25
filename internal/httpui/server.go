@@ -201,7 +201,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 			return nil, err
 		}
 		if server.adder != nil {
-			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding", Description: "Read the import lists and try the titles whose turn it is (see the Adding page).", Interval: time.Hour, Runner: server.adder.Run}); err != nil {
+			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding", Description: "Read the import lists and try the titles whose turn it is (see the Adding page).", Interval: adding.RunEvery, Runner: server.adder.Run}); err != nil {
 				return nil, err
 			}
 		}

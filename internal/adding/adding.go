@@ -25,9 +25,13 @@ import (
 // Tag marks, in Radarr and Sonarr, the titles Overtide manages.
 const Tag = "overtide"
 
-// TriesPerRun is how many titles one run tries at most: each try is a
-// search on the indexers.
-const TriesPerRun = 5
+// RunEvery is how often the adding task runs, and RunFor how long one run
+// goes on trying titles, one search at a time: under RunEvery, so runs
+// never overlap. What's left is tried by the next run.
+const (
+	RunEvery = 15 * time.Minute
+	RunFor   = 14 * time.Minute
+)
 
 const storeKey = "adding.waiting"
 
@@ -177,16 +181,15 @@ func (service *Service) Run(ctx context.Context) error {
 	service.match(entries)
 	service.follow(ctx, entries)
 	sortForTries(entries)
-	tried := 0
+	stopAt := service.now().Add(RunFor)
 	for i := range entries {
-		if tried == TriesPerRun || ctx.Err() != nil {
+		if ctx.Err() != nil || service.now().After(stopAt) {
 			break
 		}
 		entry := &entries[i]
 		if (entry.State != Waiting && entry.State != NotReleased) || entry.NextTry.After(service.now()) {
 			continue
 		}
-		tried++
 		service.try(ctx, cfg, entry, mode == config.AddingDryRun)
 		entry.UpdatedAt = service.now()
 		// Saved after each try: a try changes Radarr or Sonarr, and what
