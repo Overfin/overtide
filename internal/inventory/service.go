@@ -619,6 +619,16 @@ func (service *Service) AddSeriesImportListExclusion(ctx context.Context, mediaI
 	return client.WithContext(ctx).AddImportListExclusion(mediaItem.Title, mediaItem.TVDBID)
 }
 
+// RadarrClient and SonarrClient give the client of one service, for adding
+// titles.
+func (service *Service) RadarrClient(svcID string) (*radarr.Client, error) {
+	return service.radarrClient(svcID)
+}
+
+func (service *Service) SonarrClient(svcID string) (*sonarr.Client, error) {
+	return service.sonarrClient(svcID)
+}
+
 func (service *Service) radarrClient(svcID string) (*radarr.Client, error) {
 	service.mu.RLock()
 	defer service.mu.RUnlock()

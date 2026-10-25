@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
@@ -43,6 +44,8 @@ type Server struct {
 	serviceProgressTpl *template.Template
 	libraryTpl         *template.Template
 	historyTpl         *template.Template
+	addingTpl          *template.Template
+	adder              *adding.Service
 	profileTpl         *template.Template
 	torrentTpl         *template.Template
 	torrentDetailTpl   *template.Template
@@ -141,6 +144,10 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
+	addingTemplate, err := parseUITemplate("adding.html", templateFunctions)
+	if err != nil {
+		return nil, err
+	}
 	profileTemplate, err := parseUITemplate("media.html", templateFunctions)
 	if err != nil {
 		return nil, err
@@ -185,10 +192,18 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
+	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, addingTpl: addingTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
+	if inventoryService != nil {
+		server.adder = adding.New(inventoryService)
+	}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
+		}
+		if server.adder != nil {
+			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding", Description: "Read the import lists and try the titles whose turn it is (see the Adding page).", Interval: time.Hour, Runner: server.adder.Run}); err != nil {
+				return nil, err
+			}
 		}
 		if err := taskManager.Register(tasks.Definition{ID: autoRemovalTaskID, Name: "Automatic removal", Description: "Evaluate cross-domain cleanup plans and submit removals for opted-in services.", Interval: autoRemovalEvalInterval, Runner: server.runAutoRemovalEvaluation}); err != nil {
 			return nil, err
@@ -240,6 +255,8 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("/torrents/", server.torrentDetail)
 	mux.HandleFunc("/unmanaged", server.unmanagedDownloads)
 	mux.HandleFunc("/history", server.history)
+	mux.HandleFunc("/adding", server.addingPage)
+	mux.HandleFunc("/adding/", server.addingPost)
 	mux.HandleFunc("/tasks", server.tasksPage)
 	mux.HandleFunc("/tasks/run", server.runTask)
 	mux.HandleFunc("/removal/media", server.removalMedia)

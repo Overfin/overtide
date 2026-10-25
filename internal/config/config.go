@@ -244,6 +244,7 @@ type Config struct {
 	// until taken off the list, on the Storage page.
 	Kept    []KeptItem    `json:"kept,omitempty"`
 	Removal RemovalConfig `json:"removal"`
+	Adding  AddingConfig  `json:"adding"`
 	// Auth holds the single admin account's credentials. An empty Username
 	// means no account has been created yet — the app's first-run setup
 	// screen is the only route reachable until SetCredentials is called.
@@ -252,6 +253,30 @@ type Config struct {
 	// setup, the same pattern used across the *arr ecosystem.
 	Auth            Auth          `json:"auth"`
 	RefreshInterval time.Duration `json:"-"`
+}
+
+// AddingConfig is how Overtide brings titles in.
+type AddingConfig struct {
+	// Mode is AddingOff (also what empty means), AddingDryRun or AddingOn.
+	Mode string `json:"mode"`
+}
+
+const (
+	AddingOff    = "off"
+	AddingDryRun = "dry_run"
+	AddingOn     = "on"
+)
+
+// SetAddingMode sets how titles are brought in.
+func SetAddingMode(configuration Config, mode string) (Config, error) {
+	switch mode {
+	case AddingOff, AddingDryRun, AddingOn:
+	default:
+		return configuration, fmt.Errorf("adding mode must be one of %q, %q, %q", AddingOff, AddingDryRun, AddingOn)
+	}
+	updated := configuration
+	updated.Adding.Mode = mode
+	return updated, nil
 }
 
 type Auth struct {

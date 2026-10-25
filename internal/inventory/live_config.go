@@ -258,7 +258,27 @@ func (service *Service) Unkeep(key string) error {
 	return service.changeKept(func(c config.Config) config.Config { return config.Unkeep(c, key) })
 }
 
+// SetAddingMode saves how titles are brought in (see config.AddingConfig).
+func (service *Service) SetAddingMode(mode string) error {
+	if _, err := config.SetAddingMode(config.Config{}, mode); err != nil {
+		return err
+	}
+	return service.changeConfig(func(c config.Config) config.Config {
+		updated, _ := config.SetAddingMode(c, mode)
+		return updated
+	})
+}
+
 func (service *Service) changeKept(change func(config.Config) config.Config) error {
+	if err := service.changeConfig(change); err != nil {
+		return err
+	}
+	service.revalue()
+	return nil
+}
+
+// changeConfig saves the configuration change makes, then uses it.
+func (service *Service) changeConfig(change func(config.Config) config.Config) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
 	if service.configPath == "" {
@@ -273,7 +293,6 @@ func (service *Service) changeKept(change func(config.Config) config.Config) err
 	service.mu.Lock()
 	service.cfg = updatedCfg
 	service.mu.Unlock()
-	service.revalue()
 	return nil
 }
 

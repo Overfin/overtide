@@ -26,7 +26,9 @@ This file separates implemented behavior from intended direction. It is not a pr
 - **Found:** the title is downloading, and Overtide follows it until it's imported, or stuck (a download that stalls). Adding a title to Radarr or Sonarr is not having it.
 - **Not found** (no release, none fitting the quality profile, not out yet): Overtide removes the title from Radarr or Sonarr right away (it has no files) and keeps it in its own waiting list with a retry date. Radarr and Sonarr only hold what's downloading; a release appearing between two tries is caught at the next one.
 - **Series:** once a series is in, Sonarr brings its new episodes as usual; Overtide steps in only when a whole season it waits for stays not found, with the same rule.
-- Later: download limits, and Overfin pausing requests when the waiting list grows too long.
+- **The waiting list's order:** people's requests first, then Overfin's own picks, then the rest (import lists).
+- Later: download limits, and Overfin pausing requests when the waiting list grows too long. Limits need Overtide to control everything it adds, but the operator stays free to add titles directly in Radarr or Sonarr: those aren't Overtide's, and don't count toward its limits.
+- **First version (built):** the Adding page and an hourly task, off by default, with a dry run. It reads Radarr's lists (through Radarr) and Sonarr's custom lists (from their address); tries up to 5 titles an hour; release check from Radarr's and Sonarr's lookups; added with the list's root folder and quality profile; nothing added to a disk over its target; retries after 1, 2, 4, 8, 16, then 30 days. Not yet: Overfin's picks and requests (Overfin values only titles it has activity for), switching lists off from Overtide, seasons searched apart.
 
 **Safety.** Dry run first and by default, for adding as for removing ("would add X, 12 GB; would remove Y and Z"); then the existing modes, confirm (proposals approved by hand) and automatic.
 
