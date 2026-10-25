@@ -97,19 +97,19 @@ func (server *Server) dashboardSnapshot() homeData {
 			d.Superseded++
 			if t.ReclaimableKnown {
 				d.ObsoleteKnown++
-				d.ObsoleteReclaimable += t.ReclaimableBytes
+				d.ObsoleteReclaimable += reclaimableOnce(t)
 			}
 		case model.TorrentOrphaned:
 			d.Orphaned++
 			if t.ReclaimableKnown {
 				d.ObsoleteKnown++
-				d.ObsoleteReclaimable += t.ReclaimableBytes
+				d.ObsoleteReclaimable += reclaimableOnce(t)
 			}
 		default:
 			d.Unassociated++
 			if t.ReclaimableKnown {
 				d.ObsoleteKnown++
-				d.ObsoleteReclaimable += t.ReclaimableBytes
+				d.ObsoleteReclaimable += reclaimableOnce(t)
 			}
 		}
 	}

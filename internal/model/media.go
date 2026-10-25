@@ -103,55 +103,66 @@ type Torrent struct {
 	// HardlinkedSeasons is the season number(s) of the media in
 	// HardlinkedMediaItems that this torrent's files are hardlinked to. Only
 	// meaningful when MediaHardlinked is true and the media is a Series.
-	HardlinkedSeasons []int   `json:"hardlinkedSeasons,omitempty"`
-	SupersededByHash  string  `json:"supersededByHash,omitempty"`
-	ReclaimableKnown  bool    `json:"reclaimableKnown,omitempty"`
-	ReclaimableBytes  int64   `json:"reclaimableBytes,omitempty"`
-	SharedBytes       int64   `json:"sharedBytes,omitempty"`
-	InspectedBytes    int64   `json:"inspectedBytes,omitempty"`
-	InspectedFiles    int     `json:"inspectedFiles,omitempty"`
-	SharedFiles       int     `json:"sharedFiles,omitempty"`
-	StorageError      string  `json:"storageError,omitempty"`
-	Client            string  `json:"client"`
-	Hash              string  `json:"hash"`
-	Name              string  `json:"name"`
-	State             string  `json:"state"`
-	Category          string  `json:"category"`
-	Tags              string  `json:"tags"`
-	Tracker           string  `json:"tracker"`
-	SavePath          string  `json:"savePath"`
-	ContentPath       string  `json:"contentPath"`
-	SizeBytes         int64   `json:"sizeBytes"`
-	TotalSizeBytes    int64   `json:"totalSizeBytes"`
-	CompletedBytes    int64   `json:"completedBytes"`
-	AmountLeftBytes   int64   `json:"amountLeftBytes"`
-	DownloadedBytes   int64   `json:"downloadedBytes"`
-	UploadedBytes     int64   `json:"uploadedBytes"`
-	DownloadedSession int64   `json:"downloadedSessionBytes"`
-	UploadedSession   int64   `json:"uploadedSessionBytes"`
-	DownloadLimit     int64   `json:"downloadLimit"`
-	UploadLimit       int64   `json:"uploadLimit"`
-	Ratio             float64 `json:"ratio"`
-	MaxRatio          float64 `json:"maxRatio"`
-	Progress          float64 `json:"progress"`
-	Availability      float64 `json:"availability"`
-	SeedsConnected    int     `json:"seedsConnected"`
-	LeechersConnected int     `json:"leechersConnected"`
-	SeedsSwarm        int     `json:"seedsSwarm"`
-	LeechersSwarm     int     `json:"leechersSwarm"`
-	AddedOn           int64   `json:"addedOn"`
-	CompletionOn      int64   `json:"completionOn"`
-	LastActivity      int64   `json:"lastActivity"`
-	SeenComplete      int64   `json:"seenComplete"`
-	TimeActive        int64   `json:"timeActive"`
-	SeedingTime       int64   `json:"seedingTime"`
-	ETA               int64   `json:"eta"`
-	Reannounce        int64   `json:"reannounce"`
-	ForceStart        bool    `json:"forceStart"`
-	AutoTMM           bool    `json:"autoTmm"`
-	Sequential        bool    `json:"sequential"`
-	SuperSeeding      bool    `json:"superSeeding"`
-	Private           bool    `json:"private"`
+	HardlinkedSeasons []int  `json:"hardlinkedSeasons,omitempty"`
+	SupersededByHash  string `json:"supersededByHash,omitempty"`
+	ReclaimableKnown  bool   `json:"reclaimableKnown,omitempty"`
+	ReclaimableBytes  int64  `json:"reclaimableBytes,omitempty"`
+	SharedBytes       int64  `json:"sharedBytes,omitempty"`
+	InspectedBytes    int64  `json:"inspectedBytes,omitempty"`
+	InspectedFiles    int    `json:"inspectedFiles,omitempty"`
+	SharedFiles       int    `json:"sharedFiles,omitempty"`
+	StorageError      string `json:"storageError,omitempty"`
+	// FilesMissing is true when every file of the torrent is gone from
+	// disk while the client still lists it: it takes no space.
+	FilesMissing bool `json:"filesMissing,omitempty"`
+	// SharesFilesWith lists the other torrents with the same files on disk
+	// (cross-seeds): removing one of them alone frees nothing they share.
+	SharesFilesWith []string `json:"sharesFilesWith,omitempty"`
+	// GroupReclaimableKnown/Bytes estimate removing this torrent together
+	// with every torrent in SharesFilesWith; set only when none of them
+	// backs a title (otherwise they're in that title's bundle).
+	GroupReclaimableKnown bool    `json:"groupReclaimableKnown,omitempty"`
+	GroupReclaimableBytes int64   `json:"groupReclaimableBytes,omitempty"`
+	Client                string  `json:"client"`
+	Hash                  string  `json:"hash"`
+	Name                  string  `json:"name"`
+	State                 string  `json:"state"`
+	Category              string  `json:"category"`
+	Tags                  string  `json:"tags"`
+	Tracker               string  `json:"tracker"`
+	SavePath              string  `json:"savePath"`
+	ContentPath           string  `json:"contentPath"`
+	SizeBytes             int64   `json:"sizeBytes"`
+	TotalSizeBytes        int64   `json:"totalSizeBytes"`
+	CompletedBytes        int64   `json:"completedBytes"`
+	AmountLeftBytes       int64   `json:"amountLeftBytes"`
+	DownloadedBytes       int64   `json:"downloadedBytes"`
+	UploadedBytes         int64   `json:"uploadedBytes"`
+	DownloadedSession     int64   `json:"downloadedSessionBytes"`
+	UploadedSession       int64   `json:"uploadedSessionBytes"`
+	DownloadLimit         int64   `json:"downloadLimit"`
+	UploadLimit           int64   `json:"uploadLimit"`
+	Ratio                 float64 `json:"ratio"`
+	MaxRatio              float64 `json:"maxRatio"`
+	Progress              float64 `json:"progress"`
+	Availability          float64 `json:"availability"`
+	SeedsConnected        int     `json:"seedsConnected"`
+	LeechersConnected     int     `json:"leechersConnected"`
+	SeedsSwarm            int     `json:"seedsSwarm"`
+	LeechersSwarm         int     `json:"leechersSwarm"`
+	AddedOn               int64   `json:"addedOn"`
+	CompletionOn          int64   `json:"completionOn"`
+	LastActivity          int64   `json:"lastActivity"`
+	SeenComplete          int64   `json:"seenComplete"`
+	TimeActive            int64   `json:"timeActive"`
+	SeedingTime           int64   `json:"seedingTime"`
+	ETA                   int64   `json:"eta"`
+	Reannounce            int64   `json:"reannounce"`
+	ForceStart            bool    `json:"forceStart"`
+	AutoTMM               bool    `json:"autoTmm"`
+	Sequential            bool    `json:"sequential"`
+	SuperSeeding          bool    `json:"superSeeding"`
+	Private               bool    `json:"private"`
 }
 
 // File is an existing filesystem path with physical identity facts. Ownership is

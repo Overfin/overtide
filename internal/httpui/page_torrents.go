@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 )
@@ -39,6 +40,9 @@ type torrentData struct {
 	ActivityFilter                              string
 	ClearURL                                    string
 	HasTorrentClient                            bool
+	// FilesMissing lists the torrents whose files are gone from disk.
+	FilesMissing []model.Torrent
+	DryRun       bool
 }
 
 func validTorrentSort(v string) bool {
@@ -181,7 +185,7 @@ func filterTorrents(items []model.Torrent, q, status, reclaimable, activity stri
 				continue
 			}
 		case "positive":
-			if !t.ReclaimableKnown || t.ReclaimableBytes <= 0 {
+			if !t.ReclaimableKnown || (t.ReclaimableBytes <= 0 && t.GroupReclaimableBytes <= 0) {
 				continue
 			}
 		}
@@ -213,7 +217,7 @@ func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
 		counts[all[i].AssociationStatus]++
 		if all[i].AssociationStatus != model.TorrentCurrent && all[i].ReclaimableKnown {
 			obsoleteKnown++
-			obsoleteReclaimable += all[i].ReclaimableBytes
+			obsoleteReclaimable += reclaimableOnce(all[i])
 		}
 	}
 
@@ -296,7 +300,7 @@ func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
 	for pg := maxInt(1, page-2); pg <= minInt(pages, page+2); pg++ {
 		links = append(links, navLink{Value: pg, URL: mk(pg, pageSize, sortKey, order)})
 	}
-	d := torrentData{Torrents: all[from:to], Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), Current: counts[model.TorrentCurrent], Superseded: counts[model.TorrentSuperseded], Orphaned: counts[model.TorrentOrphaned], Unassociated: counts[model.TorrentUnassociated], ObsoleteKnown: obsoleteKnown, ObsoleteReclaimable: obsoleteReclaimable, TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, SortURLs: sortURLs, Query: r.URL.Query().Get("q"), StatusFilter: statusFilter, ReclaimableFilter: reclaimableFilter, ActivityFilter: activityFilter, ClearURL: "/torrents", HasTorrentClient: len(server.inv.Config().ServicesOfType("qbittorrent")) > 0}
+	d := torrentData{Torrents: all[from:to], Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), Current: counts[model.TorrentCurrent], Superseded: counts[model.TorrentSuperseded], Orphaned: counts[model.TorrentOrphaned], Unassociated: counts[model.TorrentUnassociated], ObsoleteKnown: obsoleteKnown, ObsoleteReclaimable: obsoleteReclaimable, TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, SortURLs: sortURLs, Query: r.URL.Query().Get("q"), StatusFilter: statusFilter, ReclaimableFilter: reclaimableFilter, ActivityFilter: activityFilter, ClearURL: "/torrents", HasTorrentClient: len(server.inv.Config().ServicesOfType("qbittorrent")) > 0, FilesMissing: filesMissing(server.inv.TorrentSnapshot()), DryRun: server.inv.Config().Removal.DryRun}
 	if d.HasPrev {
 		d.PrevURL = mk(page-1, pageSize, sortKey, order)
 	}
@@ -355,4 +359,59 @@ func (server *Server) torrentDetail(w http.ResponseWriter, r *http.Request) {
 	if e := renderTemplate(w, server.torrentDetailTpl, data); e != nil {
 		log.Printf("[http] render torrent detail: %v", e)
 	}
+}
+
+// reclaimableOnce is what removing t frees, for totals: nothing if its files
+// are gone; for a cross-seed group, the whole group's figure on one of its
+// torrents (the lowest hash) and nothing on the others, so it's counted once.
+func reclaimableOnce(t model.Torrent) int64 {
+	if t.FilesMissing {
+		return 0
+	}
+	if len(t.SharesFilesWith) > 0 && t.GroupReclaimableKnown {
+		for _, other := range t.SharesFilesWith {
+			if strings.ToLower(other) < strings.ToLower(t.Hash) {
+				return 0
+			}
+		}
+		return t.GroupReclaimableBytes
+	}
+	return t.ReclaimableBytes
+}
+
+// filesMissing returns the torrents whose files are gone from disk.
+func filesMissing(torrents []model.Torrent) []model.Torrent {
+	var out []model.Torrent
+	for _, t := range torrents {
+		if t.FilesMissing {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// removeFilesMissing removes from the torrent client every torrent whose
+// files are gone (dry run applies, as to every removal), then goes back to
+// the Torrents page.
+func (server *Server) removeFilesMissing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var errs []string
+	for _, t := range filesMissing(server.inv.TorrentSnapshot()) {
+		action := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{t}}
+		form, err := server.formForAction(action)
+		if err == nil {
+			err = server.submitAutoRemoval(form, action, "Files missing: ")
+		}
+		if err != nil {
+			errs = append(errs, t.Name+": "+err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		http.Error(w, strings.Join(errs, "; "), http.StatusConflict)
+		return
+	}
+	http.Redirect(w, r, "/torrents", http.StatusSeeOther)
 }

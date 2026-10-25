@@ -103,8 +103,16 @@ func applyTorrentFileEstimates(torrents []model.Torrent, files []model.File, ref
 		t.InspectedFiles = 0
 		t.SharedFiles = 0
 		t.StorageError = ""
+		t.FilesMissing = false
 		paths := x.TorrentPaths(t.Hash)
 		if len(paths) == 0 {
+			continue
+		}
+		if allFilesGone(x, paths) {
+			// The client still lists it, but its files are gone: it takes no
+			// space, and removing it only tidies the client.
+			t.FilesMissing = true
+			t.ReclaimableKnown = true
 			continue
 		}
 		e := x.Estimate(paths)
@@ -118,6 +126,18 @@ func applyTorrentFileEstimates(torrents []model.Torrent, files []model.File, ref
 			t.StorageError = fmt.Sprintf("file identity incomplete for %d torrent file(s); run File reconciliation", e.UnknownFiles)
 		}
 	}
+}
+
+// allFilesGone reports whether every path was reconciled and found missing
+// from disk (not merely not inspected yet).
+func allFilesGone(x *filetopology.Index, paths []string) bool {
+	for _, path := range paths {
+		file, found := x.File(path)
+		if !found || file.Exists {
+			return false
+		}
+	}
+	return true
 }
 
 func sameMediaRef(left, right model.MediaRef) bool {
@@ -197,6 +217,116 @@ func applyTorrentMediaHardlinks(torrents []model.Torrent, media []model.Media, f
 			sort.Ints(torrent.HardlinkedSeasons)
 		}
 	}
+	applyTorrentShareGroups(torrents, index)
+}
+
+// applyTorrentShareGroups groups torrents with the same files on disk
+// (cross-seeds), since removing one of them alone frees nothing they share.
+// In a group where a torrent backs a title, the others join that title's
+// bundle as current torrents, so they go or stay with it. In a group where
+// none does, each torrent gets the estimate of removing the whole group.
+func applyTorrentShareGroups(torrents []model.Torrent, index *filetopology.Index) {
+	parent := make([]int, len(torrents))
+	for i := range parent {
+		parent[i] = i
+	}
+	find := func(i int) int {
+		for parent[i] != i {
+			parent[i] = parent[parent[i]]
+			i = parent[i]
+		}
+		return i
+	}
+	byHash := map[string]int{}
+	for i := range torrents {
+		torrents[i].SharesFilesWith = nil
+		torrents[i].GroupReclaimableKnown = false
+		torrents[i].GroupReclaimableBytes = 0
+		byHash[strings.ToLower(torrents[i].Hash)] = i
+	}
+	for i := range torrents {
+		for _, path := range index.TorrentPaths(torrents[i].Hash) {
+			for _, same := range append([]string{path}, index.SamePhysicalPaths(path)...) {
+				for _, owner := range index.TorrentOwners(same) {
+					if j, ok := byHash[strings.ToLower(owner.Hash)]; ok && j != i {
+						parent[find(j)] = find(i)
+					}
+				}
+			}
+		}
+	}
+	groups := map[int][]int{}
+	for i := range torrents {
+		groups[find(i)] = append(groups[find(i)], i)
+	}
+	for _, members := range groups {
+		if len(members) < 2 {
+			continue
+		}
+		var media []model.MediaRef
+		var seasons []int
+		var backing string
+		for _, i := range members {
+			t := torrents[i]
+			if model.NormalizeTorrentStatus(t.AssociationStatus) != model.TorrentCurrent || len(t.HardlinkedMediaItems) == 0 {
+				continue
+			}
+			if backing == "" {
+				backing = t.Name
+			}
+			for _, ref := range t.HardlinkedMediaItems {
+				if !containsMediaRef(media, ref) {
+					media = append(media, ref)
+				}
+			}
+			for _, season := range t.HardlinkedSeasons {
+				if !containsInt(seasons, season) {
+					seasons = append(seasons, season)
+				}
+			}
+		}
+		sort.Ints(seasons)
+		var paths []string
+		for _, i := range members {
+			t := &torrents[i]
+			for _, j := range members {
+				if j != i {
+					t.SharesFilesWith = append(t.SharesFilesWith, strings.ToLower(torrents[j].Hash))
+				}
+			}
+			paths = append(paths, index.TorrentPaths(t.Hash)...)
+			if len(media) == 0 || len(t.HardlinkedMediaItems) > 0 {
+				continue
+			}
+			t.AssociationStatus = model.TorrentCurrent
+			t.AssociationReason = "Cross-seed: it has the same files as " + backing + ", which backs this title, so it goes or stays with it."
+			for _, ref := range media {
+				if !containsMediaRef(t.MediaItems, ref) {
+					t.MediaItems = append(t.MediaItems, ref)
+				}
+				t.HardlinkKnownMediaItems = append(t.HardlinkKnownMediaItems, ref)
+				t.HardlinkedMediaItems = append(t.HardlinkedMediaItems, ref)
+			}
+			t.HardlinkedSeasons = append([]int(nil), seasons...)
+		}
+		if len(media) > 0 {
+			continue
+		}
+		estimate := index.Estimate(filetopology.Union(paths))
+		for _, i := range members {
+			torrents[i].GroupReclaimableKnown = estimate.Known
+			torrents[i].GroupReclaimableBytes = estimate.ReclaimableBytes
+		}
+	}
+}
+
+func containsInt(values []int, candidate int) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // candidateMediaRefs returns the current media that physically share an inode

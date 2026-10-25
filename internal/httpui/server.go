@@ -228,6 +228,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
 	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
 	mux.HandleFunc("/storage/keep", server.keepPost)
+	mux.HandleFunc("/torrents/remove-missing", server.removeFilesMissing)
 	mux.HandleFunc("/services", server.servicesPage)
 	mux.HandleFunc("/services/add", server.addServiceForm)
 	mux.HandleFunc("/services/test", server.testServiceConnection)

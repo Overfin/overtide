@@ -193,3 +193,40 @@ func TestFormForActionErrorsWhenMediaHasNoManagedFiles(t *testing.T) {
 		t.Fatal("expected an error for a media action with no managed files")
 	}
 }
+
+// A cross-seed group is removed as one removal per torrent; other actions
+// stay whole.
+func TestExpandGroup(t *testing.T) {
+	group := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Hash: "a"}, {Hash: "b"}}}
+	singles := expandGroup(group)
+	if len(singles) != 2 || singles[0].Torrents[0].Hash != "a" || singles[1].Torrents[0].Hash != "b" || len(singles[1].Torrents) != 1 {
+		t.Fatalf("%#v", singles)
+	}
+	bundle := cleanup.Action{Kind: cleanup.HardlinkedBundle, Torrents: []model.Torrent{{Hash: "a"}, {Hash: "b"}}}
+	if got := expandGroup(bundle); len(got) != 1 || len(got[0].Torrents) != 2 {
+		t.Fatalf("a bundle stays whole: %#v", got)
+	}
+}
+
+// A group counts as having no known owner only if none of its torrents has
+// one.
+func TestUnassociatedGroup(t *testing.T) {
+	mixed := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{AssociationStatus: model.TorrentSuperseded}, {AssociationStatus: model.TorrentUnassociated}}}
+	if actionIsUnassociatedTorrent(mixed) {
+		t.Fatal("a superseded torrent gives the group a known owner")
+	}
+	alone := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{AssociationStatus: model.TorrentUnassociated}, {AssociationStatus: model.TorrentUnassociated}}}
+	if !actionIsUnassociatedTorrent(alone) {
+		t.Fatal("expected no known owner")
+	}
+}
+
+// A cross-seed group's figure counts once, on its lowest hash.
+func TestReclaimableOnce(t *testing.T) {
+	a := model.Torrent{Hash: "aaa", SharesFilesWith: []string{"bbb"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000}
+	b := model.Torrent{Hash: "bbb", SharesFilesWith: []string{"aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000}
+	gone := model.Torrent{Hash: "ccc", FilesMissing: true, ReclaimableBytes: 50}
+	if reclaimableOnce(a)+reclaimableOnce(b)+reclaimableOnce(gone) != 1000 {
+		t.Fatalf("%d %d %d", reclaimableOnce(a), reclaimableOnce(b), reclaimableOnce(gone))
+	}
+}

@@ -174,6 +174,11 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		mediaTier = append(mediaTier, Action{Kind: StandaloneMedia, Media: m, Value: m.RetentionValue, ReclaimableBytes: m.ReclaimableBytes, Reasons: m.RetentionValueReasons})
 	}
 
+	byHash := make(map[string]model.Torrent, len(torrents))
+	for _, t := range torrents {
+		byHash[strings.ToLower(t.Hash)] = t
+	}
+	seenGroups := map[string]bool{}
 	for _, t := range torrents {
 		if t.Protected || t.RemovalRestricted {
 			continue
@@ -193,6 +198,16 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 			}
 			// Current, proven not hardlinked: an independent copy.
 		}
+		if len(t.SharesFilesWith) > 0 {
+			// A cross-seed group: removed together, or not at all.
+			if group := shareGroup(t, byHash); group != nil && !seenGroups[strings.ToLower(group[0].Hash)] {
+				seenGroups[strings.ToLower(group[0].Hash)] = true
+				if action, ok := groupAction(group); ok {
+					torrentTier = append(torrentTier, action)
+				}
+			}
+			continue
+		}
 		if !t.ReclaimableKnown || t.ReclaimableBytes <= 0 {
 			continue
 		}
@@ -200,6 +215,41 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 	}
 
 	return mediaTier, torrentTier
+}
+
+// shareGroup returns t and every torrent it shares files with, ordered by
+// hash, or nil if one of them is unknown.
+func shareGroup(t model.Torrent, byHash map[string]model.Torrent) []model.Torrent {
+	group := []model.Torrent{t}
+	for _, hash := range t.SharesFilesWith {
+		other, ok := byHash[strings.ToLower(hash)]
+		if !ok {
+			return nil
+		}
+		group = append(group, other)
+	}
+	sort.Slice(group, func(i, j int) bool { return strings.ToLower(group[i].Hash) < strings.ToLower(group[j].Hash) })
+	return group
+}
+
+// groupAction makes one lone-torrent action of a cross-seed group: worth
+// its best torrent's value, freeing what the group frees together. None of
+// them may be protected or held back, and none may back a title.
+func groupAction(group []model.Torrent) (Action, bool) {
+	action := Action{Kind: StandaloneTorrent, Torrents: group, ReclaimableBytes: group[0].GroupReclaimableBytes}
+	for i, t := range group {
+		if t.Protected || t.RemovalRestricted || model.NormalizeTorrentStatus(t.AssociationStatus) == model.TorrentCurrent || !t.GroupReclaimableKnown {
+			return Action{}, false
+		}
+		if i == 0 || t.TorrentValue > action.Value {
+			action.Value = t.TorrentValue
+			action.Reasons = t.TorrentValueReasons
+		}
+	}
+	if action.ReclaimableBytes <= 0 {
+		return Action{}, false
+	}
+	return action, true
 }
 
 // filterExcluded drops any action whose ActionKey is in excluded, as if

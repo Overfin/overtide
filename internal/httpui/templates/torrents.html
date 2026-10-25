@@ -14,6 +14,14 @@
     <div id="torrent-summary" class="inventory-summary muted" data-reactive-fragment data-live-policy="immediate">
       <span><b>{{.AllItems}}</b> torrents · <span class=current-status>{{.Current}} current</span> · <span class=superseded>{{.Superseded}} superseded</span> · <span class=orphaned>{{.Orphaned}} orphaned</span> · <span class=unassociated>{{.Unassociated}} unassociated</span></span>{{if gt .ObsoleteKnown 0}}<br><span><b>{{human .ObsoleteReclaimable}}</b> reclaimable across {{.ObsoleteKnown}} torrents</span>{{end}}
     </div>
+    {{if .FilesMissing}}
+    <div class="card" id="files-missing">
+      <h2>Files missing</h2>
+      <p class="muted">qBittorrent still lists {{len .FilesMissing}} torrent{{if ne (len .FilesMissing) 1}}s{{end}} whose files are gone from disk. They take no space; removing them only tidies qBittorrent{{if $.DryRun}} (dry run: nothing is removed yet){{end}}.</p>
+      <details><summary>Show them</summary><ul class="missing-list">{{range .FilesMissing}}<li><a href="/torrents/{{.Hash}}?service_id={{.ServiceID}}">{{.Name}}</a> <span class=muted>· {{.AssociationStatus}}</span></li>{{end}}</ul></details>
+      <form method="post" action="/torrents/remove-missing"><button type="submit">Remove them from qBittorrent</button></form>
+    </div>
+    {{end}}
     <div class=card>
       <form class=filters data-auto-filter method=get action="/torrents">
         <label>Search<input type=search name=q value="{{.Query}}" placeholder="Name, hash, tracker, category, media…"></label><label>Status<select name=status>
@@ -87,8 +95,8 @@
               {{if .MediaItems}}{{range $i,$m:=.MediaItems}}{{if $i}}<br>{{end}}<a data-list-item-link href="/library/{{$m.Type}}/{{$m.SourceID}}?service_id={{$m.ServiceID}}">{{$m.Title}} {{if $m.Year}}({{$m.Year}}){{end}}</a>{{end}}{{else if .FormerMediaItems}}{{range $i,$m:=.FormerMediaItems}}{{if $i}}<br>{{end}}{{if .Title}}<a data-list-item-link href="/library/{{.Type}}/{{.SourceID}}?service_id={{.ServiceID}}">{{.Title}} {{if .Year}}({{.Year}}){{end}}</a>{{else}}Former {{.Type}} {{.SourceID}}{{end}} <span class=muted>(historical)</span>{{end}}{{else}}—{{end}}
             </td>
             <td>{{.State}} · {{pct .Progress}}</td>
-            <td>{{human .SizeBytes}}</td>
-            <td>{{if .ReclaimableKnown}}{{human .ReclaimableBytes}}{{else}}—{{end}}</td>
+            <td>{{if .FilesMissing}}<span class=warn>files missing</span>{{else}}{{human .SizeBytes}}{{end}}</td>
+            <td>{{if .FilesMissing}}—{{else if and .SharesFilesWith .GroupReclaimableKnown}}{{human .GroupReclaimableBytes}}<br><span class=muted>with {{len .SharesFilesWith}} cross-seed{{if ne (len .SharesFilesWith) 1}}s{{end}}</span>{{else if .SharesFilesWith}}{{if .ReclaimableKnown}}{{human .ReclaimableBytes}}{{else}}—{{end}}<br><span class=muted>{{len .SharesFilesWith}} cross-seed{{if ne (len .SharesFilesWith) 1}}s{{end}}</span>{{else if .ReclaimableKnown}}{{human .ReclaimableBytes}}{{else}}—{{end}}</td>
             <td>{{printf "%.2f" .Ratio}}</td>
             <td>{{.SeedsSwarm}}</td>
             <td>{{.LeechersSwarm}}</td>

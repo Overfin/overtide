@@ -1,0 +1,69 @@
+package inventory
+
+import (
+	"testing"
+
+	"github.com/overfin/overtide/internal/model"
+)
+
+func file(path string, inode, links uint64, size int64) model.File {
+	return model.File{Path: path, SizeBytes: size, Exists: true, IdentityKnown: true, Device: 1, Inode: inode, Links: links}
+}
+
+// A superseded torrent and its cross-seed share their file: each alone
+// frees nothing, the two together free it.
+func TestShareGroupOfLoneTorrents(t *testing.T) {
+	files := []model.File{file("/dl/a.mkv", 10, 2, 1000), file("/xs/a.mkv", 10, 2, 1000)}
+	refs := []model.TorrentFileRef{{Hash: "AAA", Path: "/dl/a.mkv"}, {Hash: "BBB", Path: "/xs/a.mkv"}}
+	torrents := []model.Torrent{
+		{Hash: "AAA", AssociationStatus: model.TorrentSuperseded},
+		{Hash: "BBB", AssociationStatus: model.TorrentUnassociated},
+	}
+	applyTorrentFileEstimates(torrents, files, refs)
+	applyTorrentMediaHardlinks(torrents, nil, files, nil, refs)
+	for _, tr := range torrents {
+		if tr.ReclaimableBytes != 0 || len(tr.SharesFilesWith) != 1 || !tr.GroupReclaimableKnown || tr.GroupReclaimableBytes != 1000 {
+			t.Fatalf("%s: %+v", tr.Hash, tr)
+		}
+	}
+	if torrents[1].AssociationStatus != model.TorrentUnassociated {
+		t.Fatalf("a lone group stays lone: %+v", torrents[1])
+	}
+}
+
+// A cross-seed of a torrent that backs a title joins that title's bundle.
+func TestCrossSeedOfCurrentTorrentJoinsItsTitle(t *testing.T) {
+	files := []model.File{
+		file("/media/Film/film.mkv", 20, 3, 5000),
+		file("/dl/film.mkv", 20, 3, 5000),
+		file("/xs/film.mkv", 20, 3, 5000),
+	}
+	torrentRefs := []model.TorrentFileRef{{Hash: "cur", Path: "/dl/film.mkv"}, {Hash: "xs", Path: "/xs/film.mkv"}}
+	mediaRefs := []model.MediaFileRef{{MediaType: model.Movie, ServiceID: "r1", MediaID: 7, Path: "/media/Film/film.mkv"}}
+	media := []model.Media{{Type: model.Movie, ServiceID: "r1", SourceID: 7, Title: "Film"}}
+	torrents := []model.Torrent{
+		{Hash: "cur", AssociationStatus: model.TorrentCurrent, MediaItems: []model.MediaRef{{Type: model.Movie, ServiceID: "r1", SourceID: 7}}},
+		{Hash: "xs", AssociationStatus: model.TorrentUnassociated},
+	}
+	applyTorrentFileEstimates(torrents, files, torrentRefs)
+	applyTorrentMediaHardlinks(torrents, media, files, mediaRefs, torrentRefs)
+	xs := torrents[1]
+	if xs.AssociationStatus != model.TorrentCurrent || len(xs.HardlinkedMediaItems) != 1 {
+		t.Fatalf("the cross-seed should back the title too: %+v", xs)
+	}
+	applyMediaBundleEstimates(media, torrents, files, mediaRefs, torrentRefs)
+	if !media[0].BundleReclaimableKnown || media[0].BundleReclaimableBytes != 5000 {
+		t.Fatalf("the title's bundle should free the file with both torrents: %+v", media[0])
+	}
+}
+
+// Files reconciled and gone: the torrent takes no space.
+func TestTorrentWithFilesGone(t *testing.T) {
+	files := []model.File{{Path: "/dl/gone.mkv", Exists: false}}
+	refs := []model.TorrentFileRef{{Hash: "gone", Path: "/dl/gone.mkv"}}
+	torrents := []model.Torrent{{Hash: "gone", SizeBytes: 2000, AssociationStatus: model.TorrentSuperseded}}
+	applyTorrentFileEstimates(torrents, files, refs)
+	if !torrents[0].FilesMissing || torrents[0].ReclaimableBytes != 0 || torrents[0].StorageError != "" {
+		t.Fatalf("%+v", torrents[0])
+	}
+}

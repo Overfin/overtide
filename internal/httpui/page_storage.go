@@ -299,7 +299,7 @@ func (server *Server) cleanupPlanClean(w http.ResponseWriter, r *http.Request) {
 // itself depends on.
 func (server *Server) cleanActions(actions []cleanup.Action, cfg config.Config) []string {
 	var errs []string
-	for _, action := range actions {
+	for _, action := range expandActions(actions) {
 		form, err := server.formForAction(action)
 		if err != nil {
 			errs = append(errs, err.Error())

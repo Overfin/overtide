@@ -475,3 +475,38 @@ func TestBuildOrdersTitlesByValueAcrossServices(t *testing.T) {
 		t.Fatalf("order: got %v, want %v", got, want)
 	}
 }
+
+// Lone torrents sharing files (cross-seeds) are one action, worth their
+// best torrent's value, freeing what the group frees together.
+func TestBuildGroupsLoneCrossSeeds(t *testing.T) {
+	torrents := []model.Torrent{
+		{Hash: "bbb", AssociationStatus: model.TorrentUnassociated, TorrentValue: 30, ReclaimableKnown: true, SharesFilesWith: []string{"aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+		{Hash: "aaa", AssociationStatus: model.TorrentSuperseded, TorrentValue: 10, ReclaimableKnown: true, SharesFilesWith: []string{"bbb"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+	}
+	p, err := Build(t.TempDir(), 0, 0, 0, nil, torrents, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 1 {
+		t.Fatalf("expected one action for the group, got %#v", p.Actions)
+	}
+	a := p.Actions[0]
+	if len(a.Torrents) != 2 || a.Torrents[0].Hash != "aaa" || a.ReclaimableBytes != 1000 || a.Value != 30 {
+		t.Fatalf("group action: %#v", a)
+	}
+}
+
+// One protected torrent keeps the whole group.
+func TestBuildSkipsCrossSeedGroupWithAProtectedTorrent(t *testing.T) {
+	torrents := []model.Torrent{
+		{Hash: "aaa", AssociationStatus: model.TorrentSuperseded, ReclaimableKnown: true, SharesFilesWith: []string{"bbb"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+		{Hash: "bbb", AssociationStatus: model.TorrentUnassociated, Protected: true, ReclaimableKnown: true, SharesFilesWith: []string{"aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+	}
+	p, err := Build(t.TempDir(), 0, 0, 0, nil, torrents, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 0 {
+		t.Fatalf("expected nothing, got %#v", p.Actions)
+	}
+}

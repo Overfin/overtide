@@ -60,11 +60,11 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		if err != nil || !plan.Available {
 			continue
 		}
-		for _, action := range plan.Actions {
-			if actionIsUnassociatedTorrent(action) && !cfg.Removal.AutoRemoveUnassociatedTorrents {
+		for _, group := range plan.Actions {
+			if actionIsUnassociatedTorrent(group) && !cfg.Removal.AutoRemoveUnassociatedTorrents {
 				continue
 			}
-			if actionIsIncompleteTorrent(action) && !cfg.Removal.AutoRemoveIncompleteTorrents {
+			if actionIsIncompleteTorrent(group) && !cfg.Removal.AutoRemoveIncompleteTorrents {
 				continue
 			}
 			if cfg.Removal.AutoMode != config.RemovalAutoAuto {
@@ -73,29 +73,31 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 				// still acts through the normal manual removal flow.
 				continue
 			}
-			form, err := server.formForAction(action)
-			if err != nil {
-				log.Printf("[auto-removal] skipped action kind=%s: %v", action.Kind, err)
-				continue
-			}
-			// removal_execution.go's execution step scopes each of these to
-			// the right media type/source internally (unmonitor_movies only
-			// touches Radarr-owned refs, exclude_series only fires for
-			// model.Series, etc.), but validateRemovalScope's admission gate
-			// runs first and hard-forbids all four fields for a bare torrent
-			// action — so they must only be set for media-kind actions.
-			if action.Kind != cleanup.StandaloneTorrent {
-				if cfg.Removal.AutoUnmonitor {
-					form.Set("unmonitor_movies", "1")
-					form.Set("unmonitor_episodes", "1")
+			for _, action := range expandGroup(group) {
+				form, err := server.formForAction(action)
+				if err != nil {
+					log.Printf("[auto-removal] skipped action kind=%s: %v", action.Kind, err)
+					continue
 				}
-				if cfg.Removal.AutoExcludeFromImportLists {
-					form.Set("exclude_movies", "1")
-					form.Set("exclude_series", "1")
+				// removal_execution.go's execution step scopes each of these to
+				// the right media type/source internally (unmonitor_movies only
+				// touches Radarr-owned refs, exclude_series only fires for
+				// model.Series, etc.), but validateRemovalScope's admission gate
+				// runs first and hard-forbids all four fields for a bare torrent
+				// action — so they must only be set for media-kind actions.
+				if action.Kind != cleanup.StandaloneTorrent {
+					if cfg.Removal.AutoUnmonitor {
+						form.Set("unmonitor_movies", "1")
+						form.Set("unmonitor_episodes", "1")
+					}
+					if cfg.Removal.AutoExcludeFromImportLists {
+						form.Set("exclude_movies", "1")
+						form.Set("exclude_series", "1")
+					}
 				}
-			}
-			if err := server.submitAutoRemoval(form, action, "Automatic cleanup: "); err != nil {
-				log.Printf("[auto-removal] submit failed kind=%s: %v", action.Kind, err)
+				if err := server.submitAutoRemoval(form, action, "Automatic cleanup: "); err != nil {
+					log.Printf("[auto-removal] submit failed kind=%s: %v", action.Kind, err)
+				}
 			}
 		}
 	}
@@ -114,7 +116,13 @@ func actionIsUnassociatedTorrent(action cleanup.Action) bool {
 	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) == 0 {
 		return false
 	}
-	return model.NormalizeTorrentStatus(action.Torrents[0].AssociationStatus) == model.TorrentUnassociated
+	// A cross-seed group has a known owner if any of its torrents does.
+	for _, t := range action.Torrents {
+		if model.NormalizeTorrentStatus(t.AssociationStatus) != model.TorrentUnassociated {
+			return false
+		}
+	}
+	return true
 }
 
 // actionIsIncompleteTorrent reports whether action is a StandaloneTorrent
@@ -127,7 +135,38 @@ func actionIsIncompleteTorrent(action cleanup.Action) bool {
 	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) == 0 {
 		return false
 	}
-	return action.Torrents[0].AmountLeftBytes > 0
+	for _, t := range action.Torrents {
+		if t.AmountLeftBytes > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// expandActions applies expandGroup to every action.
+func expandActions(actions []cleanup.Action) []cleanup.Action {
+	var out []cleanup.Action
+	for _, action := range actions {
+		out = append(out, expandGroup(action)...)
+	}
+	return out
+}
+
+// expandGroup turns a cross-seed group (a lone-torrent action with several
+// torrents sharing files) into one action per torrent, submitted together:
+// each removal deletes its own links, and the last one frees the data.
+// Any other action comes back as it is.
+func expandGroup(action cleanup.Action) []cleanup.Action {
+	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) < 2 {
+		return []cleanup.Action{action}
+	}
+	singles := make([]cleanup.Action, 0, len(action.Torrents))
+	for _, t := range action.Torrents {
+		single := action
+		single.Torrents = []model.Torrent{t}
+		singles = append(singles, single)
+	}
+	return singles
 }
 
 // formForAction builds the exact url.Values shape a browser's manual removal
