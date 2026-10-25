@@ -61,6 +61,11 @@ type RemovalConfig struct {
 	// a human looking at the Torrents page can already decide for
 	// themselves. Same shape as AutoRemoveUnassociatedTorrents.
 	AutoRemoveIncompleteTorrents bool `json:"auto_remove_incomplete_torrents"`
+	// CopiesWithTitles orders a torrent that is a copy of a title (not
+	// hardlinked to it) with that title, by its Overfin score, instead of
+	// before every title. Off by default: copies go first, since the
+	// library loses nothing with them.
+	CopiesWithTitles bool `json:"copies_with_titles"`
 }
 
 type Service struct {
@@ -344,13 +349,11 @@ func Unkeep(configuration Config, key string) Config {
 	return updated
 }
 
-// SetRemovalSettings updates the global removal switches together, since
-// the Settings page always submits them as one form. autoMode and
-// autoRemoveUnassociated are meaningless for an item whose own service
-// hasn't checked "Allow automatic removal" (see Media.RemovalRestricted);
-// dryRun applies to every removal, manual or automatic, not just this one.
-func SetRemovalSettings(configuration Config, autoMode string, autoRemoveUnassociated, dryRun bool, privateMinSeedingDays int, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) (Config, error) {
-	switch autoMode {
+// SetRemovalSettings replaces the removal settings, and the private
+// torrents' seeding days, together: the Settings page submits them as one
+// form.
+func SetRemovalSettings(configuration Config, removal RemovalConfig, privateMinSeedingDays int) (Config, error) {
+	switch removal.AutoMode {
 	case RemovalAutoDisabled, RemovalAutoConfirm, RemovalAutoAuto:
 	default:
 		return configuration, fmt.Errorf("auto_mode must be one of %q, %q, %q", RemovalAutoDisabled, RemovalAutoConfirm, RemovalAutoAuto)
@@ -359,13 +362,8 @@ func SetRemovalSettings(configuration Config, autoMode string, autoRemoveUnassoc
 		return configuration, fmt.Errorf("private_min_seeding_days must be between 0 and 3650")
 	}
 	updated := configuration
-	updated.Removal.AutoMode = autoMode
-	updated.Removal.AutoRemoveUnassociatedTorrents = autoRemoveUnassociated
-	updated.Removal.DryRun = dryRun
+	updated.Removal = removal
 	updated.Protection.PrivateMinSeedingDays = privateMinSeedingDays
-	updated.Removal.AutoUnmonitor = autoUnmonitor
-	updated.Removal.AutoExcludeFromImportLists = autoExcludeFromImportLists
-	updated.Removal.AutoRemoveIncompleteTorrents = autoRemoveIncomplete
 	return updated, nil
 }
 

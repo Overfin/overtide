@@ -347,7 +347,7 @@ func (service *Service) revalue() {
 // check or an in-memory side effect beyond swapping the config: these
 // flags only change what the next scheduled evaluation or removal
 // submission does, never anything already published.
-func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociated, dryRun bool, privateMinSeedingDays int, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) error {
+func (service *Service) SetRemovalSettings(removal config.RemovalConfig, privateMinSeedingDays int) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
 
@@ -359,7 +359,7 @@ func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociat
 	currentCfg := service.cfg
 	service.mu.RUnlock()
 
-	updatedCfg, err := config.SetRemovalSettings(currentCfg, autoMode, autoRemoveUnassociated, dryRun, privateMinSeedingDays, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete)
+	updatedCfg, err := config.SetRemovalSettings(currentCfg, removal, privateMinSeedingDays)
 	if err != nil {
 		return err
 	}

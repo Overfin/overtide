@@ -362,25 +362,25 @@ func TestSetCredentialsRejectsEmptyUsernameAndShortPassword(t *testing.T) {
 
 func TestSetRemovalSettings(t *testing.T) {
 	var c Config
-	updated, err := SetRemovalSettings(c, RemovalAutoAuto, true, false, 75, true, true, true)
+	updated, err := SetRemovalSettings(c, RemovalConfig{AutoMode: RemovalAutoAuto, AutoRemoveUnassociatedTorrents: true, AutoUnmonitor: true, AutoExcludeFromImportLists: true, AutoRemoveIncompleteTorrents: true, CopiesWithTitles: true}, 75)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Protection.PrivateMinSeedingDays != 75 || !updated.Removal.AutoUnmonitor || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents {
-		t.Fatalf("expected all seven fields to be set as given, got %#v", updated.Removal)
+	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Protection.PrivateMinSeedingDays != 75 || !updated.Removal.AutoUnmonitor || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents || !updated.Removal.CopiesWithTitles {
+		t.Fatalf("expected every field to be set as given, got %#v", updated.Removal)
 	}
-	reverted, err := SetRemovalSettings(updated, RemovalAutoDisabled, false, true, 25, false, false, false)
+	reverted, err := SetRemovalSettings(updated, RemovalConfig{AutoMode: RemovalAutoDisabled, DryRun: true}, 25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Protection.PrivateMinSeedingDays != 25 || reverted.Removal.AutoUnmonitor || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents {
-		t.Fatalf("expected all seven fields to flip independently, got %#v", reverted.Removal)
+	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Protection.PrivateMinSeedingDays != 25 || reverted.Removal.AutoUnmonitor || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents || reverted.Removal.CopiesWithTitles {
+		t.Fatalf("expected every field to flip independently, got %#v", reverted.Removal)
 	}
 }
 
 func TestSetRemovalSettingsRejectsUnknownAutoMode(t *testing.T) {
 	var c Config
-	if _, err := SetRemovalSettings(c, "sometimes", false, false, 50, false, false, false); err == nil {
+	if _, err := SetRemovalSettings(c, RemovalConfig{AutoMode: "sometimes"}, 50); err == nil {
 		t.Fatal("expected an unrecognized auto_mode to be rejected")
 	}
 }
@@ -759,7 +759,7 @@ func TestLoadDropsJellyfinAndSeerr(t *testing.T) {
 
 func TestSetRemovalSettingsRejectsPrivateSeedingDaysOutOfRange(t *testing.T) {
 	var c Config
-	if _, err := SetRemovalSettings(c, RemovalAutoDisabled, false, false, -1, false, false, false); err == nil {
+	if _, err := SetRemovalSettings(c, RemovalConfig{AutoMode: RemovalAutoDisabled}, -1); err == nil {
 		t.Fatal("expected negative days to be rejected")
 	}
 }

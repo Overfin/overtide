@@ -294,7 +294,7 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 		var p cleanup.Plan
 		var planErr error
 		if enabled {
-			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, excluded)
+			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, excluded, cfg.Removal.CopiesWithTitles)
 		} else {
 			// No point building a plan nothing will ever act on — an explicit
 			// per-device opt-out, same reasoning as the global AutoMode
