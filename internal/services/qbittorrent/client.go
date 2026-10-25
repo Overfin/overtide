@@ -702,6 +702,38 @@ type RootPath struct {
 // reports as wherever the content actually currently lives — the temp
 // directory while still downloading, the final one after completion) —
 // catching it even if temp_path_enabled were ever misreported.
+// torrentSaveRoots returns the torrents' save folders, with a parent in
+// place of its children when two torrents or more save into folders side by
+// side in it: tools such as qui's cross-seeding give every torrent a
+// folder of its own under one base folder, and that base is the place
+// where they're stored, not each of hundreds of folders.
+func torrentSaveRoots(torrents map[string]model.Torrent) []string {
+	saveFolders := map[string]bool{}
+	for _, t := range torrents {
+		if strings.TrimSpace(t.SavePath) != "" {
+			saveFolders[filepath.Clean(t.SavePath)] = true
+		}
+	}
+	childrenOf := map[string]int{}
+	for folder := range saveFolders {
+		childrenOf[filepath.Dir(folder)]++
+	}
+	roots := map[string]bool{}
+	for folder := range saveFolders {
+		if parent := filepath.Dir(folder); childrenOf[parent] >= 2 && parent != filepath.Dir(parent) {
+			roots[parent] = true
+		} else {
+			roots[folder] = true
+		}
+	}
+	out := make([]string, 0, len(roots))
+	for root := range roots {
+		out = append(out, root)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (client *Client) StorageRoots(torrents map[string]model.Torrent) ([]RootPath, error) {
 	if !client.enabled() {
 		return nil, nil
@@ -727,10 +759,10 @@ func (client *Client) StorageRoots(torrents map[string]model.Torrent) ([]RootPat
 		set[p] = true
 		incomplete[p] = true
 	}
+	for _, path := range torrentSaveRoots(torrents) {
+		set[path] = true
+	}
 	for _, t := range torrents {
-		if strings.TrimSpace(t.SavePath) != "" {
-			set[filepath.Clean(t.SavePath)] = true
-		}
 		if strings.TrimSpace(t.ContentPath) != "" {
 			set[filepath.Clean(t.ContentPath)] = true
 		}

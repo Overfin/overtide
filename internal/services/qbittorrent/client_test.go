@@ -350,3 +350,20 @@ func TestSyncReadsPrivateFlag(t *testing.T) {
 		t.Fatalf("private flags: %v / %v", torrents["aaa"].Private, torrents["bbb"].Private)
 	}
 }
+
+// Torrents each in a folder of their own, side by side under one base
+// folder (qui's cross-seeds), are stored in that base folder; a lone save
+// folder stays as it is.
+func TestTorrentSaveRootsGathersSideBySideFolders(t *testing.T) {
+	torrents := map[string]model.Torrent{
+		"a": {SavePath: "/data/downloads/complete"},
+		"b": {SavePath: "/data/downloads/cross-seed/Film.A--1111"},
+		"c": {SavePath: "/data/downloads/cross-seed/Film.B--2222"},
+		"d": {SavePath: "/data/downloads/cross-seed/Film.B--2222/"},
+	}
+	got := torrentSaveRoots(torrents)
+	want := []string{"/data/downloads/complete", "/data/downloads/cross-seed"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
