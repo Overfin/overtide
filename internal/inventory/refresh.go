@@ -241,16 +241,27 @@ func (service *Service) syncTorrents(ctx context.Context) (map[string]model.Torr
 	rids := map[string]int64{}
 	for _, svc := range qbInstances {
 		rid := int64(0)
+		fieldsKey := "qbittorrent." + svc.ID + ".fields"
 		if service.db != nil {
 			var err error
 			rid, err = service.db.MetaInt64("qbittorrent." + svc.ID + ".rid")
 			if err != nil {
 				return nil, nil, fmt.Errorf("load qbittorrent (%s) sync cursor: %w", svc.Name, err)
 			}
+			// A field read since the last full sync (the private flag, say)
+			// would never arrive: qBittorrent only sends what changes.
+			if fields, err := service.db.MetaInt64(fieldsKey); err != nil || fields != qbittorrentSyncFields {
+				rid = 0
+			}
 		}
 		next, newRID, err := qbClients[svc.ID].WithContext(ctx).Sync(previousByInstance[svc.ID], rid)
 		if err != nil {
 			return nil, nil, fmt.Errorf("qbittorrent (%s): %w", svc.Name, err)
+		}
+		if service.db != nil && rid == 0 {
+			if err := service.db.SetMetaInt64(fieldsKey, qbittorrentSyncFields); err != nil {
+				return nil, nil, fmt.Errorf("save qbittorrent (%s) sync fields: %w", svc.Name, err)
+			}
 		}
 		rids[svc.ID] = newRID
 		for hash, t := range next {
@@ -260,6 +271,11 @@ func (service *Service) syncTorrents(ctx context.Context) (map[string]model.Torr
 	}
 	return out, rids, nil
 }
+
+// qbittorrentSyncFields counts the changes to the torrent fields Overtide
+// reads from qBittorrent's sync: raising it makes the next sync a full one,
+// so a newly read field arrives for every torrent. 2: the private flag.
+const qbittorrentSyncFields = 2
 
 func (service *Service) Refresh(ctx context.Context) error {
 	defer service.publishChange()
