@@ -215,6 +215,7 @@ type torrentSync struct {
 	Size              *int64   `json:"size"`
 	State             *string  `json:"state"`
 	SuperSeeding      *bool    `json:"super_seeding"`
+	Private           *bool    `json:"private"`
 	Tags              *string  `json:"tags"`
 	TimeActive        *int64   `json:"time_active"`
 	TotalSize         *int64   `json:"total_size"`
@@ -314,6 +315,9 @@ func applySync(t *model.Torrent, x torrentSync) {
 	}
 	if x.SuperSeeding != nil {
 		t.SuperSeeding = *x.SuperSeeding
+	}
+	if x.Private != nil {
+		t.Private = *x.Private
 	}
 	if x.Tags != nil {
 		t.Tags = *x.Tags

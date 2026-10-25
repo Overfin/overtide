@@ -331,3 +331,22 @@ func TestInventoryReadsPrivateFlag(t *testing.T) {
 		t.Fatalf("private flags: %#v / %#v", torrents["aaa"].Private, torrents["bbb"].Private)
 	}
 }
+
+// TestSyncReadsPrivateFlag: the inventory reads torrents through
+// qBittorrent's incremental sync, which says "private" too.
+func TestSyncReadsPrivateFlag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"rid": 1, "full_update": true, "torrents": map[string]any{
+			"aaa": map[string]any{"name": "Private", "private": true},
+			"bbb": map[string]any{"name": "Public", "private": false},
+		}})
+	}))
+	defer srv.Close()
+	torrents, _, err := New("qBittorrent", srv.URL, "", "", "token").Sync(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !torrents["aaa"].Private || torrents["bbb"].Private {
+		t.Fatalf("private flags: %v / %v", torrents["aaa"].Private, torrents["bbb"].Private)
+	}
+}
