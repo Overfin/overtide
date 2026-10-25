@@ -407,6 +407,10 @@ func (service *Service) Refresh(ctx context.Context) error {
 			}
 		}
 	}
+	// Published below before the relationships are worked out: what's kept,
+	// protected or not allowed to go must already show.
+	valuation.ApplyTorrentProtections(baseTorrents, service.cfg, time.Now())
+	valuation.ApplyMedia(all, service.cfg)
 
 	service.mu.Lock()
 	if topology != nil && service.fileTopologyVersion != startTopologyVersion {
