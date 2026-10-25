@@ -12,9 +12,12 @@ import (
 const addingTaskID = "adding"
 
 type addingGroup struct {
-	Label   string
-	Hint    string
-	Adopt   bool
+	Label string
+	Hint  string
+	Adopt bool
+	// Open groups show unfolded; Count groups show their count alone.
+	Open    bool
+	Count   bool
 	Entries []adding.Entry
 }
 
@@ -31,16 +34,17 @@ type addingPageData struct {
 // addingGroups is the page's order: what's moving first, then what waits,
 // then what's already there.
 var addingGroups = []struct {
-	State adding.State
-	Label string
-	Hint  string
+	State       adding.State
+	Label       string
+	Hint        string
+	Open, Count bool
 }{
-	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download."},
-	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's picks, then lists. A try adds the title, searches for it, and takes it out again if nothing started."},
-	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc)."},
-	{adding.WantedElsewhere, "In Radarr or Sonarr, without files", "Added by hand or by a list on its own: not Overtide's. Hand one over and Overtide tries it like its own (and takes it out if nothing is found)."},
-	{adding.Imported, "Imported", "Overtide's, with their files."},
-	{adding.InLibrary, "Already in the library", "In Radarr or Sonarr with files, not Overtide's."},
+	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", true, false},
+	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's picks, then lists. A try adds the title, searches for it, and takes it out again if nothing started.", true, false},
+	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", false, false},
+	{adding.WantedElsewhere, "In Radarr or Sonarr, without files", "Added by hand or by a list on its own: not Overtide's. Hand them over and Overtide tries them like its own (and takes each out if nothing is found).", false, false},
+	{adding.Imported, "Imported", "Overtide's, with their files.", false, false},
+	{adding.InLibrary, "Already in the library", "Your lists' titles already in Radarr or Sonarr with their files, not Overtide's: nothing to do.", false, true},
 }
 
 func (server *Server) addingData() addingPageData {
@@ -55,7 +59,7 @@ func (server *Server) addingData() addingPageData {
 	}
 	data.Total = len(entries)
 	for _, group := range addingGroups {
-		view := addingGroup{Label: group.Label, Hint: group.Hint, Adopt: group.State == adding.WantedElsewhere}
+		view := addingGroup{Label: group.Label, Hint: group.Hint, Adopt: group.State == adding.WantedElsewhere, Open: group.Open, Count: group.Count}
 		for _, entry := range entries {
 			if entry.State == group.State {
 				view.Entries = append(view.Entries, entry)

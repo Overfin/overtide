@@ -35,25 +35,27 @@
       {{end}}
       {{range .Groups}}
       {{$adopt := .Adopt}}
-      <section class="card">
-        <h2>{{.Label}} <span class="count">{{len .Entries}}</span></h2>
+      {{if .Count}}
+      <p class="adding-count"><b>{{.Label}}</b> <span class="count">{{len .Entries}}</span> <span class="muted">{{.Hint}}</span></p>
+      {{else}}
+      <details class="card adding-group"{{if .Open}} open{{end}}>
+        <summary><b>{{.Label}}</b> <span class="count">{{len .Entries}}</span></summary>
         <p class="muted">{{.Hint}}</p>
         {{if $adopt}}<form method="post" action="/adding/adopt" onsubmit="return confirm('Hand these {{len .Entries}} titles to Overtide? Once adding is on, each is searched for, and taken out of Radarr or Sonarr if nothing is found, to be tried again later.')"><input type="hidden" name="key" value=""><button type="submit">Hand them all to Overtide</button></form>{{end}}
-        <table>
-          <thead><tr><th>Title</th><th>From</th><th>Next try</th><th>Last result</th>{{if $adopt}}<th></th>{{end}}</tr></thead>
+        <table class="compact">
           <tbody>
             {{range .Entries}}
             <tr>
-              <td><b>{{.Title}}</b>{{if .Year}} ({{.Year}}){{end}}<br><span class="muted">{{if eq (printf "%s" .Kind) "series"}}Series{{else}}Film{{end}}{{if .Tries}} · {{.Tries}} tr{{if eq .Tries 1}}y{{else}}ies{{end}}{{end}}</span></td>
-              <td>{{.From}}</td>
-              <td>{{if or (eq (printf "%s" .State) "waiting") (eq (printf "%s" .State) "not released")}}{{fmtUpdated .NextTry}}{{end}}</td>
-              <td>{{.Result}}</td>
-              {{if $adopt}}<td><form method="post" action="/adding/adopt"><input type="hidden" name="key" value="{{.Key}}"><button type="submit" class="ghost">Hand to Overtide</button></form></td>{{end}}
+              <td><b>{{.Title}}</b>{{if .Year}} <span class="muted">{{.Year}}</span>{{end}} <span class="muted">· {{if eq (printf "%s" .Kind) "series"}}Series{{else}}Film{{end}} · {{.From}}{{if .Tries}} · {{.Tries}} tr{{if eq .Tries 1}}y{{else}}ies{{end}}{{end}}</span></td>
+              <td class="muted nowrap">{{if and (not .NextTry.IsZero) (or (eq (printf "%s" .State) "waiting") (eq (printf "%s" .State) "not released"))}}{{.NextTry.Local.Format "Jan 2 15:04"}}{{end}}</td>
+              <td class="muted">{{.Result}}</td>
+              {{if $adopt}}<td class="nowrap"><form method="post" action="/adding/adopt"><input type="hidden" name="key" value="{{.Key}}"><button type="submit" class="ghost">Hand over</button></form></td>{{end}}
             </tr>
             {{end}}
           </tbody>
         </table>
-      </section>
+      </details>
+      {{end}}
       {{end}}
     </main>
   </body>
