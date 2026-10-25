@@ -18,6 +18,8 @@ interface StorageStatsDevice {
   usableBytes: number;
   overtideUsedBytes: number;
   usagePercentOfUsable: number;
+  claimed: { service: string; bytes: number }[];
+  unmanagedBytes: number;
   capacityBytes: number;
   elsewhereBytes: number;
 }
@@ -454,6 +456,7 @@ export class ShellController extends window.Stimulus.Controller {
       for (const device of devices) {
         if (!device.available) continue;
         this.patchHomeStorage(device);
+        this.patchStorageBar(device);
         const summary = document.querySelector<HTMLElement>(
           `[data-storage-summary][data-representative-path="${CSS.escape(device.representativePath)}"]`
         );
@@ -466,6 +469,26 @@ export class ShellController extends window.Stimulus.Controller {
     } catch (_) {
       // The next 5s tick tries again; the last-known text stays in place.
     }
+  }
+
+  // The Storage page's bar: each segment's width, and the target marker,
+  // which moves with what's used elsewhere.
+  patchStorageBar(device: StorageStatsDevice): void {
+    const bar = document.querySelector<HTMLElement>(
+      `[data-storage-bar][data-representative-path="${CSS.escape(device.representativePath)}"]`
+    );
+    if (!bar || device.capacityBytes <= 0) return;
+    const width = (element: HTMLElement | null, bytes: number) => {
+      if (element) element.style.width = `${((bytes / device.capacityBytes) * 100).toFixed(3)}%`;
+    };
+    for (const claim of device.claimed || []) {
+      width(bar.querySelector<HTMLElement>(`[data-bar-claim="${CSS.escape(claim.service)}"]`), claim.bytes);
+    }
+    width(bar.querySelector<HTMLElement>("[data-bar-unmanaged]"), device.unmanagedBytes);
+    width(bar.querySelector<HTMLElement>("[data-bar-free]"), device.freeBytes);
+    width(bar.querySelector<HTMLElement>("[data-bar-elsewhere]"), device.elsewhereBytes);
+    const target = bar.querySelector<HTMLElement>("[data-bar-target]");
+    if (target) target.style.left = `${((device.targetUsagePercent * device.usableBytes) / device.capacityBytes).toFixed(3)}%`;
   }
 
   // Home's Storage card: the bar and its line of text.

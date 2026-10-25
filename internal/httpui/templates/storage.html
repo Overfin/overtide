@@ -59,13 +59,13 @@
         {{end}}
         <div id="storage-live-{{elementID .Storage.RepresentativePath}}" data-reactive-fragment data-live-policy="immediate">
           {{if .Storage.Available}}
-            <div class="storage-bar">
-              {{range .Storage.Claimed}}<span class="segment claim" style="width:{{widthPct .Bytes $device.Storage.CapacityBytes}}%" title="{{.Service}}: {{humanU .Bytes}}"></span>{{end}}
-              {{if gt .Storage.UnmanagedBytes 0}}<span class="segment unmanaged" style="width:{{widthPct .Storage.UnmanagedBytes .Storage.CapacityBytes}}%" title="Unmanaged: {{humanU .Storage.UnmanagedBytes}}"></span>{{end}}
-              <span class="segment free" style="width:{{widthPct .Storage.FreeBytes .Storage.CapacityBytes}}%" title="Free: {{humanU .Storage.FreeBytes}}"></span>
-              {{if gt .Storage.UnexplainedOtherBytes 0}}<span class="segment elsewhere" style="width:{{widthPct .Storage.UnexplainedOtherBytes .Storage.CapacityBytes}}%" title="Used elsewhere: {{humanU .Storage.UnexplainedOtherBytes}}"></span>{{end}}
+            <div class="storage-bar" data-storage-bar data-representative-path="{{.Storage.RepresentativePath}}">
+              {{range .Storage.Claimed}}<span class="segment claim" data-bar-claim="{{.Service}}" style="width:{{widthPct .Bytes $device.Storage.CapacityBytes}}%" title="{{.Service}}: {{humanU .Bytes}}"></span>{{end}}
+              <span class="segment unmanaged" data-bar-unmanaged style="width:{{widthPct .Storage.UnmanagedBytes .Storage.CapacityBytes}}%" title="Unmanaged: {{humanU .Storage.UnmanagedBytes}}"></span>
+              <span class="segment free" data-bar-free style="width:{{widthPct .Storage.FreeBytes .Storage.CapacityBytes}}%" title="Free: {{humanU .Storage.FreeBytes}}"></span>
+              <span class="segment elsewhere" data-bar-elsewhere style="width:{{widthPct .Storage.UnexplainedOtherBytes .Storage.CapacityBytes}}%" title="Used elsewhere: {{humanU .Storage.UnexplainedOtherBytes}}"></span>
               {{if .Enabled}}
-              <span class="threshold target" style="left:{{targetLeft .Plan.TargetUsagePercent .Storage.UsableBytes .Storage.CapacityBytes}}%" title="Target: {{printf "%.1f" .Plan.TargetUsagePercent}}%"></span>
+              <span class="threshold target" data-bar-target style="left:{{targetLeft .Plan.TargetUsagePercent .Storage.UsableBytes .Storage.CapacityBytes}}%" title="Target: {{printf "%.1f" .Plan.TargetUsagePercent}}%"></span>
               {{end}}
             </div>
             <ul class="storage-legend">

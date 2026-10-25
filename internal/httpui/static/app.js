@@ -3212,6 +3212,7 @@ Copyright © 2023 Basecamp, LLC
         for (const device of devices) {
           if (!device.available) continue;
           this.patchHomeStorage(device);
+          this.patchStorageBar(device);
           const summary = document.querySelector(
             `[data-storage-summary][data-representative-path="${CSS.escape(device.representativePath)}"]`
           );
@@ -3223,6 +3224,25 @@ Copyright © 2023 Basecamp, LLC
         }
       } catch (_) {
       }
+    }
+    // The Storage page's bar: each segment's width, and the target marker,
+    // which moves with what's used elsewhere.
+    patchStorageBar(device) {
+      const bar = document.querySelector(
+        `[data-storage-bar][data-representative-path="${CSS.escape(device.representativePath)}"]`
+      );
+      if (!bar || device.capacityBytes <= 0) return;
+      const width = (element, bytes) => {
+        if (element) element.style.width = `${(bytes / device.capacityBytes * 100).toFixed(3)}%`;
+      };
+      for (const claim of device.claimed || []) {
+        width(bar.querySelector(`[data-bar-claim="${CSS.escape(claim.service)}"]`), claim.bytes);
+      }
+      width(bar.querySelector("[data-bar-unmanaged]"), device.unmanagedBytes);
+      width(bar.querySelector("[data-bar-free]"), device.freeBytes);
+      width(bar.querySelector("[data-bar-elsewhere]"), device.elsewhereBytes);
+      const target = bar.querySelector("[data-bar-target]");
+      if (target) target.style.left = `${(device.targetUsagePercent * device.usableBytes / device.capacityBytes).toFixed(3)}%`;
     }
     // Home's Storage card: the bar and its line of text.
     patchHomeStorage(device) {
