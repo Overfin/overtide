@@ -21,7 +21,7 @@ func TestAddingTemplateRenders(t *testing.T) {
 	}
 	tpl := server.addingTpl
 	waiting := addingRow{Title: "Film", Year: 2026, Kind: "Film", Source: "Overfin's picks", When: time.Now(), Result: "Dry run: would add it", DryRun: true}
-	data := addingPageData{Mode: "dry_run", WithoutFiles: 64, Total: 2, Matching: 2, Sources: []addingSourceCount{{Value: string(adding.FromOverfin), Label: "Overfin's picks", Count: 2}}, Groups: []addingGroup{
+	data := addingPageData{Mode: "dry_run", WithoutFiles: 64, Total: 2, Matching: 2, SelfAdding: []string{"Movies: Latest"}, Sources: []addingSourceCount{{Value: string(adding.FromOverfin), Label: "Overfin's picks", Count: 2}}, Groups: []addingGroup{
 		{Label: "Waiting", WhenLabel: "Next try", Open: true, Rows: []addingRow{waiting}, Count: 60, MoreURL: "/adding?all=waiting"},
 		{Label: "Imported", WhenLabel: "Since", Rows: []addingRow{{Title: "Other", Kind: "Film"}}, Count: 1},
 	}}
@@ -30,7 +30,7 @@ func TestAddingTemplateRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := out.String()
-	for _, want := range []string{"DRY RUN", "<details class=\"card adding-group\" open>", "<b>64</b> titles without files", "Hand them all to Overtide", "Film", "Other", "<th>Next try</th>", "dry-result", "Overfin&#39;s picks (2)", "Show all 60"} {
+	for _, want := range []string{"DRY RUN", "<details class=\"card adding-group\" open>", "<b>64</b> titles without files", "Hand them all to Overtide", "Film", "Other", "<th>Next try</th>", "dry-result", "Overfin&#39;s picks (2)", "Show all 60", "Turn off their automatic adding"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("missing %q", want)
 		}

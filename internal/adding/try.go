@@ -57,14 +57,13 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		service.notReleased(entry, at)
 		return
 	}
-	var rootFolder string
-	var profileID int
+	var list radarr.ImportList
 	if entry.ArrID == 0 {
-		if rootFolder, profileID, err = client.Destination(); err != nil {
+		if list, err = movieList(client, entry.ListID); err != nil {
 			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -83,8 +82,7 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		return
 	}
 	if entry.ArrID == 0 {
-		// Released: tries wait for the release already (movieReleased).
-		id, err := client.AddMovie(lookup, rootFolder, profileID, "released", tagID)
+		id, err := client.AddMovie(lookup, list.RootFolderPath, list.QualityProfileID, list.MinimumAvailability, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
@@ -123,14 +121,13 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		service.notReleased(entry, at)
 		return
 	}
-	var rootFolder string
-	var profileID int
+	var list sonarr.ImportList
 	if entry.ArrID == 0 {
-		if rootFolder, profileID, err = client.Destination(); err != nil {
+		if list, err = seriesList(client, entry.ListID); err != nil {
 			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -149,7 +146,7 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddSeries(lookup, rootFolder, profileID, tagID)
+		id, err := client.AddSeries(lookup, list, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
@@ -165,6 +162,44 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		client.CommandStatus,
 		func() (bool, error) { return client.GrabbedSince(entry.ArrID, started) })
 	service.settle(entry, grabbed, err, func() error { return client.DeleteSeries(entry.ArrID) })
+}
+
+// movieList is what a film is added with: its import list's root folder,
+// quality profile and availability; without a list (Overfin's suggestions,
+// a handed-over title taken out) or once it's gone, Radarr's own root
+// folder and profile, and released (tries wait for the release already).
+func movieList(client *radarr.Client, listID int) (radarr.ImportList, error) {
+	if listID != 0 {
+		lists, err := client.ImportLists()
+		if err != nil {
+			return radarr.ImportList{}, fmt.Errorf("couldn't read the import lists: %w", err)
+		}
+		for _, list := range lists {
+			if list.ID == listID {
+				return list, nil
+			}
+		}
+	}
+	root, profile, err := client.Destination()
+	return radarr.ImportList{RootFolderPath: root, QualityProfileID: profile, MinimumAvailability: "released"}, err
+}
+
+// seriesList is movieList for a series: without a list, every season in
+// season folders.
+func seriesList(client *sonarr.Client, listID int) (sonarr.ImportList, error) {
+	if listID != 0 {
+		lists, err := client.ImportLists()
+		if err != nil {
+			return sonarr.ImportList{}, fmt.Errorf("couldn't read the import lists: %w", err)
+		}
+		for _, list := range lists {
+			if list.ID == listID {
+				return list, nil
+			}
+		}
+	}
+	root, profile, err := client.Destination()
+	return sonarr.ImportList{RootFolderPath: root, QualityProfileID: profile, SeasonFolder: true}, err
 }
 
 // searchAndCheck asks for the search, waits for it to finish, then says

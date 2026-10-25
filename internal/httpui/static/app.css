@@ -1750,5 +1750,9 @@ table.compact button {
     content: attr(data-label) " ";
   }
 }
+.adding-warn {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+}
 
 /* internal/httpui/static/src/styles/app.css */

@@ -214,22 +214,31 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddSeries adds the series, every season monitored, in season folders,
-// tagged, to the root folder with the quality profile, without searching:
-// the search is asked for apart, to follow it. It returns the series' ID
-// in Sonarr.
-func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityProfileID int, tagID int) (int, error) {
+// AddSeries adds the series, tagged, with the list's root folder, quality
+// profile and monitoring (a list made up for a title without one leaves
+// them to their defaults: every season, standard), without searching: the
+// search is asked for apart, to follow it. It returns the series' ID in
+// Sonarr.
+func (client *Client) AddSeries(lookup SeriesLookup, list ImportList, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
 		body[key] = value
 	}
-	body["rootFolderPath"] = rootFolder
-	body["qualityProfileId"] = qualityProfileID
+	monitor := list.ShouldMonitor
+	if monitor == "" {
+		monitor = "all"
+	}
+	seriesType := list.SeriesType
+	if seriesType == "" {
+		seriesType = "standard"
+	}
+	body["rootFolderPath"] = list.RootFolderPath
+	body["qualityProfileId"] = list.QualityProfileID
 	body["monitored"] = true
-	body["seasonFolder"] = true
-	body["seriesType"] = "standard"
+	body["seasonFolder"] = list.SeasonFolder
+	body["seriesType"] = seriesType
 	body["tags"] = []int{tagID}
-	body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
+	body["addOptions"] = map[string]any{"monitor": monitor, "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
 	var added struct {
 		ID int `json:"id"`
 	}

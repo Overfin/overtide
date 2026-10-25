@@ -80,7 +80,10 @@ type addingPageData struct {
 	// WithoutFiles counts what Radarr and Sonarr have without files that
 	// isn't Overtide's: what "Hand them all over" takes.
 	WithoutFiles int
-	Error        string
+	// SelfAdding names the import lists that still add titles on their
+	// own: with adding on, they can bring back what Overtide took out.
+	SelfAdding []string
+	Error      string
 }
 
 // addingGroups is the page's order: what's moving first, then what waits,
@@ -93,7 +96,7 @@ var addingGroups = []struct {
 	Open      bool
 }{
 	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", "Since", true},
-	{adding.Waiting, "Waiting", "In the order they're tried: requests, then Overfin's suggestions, then the rest.", "Next try", true},
+	{adding.Waiting, "Waiting", "In the order they're tried: requests, then Overfin's suggestions, then the import lists.", "Next try", true},
 	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", "Out", false},
 	{adding.Imported, "Imported", "Overtide's, with their files.", "Since", false},
 }
@@ -183,7 +186,39 @@ func (server *Server) addingData(query url.Values) addingPageData {
 			data.Groups = append(data.Groups, view)
 		}
 	}
+	if data.Mode != config.AddingOff {
+		data.SelfAdding = server.selfAddingLists(cfg)
+	}
 	return data
+}
+
+// selfAddingLists names the Radarr and Sonarr import lists that add titles
+// on their own.
+func (server *Server) selfAddingLists(cfg config.Config) []string {
+	var names []string
+	for _, svc := range cfg.ServicesOfType("radarr") {
+		if client, err := server.inv.RadarrClient(svc.ID); err == nil {
+			if lists, err := client.ImportLists(); err == nil {
+				for _, list := range lists {
+					if list.Enabled && list.EnableAuto {
+						names = append(names, svc.Name+": "+list.Name)
+					}
+				}
+			}
+		}
+	}
+	for _, svc := range cfg.ServicesOfType("sonarr") {
+		if client, err := server.inv.SonarrClient(svc.ID); err == nil {
+			if lists, err := client.ImportLists(); err == nil {
+				for _, list := range lists {
+					if list.EnableAutomaticAdd {
+						names = append(names, svc.Name+": "+list.Name)
+					}
+				}
+			}
+		}
+	}
+	return names
 }
 
 func (server *Server) addingPage(w http.ResponseWriter, r *http.Request) {

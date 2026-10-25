@@ -26,9 +26,10 @@
         </label>
         <div class="actions"><button type="submit">Save</button></div>
       </form>
+      {{if .SelfAdding}}<p class="warn adding-warn">These import lists add titles on their own, so they can bring back what Overtide takes out: {{join .SelfAdding ", "}}. Turn off their automatic adding for Overtide to manage their titles.</p>{{end}}
       <details class="adding-how">
         <summary>How adding works</summary>
-        <p>Once a day, Overtide reads Overfin's suggestions: its picks, the titles your libraries lack, by value, and, by the discovery share, TMDB's trending and popular titles, so people have new things to discover. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out.</p>
+        <p>Once a day, Overtide reads your Radarr and Sonarr import lists and Overfin's suggestions: its picks, the titles your libraries lack, by value, and, by the discovery share, TMDB's trending and popular titles, so people have new things to discover. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out. A title from a list is added with that list's root folder and quality profile; any other with Radarr's or Sonarr's own.</p>
         <p>Every 15 minutes it tries the titles whose turn it is, one search at a time: it adds the title to Radarr or Sonarr, tagged "overtide", searches for it, and keeps it only if a download started. Otherwise it takes it out again and tries later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release. Nothing is added to a disk over its target.</p>
         <p>Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</p>
       </details>
