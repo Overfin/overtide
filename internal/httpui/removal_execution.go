@@ -183,7 +183,7 @@ func (server *Server) executeRemoval(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	command := scheduledRemovalCommand{Form: cloneForm(r.Form)}
+	command := scheduledRemovalCommand{Form: cloneForm(r.Form), DryRun: descriptor.DryRun}
 	queuedPayload, _ := json.Marshal(queuedRemovalPayload{Command: command})
 	historyID, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "queued", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, ServiceName: descriptor.ServiceName, Payload: queuedPayload})
 	if err != nil {
@@ -377,10 +377,17 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 		http.Error(w, "nothing selected", 400)
 		return
 	}
+	if r.FormValue(formCleanup) == "1" {
+		if err := server.cleanupStillEligible(r.Form); err != nil {
+			http.Error(w, "No longer a cleanup candidate: "+err.Error(), http.StatusConflict)
+			return
+		}
+	}
 	results := []string{}
 	errs := []string{}
 	removedManaged := []model.MediaFileRef{}
-	dry := d.Plan.DryRun
+	dry := d.Plan.DryRun || r.FormValue(formDryRun) == "1"
+	d.Plan.DryRun = dry
 	historyID, _ := strconv.ParseInt(r.FormValue("_history_id"), 10, 64)
 	startedPayload, _ := json.Marshal(map[string]any{
 		"command": scheduledRemovalCommand{HistoryID: historyID, Form: cloneForm(r.Form)},

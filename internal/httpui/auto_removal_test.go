@@ -2,8 +2,11 @@ package httpui
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/config"
@@ -103,6 +106,11 @@ func TestRunAutoRemovalEvaluationNoOpsWhenGloballyDisabled(t *testing.T) {
 
 func newTestInventoryWithReconciledState(t *testing.T) *inventory.Service {
 	t.Helper()
+	return newTestInventoryWithConfig(t, config.Config{})
+}
+
+func newTestInventoryWithConfig(t *testing.T, cfg config.Config) *inventory.Service {
+	t.Helper()
 	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -115,15 +123,17 @@ func newTestInventoryWithReconciledState(t *testing.T) *inventory.Service {
 	mediaRefs := []model.MediaFileRef{
 		{ServiceID: "radarr-1", ServiceName: "Movies", MediaType: model.Movie, MediaID: 1, Source: "radarr", SourceFileID: 10, Path: "/movies/a.mkv"},
 	}
-	media := []model.Media{{Type: model.Movie, SourceID: 1, Title: "Test Movie", ServiceID: "radarr-1", ServiceName: "Movies"}}
+	score := 20.0
+	media := []model.Media{{Type: model.Movie, SourceID: 1, Title: "Test Movie", ServiceID: "radarr-1", ServiceName: "Movies", OverfinScore: &score}}
+	added := time.Now().AddDate(-1, 0, 0).Unix()
 	torrents := []model.Torrent{
-		{Hash: "bundlehash", Name: "Bundled Release", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: true, ServiceID: "qbittorrent-1", Client: "Downloader"},
-		{Hash: "oldhash", Name: "Old Release", AssociationStatus: model.TorrentSuperseded, ServiceID: "qbittorrent-1", Client: "Downloader"},
+		{Hash: "bundlehash", Name: "Bundled Release", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: true, ServiceID: "qbittorrent-1", Client: "Downloader", AddedOn: added},
+		{Hash: "oldhash", Name: "Old Release", AssociationStatus: model.TorrentSuperseded, ServiceID: "qbittorrent-1", Client: "Downloader", AddedOn: added},
 	}
 	if err := database.PublishReconciliation(1, files, mediaRefs, nil, nil, torrents, media); err != nil {
 		t.Fatal(err)
 	}
-	return inventory.New(config.Config{}, database)
+	return inventory.New(cfg, database)
 }
 
 func TestFormForActionStandaloneMediaRoundTripsThroughAdmitRemoval(t *testing.T) {
@@ -218,6 +228,62 @@ func TestUnassociatedGroup(t *testing.T) {
 	alone := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{AssociationStatus: model.TorrentUnassociated}, {AssociationStatus: model.TorrentUnassociated}}}
 	if !actionIsUnassociatedTorrent(alone) {
 		t.Fatal("expected no known owner")
+	}
+}
+
+// What a removal is checked against just before it runs: the title and
+// torrents it names must still be there.
+func TestCleanupStillEligible(t *testing.T) {
+	// No service in the configuration allows removal, so nothing may go.
+	server := &Server{inv: newTestInventoryWithReconciledState(t)}
+	if err := server.cleanupStillEligible(url.Values{"kind": {"torrent"}, "hash": {"oldhash"}}); err == nil {
+		t.Fatal("a torrent whose service doesn't allow removal was eligible")
+	}
+
+	server = &Server{inv: newTestInventoryWithConfig(t, config.Config{Services: []config.Service{
+		{ID: "radarr-1", Type: "radarr", Name: "Movies", AllowAutomaticRemoval: true},
+		{ID: "qbittorrent-1", Type: "qbittorrent", Name: "Downloader", AllowAutomaticRemoval: true},
+	}})}
+	cases := []struct {
+		name string
+		form url.Values
+		ok   bool
+	}{
+		{"title still there", url.Values{"kind": {"media"}, "media_type": {"movie"}, "media_id": {"1"}, "torrent": {"bundlehash"}}, true},
+		{"title gone", url.Values{"kind": {"media"}, "media_type": {"movie"}, "media_id": {"2"}}, false},
+		{"one of its torrents gone", url.Values{"kind": {"media"}, "media_type": {"movie"}, "media_id": {"1"}, "torrent": {"nohash"}}, false},
+		{"lone torrent still there", url.Values{"kind": {"torrent"}, "hash": {"oldhash"}}, true},
+		{"lone torrent gone", url.Values{"kind": {"torrent"}, "hash": {"nohash"}}, false},
+	}
+	for _, tc := range cases {
+		err := server.cleanupStillEligible(tc.form)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok = %v", tc.name, err, tc.ok)
+		}
+	}
+}
+
+// A removal admitted in dry run runs in dry run, through the scheduler's
+// journal; a flag smuggled into the admitted form is never kept.
+func TestScheduledRemovalKeepsItsDryRun(t *testing.T) {
+	admitted := scheduledRemovalCommand{HistoryID: 7, Form: url.Values{"kind": {"torrent"}}, DryRun: true, Cleanup: true}
+	payload, err := json.Marshal(admitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queued scheduledRemovalCommand
+	if err := json.Unmarshal(payload, &queued); err != nil {
+		t.Fatal(err)
+	}
+	form := queued.runForm()
+	if form.Get(formDryRun) != "1" || form.Get(formCleanup) != "1" || form.Get(formHistoryID) != "7" {
+		t.Fatalf("%#v", form)
+	}
+
+	live := scheduledRemovalCommand{HistoryID: 8, Form: url.Values{"kind": {"torrent"}, formDryRun: {"1"}, formCleanup: {"1"}}}
+	form = live.runForm()
+	if form.Has(formDryRun) || form.Has(formCleanup) {
+		t.Fatalf("form fields must not stand in for the command's: %#v", form)
 	}
 }
 

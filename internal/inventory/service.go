@@ -137,6 +137,9 @@ func New(configuration config.Config, database *store.Store) *Service {
 			for torrentIndex := range service.torrents {
 				service.torrents[torrentIndex].AssociationStatus = model.NormalizeTorrentStatus(service.torrents[torrentIndex].AssociationStatus)
 			}
+			// Protections aren't stored: without this, a torrent from the
+			// cache would look removable until the first refresh.
+			valuation.ApplyTorrentProtections(service.torrents, service.cfg, time.Now())
 		} else {
 			log.Printf("[inventory] load cached torrents: %v", err)
 		}

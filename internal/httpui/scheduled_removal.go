@@ -20,6 +20,39 @@ const removalTaskID = "removal-operation"
 type scheduledRemovalCommand struct {
 	HistoryID int64      `json:"historyId"`
 	Form      url.Values `json:"form"`
+	// DryRun is dry run as it was when the removal was admitted: a removal
+	// admitted in dry run stays one, even if dry run is turned off before
+	// it runs. It can only get safer before running, never go live.
+	DryRun bool `json:"dryRun,omitempty"`
+	// Cleanup marks a removal that came from the cleanup plan (Clean, or
+	// automatic mode): just before it runs, its title or torrents must still
+	// be eligible (not kept, no obligation, their service allowing removal).
+	Cleanup bool `json:"cleanup,omitempty"`
+}
+
+// Form fields the scheduler adds to a queued removal's form when it runs it;
+// a browser's form can't carry them (they'd only make a removal safer).
+const (
+	formHistoryID = "_history_id"
+	formDryRun    = "_dry_run"
+	formCleanup   = "_cleanup"
+)
+
+// runForm is the form the removal runs with: the one admitted, plus the
+// scheduler's own fields. Those are always set from the command, never kept
+// from the admitted form.
+func (command scheduledRemovalCommand) runForm() url.Values {
+	form := cloneForm(command.Form)
+	form.Set(formHistoryID, strconv.FormatInt(command.HistoryID, 10))
+	form.Del(formDryRun)
+	form.Del(formCleanup)
+	if command.DryRun {
+		form.Set(formDryRun, "1")
+	}
+	if command.Cleanup {
+		form.Set(formCleanup, "1")
+	}
+	return form
 }
 
 type capturedResponse struct {
@@ -117,8 +150,7 @@ func (server *Server) runScheduledRemoval(schedulerContext context.Context, payl
 	if command.HistoryID <= 0 {
 		return fmt.Errorf("removal operation has no durable history identity")
 	}
-	form := cloneForm(command.Form)
-	form.Set("_history_id", strconv.FormatInt(command.HistoryID, 10))
+	form := command.runForm()
 	server.publishUIChange("operation-started")
 	request := &http.Request{Method: http.MethodPost, Form: form, Header: make(http.Header)}
 	request.Header.Set("X-Overtide-Overlay", "1")

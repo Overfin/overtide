@@ -143,6 +143,63 @@ func actionIsIncompleteTorrent(action cleanup.Action) bool {
 	return false
 }
 
+// cleanupStillEligible checks, just before a removal from the cleanup plan
+// runs, that what it removes is still a candidate: the title not kept or
+// otherwise protected, no torrent with an obligation, every service still
+// allowing removal. Things change between a click and the run (a Keep, a
+// tracker's seeding time), and the plan was only a snapshot.
+func (server *Server) cleanupStillEligible(form url.Values) error {
+	torrents := map[string]model.Torrent{}
+	for _, t := range server.inv.TorrentSnapshot() {
+		torrents[strings.ToLower(t.Hash)] = t
+	}
+	checkTorrent := func(hash string, lone bool) error {
+		t, ok := torrents[strings.ToLower(strings.TrimSpace(hash))]
+		switch {
+		case !ok:
+			return fmt.Errorf("torrent %s is gone", hash)
+		case t.RemovalRestricted:
+			return fmt.Errorf("%s: its service no longer allows removal", t.Name)
+		case t.Obligation != "":
+			return fmt.Errorf("%s: %s", t.Name, t.Obligation)
+		case lone && t.Protected:
+			return fmt.Errorf("%s: %s", t.Name, t.ProtectionReason)
+		}
+		return nil
+	}
+	switch form.Get("kind") {
+	case "media":
+		id, _ := strconv.Atoi(form.Get("media_id"))
+		items, _, _ := server.inv.Snapshot()
+		m, ok := mediaFor(items, model.MediaType(form.Get("media_type")), id, form.Get("service_id"))
+		switch {
+		case !ok:
+			return fmt.Errorf("the title is gone")
+		case m.RemovalRestricted:
+			return fmt.Errorf("%s: its service no longer allows removal", m.Title)
+		case m.Protected:
+			return fmt.Errorf("%s: %s", m.Title, m.ProtectionReason)
+		}
+		for _, hash := range form["torrent"] {
+			if err := checkTorrent(hash, false); err != nil {
+				return err
+			}
+		}
+	case "torrent":
+		return checkTorrent(form.Get("hash"), true)
+	}
+	return nil
+}
+
+func mediaFor(items []model.Media, kind model.MediaType, id int, serviceID string) (model.Media, bool) {
+	for _, m := range items {
+		if m.Type == kind && m.SourceID == id && (serviceID == "" || m.ServiceID == serviceID) {
+			return m, true
+		}
+	}
+	return model.Media{}, false
+}
+
 // expandActions applies expandGroup to every action.
 func expandActions(actions []cleanup.Action) []cleanup.Action {
 	var out []cleanup.Action
@@ -236,7 +293,7 @@ func (server *Server) submitAutoRemoval(form url.Values, action cleanup.Action, 
 	if database == nil {
 		return fmt.Errorf("durable operation history unavailable")
 	}
-	command := scheduledRemovalCommand{Form: cloneForm(form)}
+	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun, Cleanup: true}
 	queuedPayload, err := json.Marshal(queuedRemovalPayload{Command: command})
 	if err != nil {
 		return err
