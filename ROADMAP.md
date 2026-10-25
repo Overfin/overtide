@@ -1,23 +1,47 @@
 # Overtide Roadmap
 
-This file separates implemented behavior from intended direction. It is not a promise of release dates. The first section is Overtide's own direction: the way from Stewarr 0.5.0 to the storage side of [Overfin](https://github.com/Overfin/server). Everything after it is Stewarr's roadmap as it stood when Overtide started, kept for its history and its plans, most of which still apply. It uses Stewarr's names, older entries use names since changed ("Swarm Value" is now Torrent Value), and it predates `CHANGELOG.md`, which has the release-by-release history.
+This file separates implemented behavior from intended direction. It is not a promise of release dates. The first two sections are Overtide's own: its design, and the way to build it from Stewarr 0.5.0. Everything after them is Stewarr's roadmap as it stood when Overtide started, kept for its history and its plans, most of which still apply. It uses Stewarr's names, older entries use names since changed ("Swarm Value" is now Torrent Value), and it predates `CHANGELOG.md`, which has the release-by-release history.
 
-## Toward Overfin
+## The design
 
-Overtide works with Overfin and never alone against people's data: Overfin knows the titles and the people, Overtide the storage. Overfin gives values and counts per title, never who; Overtide gives back statuses and what's leaving soon. Each step below keeps dry run on by default, and Overtide must keep running safely beside a Stewarr that manages the same disks until the operator switches over.
+**The vision.** A library that keeps renewing itself, toward what the people of the server like. Overtide brings new titles in and takes weaker ones out, so the library drifts over time toward the operator's and people's preferences, and it keeps every disk under its threshold: a full disk would stop everything, so staying under it is Overtide's responsibility, and renewal happens within it.
 
-1. ~~**Overtide's name in the code.**~~ Done: binary, module, container, on-screen name, log file, session cookie (`overtide_session`, so Overtide and Stewarr on the same host don't sign each other out) and keep tag (`overtide_keep`). `stewarr_keep` stays among the default keep tags, so what was protected with Stewarr stays protected. The config folder's layout is unchanged: a copy of Stewarr's, with its torrent history, works as is; it's never shared with a running Stewarr.
-2. **Dry run covers every action.** Today `removal.dry_run` covers removals. Requests sent to Radarr and Sonarr, and any download limit Overtide sets on the torrent client, must follow the same rule: in dry run, Overtide records "would request X", "would limit Y" and does nothing.
-3. ~~**Overfin as a service.**~~ Done: a service type of its own (one), with Overfin's control panel address and a key made there under Apps with Values ticked, and a connection test.
-4. **Values asked of Overfin, never stored.** 0.6.0 reads Overfin's scores every 30 minutes and keeps them as the Retention Value; that goes. Overtide stores nothing about how much a title is worth. When a device needs space, it asks Overfin for the least valuable titles the libraries have (`/apps/v1/titles?inLibrary=true&sort=score&order=asc`, 20 at a time), and weighs them one by one with what only it knows: whether the title has files on that device, whether a torrent still worth seeding backs them (Torrent Value, from the history it records), keep tags and its removal rules. It asks for 20 more while space is still needed, up to a limit, skipping titles it has no files for and any it already saw (scores may move between pages). Overfin out of reach: nothing is planned. Overtide's pages show no values: the Storage page's removal plan, computed when asked, shows what would go, in Overfin's order; Overfin's Valuation page explains the values.
-5. **Requests from Overfin.** Overtide reads Overfin's approved requests and sends them to Radarr and Sonarr, the most valued first when resources are short. It reports each request's status to Overfin: accepted, queued and why, downloading, available, refused and why.
-6. **Resource limits.** Storage per library, genre and so on; traffic per day or month; downloads at once; seeding. Overfin keeps the limits on people (quotas, approval, kids); Overtide those on resources.
-7. **Leaving soon.** Overtide tells Overfin what it plans to remove and when, so people see it and get a last chance to watch.
-8. **No valuation of its own.** With values asked of Overfin, Overtide drops everything it used to value titles: the Jellyfin, Seerr, TMDB and IMDb adapters and their refresh tasks, the IMDb ratings table, the Retention Value weights and settings, and what it stored of ratings, viewing, favourites and requests. Overfin becomes required for planning removals. Sizes always come from the filesystem; Torrent Value stays.
+**Foundations, kept from Stewarr.**
+1. **Hardlinked bundles.** Overtide proves through the filesystem (device and inode) which files share the same data, so it knows exactly what a removal frees before it acts.
+2. **Torrent Value from recorded history**: ratio, contribution over time, consistency, seeding time, private trackers.
+3. **Every action through the file's owner**: Radarr, Sonarr, the torrent client. Overtide deletes directly only what no service owns, checked again right before.
 
-9. **Overfin's look.** Overtide takes on the look of Overfin's control panel: its colours, fonts, spacing and corners (light and dark), its sidebar with groups and icons, and its buttons, cards, notices, tables, forms and sliders. Only the look changes; pages stay rendered by the server. Overtide has no operator branding: it always looks like Overfin's panel, not like the operator's site. Styles copied from Overfin keep Overfin's copyright notice (both are MIT).
+**Roles.** Overfin values every title, in the libraries or not (tastes, viewing, requests, favourites, watchlist, ratings, new release, recently added, popularity, the operator's weights), and keeps requests and the limits on people. Overtide knows the storage and decides what to add and what to remove. **Overtide stores nothing about how much a title is worth**: it asks Overfin when it decides.
 
-Open: whether automatic removal stays available once Overfin drives it, or Overtide only proposes and the operator approves (the confirm mode already exists).
+**Removing.** The unit is a bundle: a title's files and every torrent sharing them, cross-seeds included. Torrents weigh, they don't veto: a bundle is worth its title's value plus its torrents' Torrent Value, scaled by "torrent care". Only real obligations protect outright: seeding times a private tracker requires, and keep tags. When a disk is over its threshold, the lowest bundles on it go first until it's back under. Overtide asks Overfin for the least valuable titles 20 at a time (`/apps/v1/titles?inLibrary=true&sort=score&order=asc`), and stops asking once the next page's titles are already worth more than the bundles chosen. Torrents with no title behind them are weighed on their Torrent Value alone. Overfin out of reach: nothing is planned.
+
+**Adding.** Overtide chooses what to add itself, from Overfin's values of the titles the libraries don't have, and adds them through Radarr's and Sonarr's own APIs, with the root folder and quality profile set in Overtide, then asks them to search. It needs no import list; an operator's lists are respected (an exclusion is added when Overtide removes a title, so the list doesn't bring it back). Requests come first. A title goes in only if it's clearly worth more than what would make room for it (a gap, so nothing comes and goes back and forth), and only if its estimated size fits under the disk's threshold once that room is made.
+- **Pace:** a renewal rate, downloads at once, traffic limits.
+- **Variety:** a share of what's added goes to less obvious picks, so the library doesn't narrow.
+- **New releases:** a share for hyped new titles even outside people's tastes, with its own settings: the share (0 to 30%; 0 is off), how new (1, 3 or 6 months), genres never brought in. Kids' limits apply. Ignored ones fade out on their own once "Recently added" wears off.
+
+**Safety.** Dry run first and by default, for adding as for removing ("would add X, 12 GB; would remove Y and Z"); then the existing modes, confirm (proposals approved by hand) and automatic.
+
+**Look.** Overfin's control panel: the menu on the left, the same colours, cards, tables, forms and sliders, light and dark, no operator branding. Pages stay rendered by the server.
+
+**To try first, then adjust.** The open questions get these first answers:
+- Disks are kept between their threshold and a few points under it (5 by default): Overtide adds while there's room below that band, and makes room by removing when a better title is waiting.
+- Suggested titles follow the same modes as removals: dry run, confirm, automatic.
+- Suggestions are simply Overfin's values of the missing titles (no separate list).
+- Renewal rate: up to 5 titles a day by default.
+- Automatic removal stays available, as the third mode.
+
+## Building it
+
+1. ~~**Overtide's name in the code.**~~ Done (0.6.0).
+2. ~~**Overfin as a service.**~~ Done (0.6.0): address and a key with Values, a connection test.
+3. ~~**Built like Overfin.**~~ Done (0.6.0): module, pure-Go SQLite, distroless image, CI and releases, `deploy/`.
+4. **Overfin's look**, first, since every page changes after it.
+5. **No valuation of its own.** The stored scores (0.6.0's "Overfin scores" task) and Overtide's own valuation go: the Jellyfin, Seerr, TMDB and IMDb adapters and their tasks, the IMDb table, the Retention Value weights. Pages show no values; the Storage page's plan shows what would go, in Overfin's order.
+6. **The removal planner**, as designed: bundles weighed with Torrent Value, Overfin asked page by page, seeding obligations, the threshold kept.
+7. **Adding**, as designed, in dry run: Radarr's and Sonarr's add and search, size estimates, the gap, pace, variety, the new releases lane, and dry run covering every action.
+8. **Requests from Overfin**, once Overfin keeps them itself (Overfin's roadmap): Overtide sends them first and reports their status back.
+9. **Leaving soon**, told to Overfin before a removal, so people get a last chance to watch.
 
 ## Implemented through 0.4.8
 
