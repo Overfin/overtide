@@ -511,3 +511,18 @@ func TestBuildSkipsCrossSeedGroupWithAProtectedTorrent(t *testing.T) {
 		t.Fatalf("expected nothing, got %#v", p.Actions)
 	}
 }
+
+// When only part of a show is needed, its first seasons go, even if a later
+// one scores lower.
+func TestSeasonOrderBeforeTheCutoff(t *testing.T) {
+	show := model.Media{Type: model.Series, ServiceID: "s", SourceID: 1}
+	season := func(number int, value float64) Action {
+		return Action{Kind: StandaloneSeason, Media: show, Season: &model.Season{Number: number}, Value: value, ReclaimableBytes: 100}
+	}
+	ordered := order([]Action{season(1, 50), season(2, 40), season(3, 10)}, nil)
+	enforceSeasonOrder(ordered)
+	taken := takeUntil(ordered, 100)
+	if len(taken) != 1 || taken[0].Season.Number != 1 {
+		t.Fatalf("expected season 1 alone, got %#v", taken)
+	}
+}

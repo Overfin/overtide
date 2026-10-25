@@ -296,19 +296,12 @@ func order(mediaTier, torrentTier []Action) []Action {
 	return append(torrents, media...)
 }
 
-// enforceSeasonOrder is a safety net on top of season Retention Value
-// (which now scores recency from each season's own last-aired date, not
-// import time): it guarantees that within one show, an earlier season is
-// never removed after a later one, even if per-season value ever ties or
-// inverts — missing/bad air-date data, or a show that aired out of numeric
-// order, for instance. A show's most recent content is meant to be kept
-// the longest.
-//
-// This reassigns each show's own season actions into the exact ranked
-// positions its members already occupy after the value sort above — so
-// the overall cross-show removal priority (which positions belong to this
-// show at all) is unchanged — but fills those positions by ascending
-// season number instead of by value.
+// enforceSeasonOrder makes a show's earlier seasons go before its later
+// ones, whatever their scores: a show's most recent seasons are kept the
+// longest. Each show's seasons keep the places they hold in the order, but
+// fill them by season number. It must run on the whole order, before the
+// plan stops at the space it needs: run after, it couldn't bring in an
+// earlier season the cutoff left out.
 func enforceSeasonOrder(actions []Action) {
 	positionsByShow := map[string][]int{}
 	for index, action := range actions {
@@ -331,6 +324,20 @@ func enforceSeasonOrder(actions []Action) {
 			actions[position] = seasons[i]
 		}
 	}
+}
+
+// takeUntil takes actions in order until they reclaim need bytes.
+func takeUntil(ordered []Action, need uint64) []Action {
+	var taken []Action
+	var selectedBytes int64
+	for _, action := range ordered {
+		if selectedBytes >= int64(need) {
+			break
+		}
+		taken = append(taken, action)
+		selectedBytes += action.ReclaimableBytes
+	}
+	return taken
 }
 
 // Build uses Target as the sole storage-reclamation threshold. Critical is
@@ -415,16 +422,9 @@ func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, m
 		mediaTier = filterExcluded(mediaTier, excluded)
 		torrentTier = filterExcluded(torrentTier, excluded)
 	}
-	var final []Action
-	var selectedBytes int64
-	for _, action := range order(mediaTier, torrentTier) {
-		if selectedBytes >= int64(plan.NeedBytes) {
-			break
-		}
-		final = append(final, action)
-		selectedBytes += action.ReclaimableBytes
-	}
-	enforceSeasonOrder(final)
+	ordered := order(mediaTier, torrentTier)
+	enforceSeasonOrder(ordered)
+	final := takeUntil(ordered, plan.NeedBytes)
 	plan.Actions = final
 	for _, action := range final {
 		plan.SelectedBytes += uint64(action.ReclaimableBytes)
