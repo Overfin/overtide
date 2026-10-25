@@ -125,7 +125,8 @@ func (service *Service) Entries() ([]Entry, error) {
 }
 
 // Adopt hands a title that's in Radarr or Sonarr without files over to
-// Overtide: from its next try, it's handled as one Overtide added.
+// Overtide: from its next try, it's handled as one Overtide added. With
+// key "", every such title is handed over.
 func (service *Service) Adopt(key string) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -133,20 +134,26 @@ func (service *Service) Adopt(key string) error {
 	if err != nil {
 		return err
 	}
+	handed := 0
 	for i := range entries {
-		if entries[i].Key == key {
-			if entries[i].State != WantedElsewhere {
-				return fmt.Errorf("%s isn't waiting in Radarr or Sonarr without files", entries[i].Title)
-			}
-			entries[i].Ours = true
-			entries[i].State = Waiting
-			entries[i].NextTry = service.now()
-			entries[i].Result = "Handed over to Overtide"
-			entries[i].UpdatedAt = service.now()
-			return service.save(entries)
+		entry := &entries[i]
+		if key != "" && entry.Key != key {
+			continue
 		}
+		if entry.State != WantedElsewhere {
+			if key != "" {
+				return fmt.Errorf("%s isn't waiting in Radarr or Sonarr without files", entry.Title)
+			}
+			continue
+		}
+		entry.Ours, entry.State, entry.NextTry = true, Waiting, service.now()
+		entry.Result, entry.UpdatedAt = "Handed over to Overtide", service.now()
+		handed++
 	}
-	return fmt.Errorf("no title %s in the waiting list", key)
+	if handed == 0 {
+		return fmt.Errorf("no title to hand over")
+	}
+	return service.save(entries)
 }
 
 // Run is the adding task: it reads the import lists, follows what's

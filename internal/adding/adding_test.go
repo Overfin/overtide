@@ -3,8 +3,13 @@ package adding
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/store"
 
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
@@ -131,5 +136,32 @@ func TestSettle(t *testing.T) {
 	service.settle(&entry, false, nil, func() error { return errors.New("down") })
 	if entry.ArrID != 4 {
 		t.Fatalf("a title that couldn't be taken out lost its ID: %#v", entry)
+	}
+}
+
+// Handing everything over takes only the titles without files that aren't
+// Overtide's.
+func TestAdoptAll(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(inventory.New(config.Config{}, database))
+	if err := service.save([]Entry{{Key: "movie:1", State: WantedElsewhere}, {Key: "movie:2", State: InLibrary}, {Key: "movie:3", State: WantedElsewhere}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Adopt(""); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := service.Entries()
+	for _, entry := range entries {
+		handed := entry.Ours && entry.State == Waiting
+		if handed != (entry.Key != "movie:2") {
+			t.Errorf("%s: %#v", entry.Key, entry)
+		}
+	}
+	if err := service.Adopt(""); err == nil {
+		t.Error("nothing left to hand over, yet no error")
 	}
 }

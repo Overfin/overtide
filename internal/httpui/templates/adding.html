@@ -38,6 +38,7 @@
       <section class="card">
         <h2>{{.Label}} <span class="count">{{len .Entries}}</span></h2>
         <p class="muted">{{.Hint}}</p>
+        {{if $adopt}}<form method="post" action="/adding/adopt" onsubmit="return confirm('Hand these {{len .Entries}} titles to Overtide? Once adding is on, each is searched for, and taken out of Radarr or Sonarr if nothing is found, to be tried again later.')"><input type="hidden" name="key" value=""><button type="submit">Hand them all to Overtide</button></form>{{end}}
         <table>
           <thead><tr><th>Title</th><th>From</th><th>Next try</th><th>Last result</th>{{if $adopt}}<th></th>{{end}}</tr></thead>
           <tbody>
