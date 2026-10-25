@@ -350,14 +350,11 @@ func (service *Service) Refresh(ctx context.Context) error {
 		sonarrMedia = append(sonarrMedia, media...)
 	}
 	all := append(radarrMedia, sonarrMedia...)
-	// Jellyfin and Seerr are enrichment, not inventory authorities. Base refresh
-	// carries forward their last published facts; their independent tasks replace
-	// those facts only after a complete generation-matched response.
+	// Overfin's scores are not inventory. Base refresh carries forward the
+	// last ones read; the Overfin task replaces them only after a complete
+	// read.
 	previousMedia, _, _ := service.Snapshot()
-	preserveJellyfinFacts(all, previousMedia)
-	preserveSeerrFacts(all, previousMedia)
 	preserveOverfinFacts(all, previousMedia)
-	preserveTMDBFacts(all, previousMedia)
 	baseTorrents := make([]model.Torrent, 0, len(torrentMap))
 	for _, t := range torrentMap {
 		baseTorrents = append(baseTorrents, t)
@@ -466,7 +463,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		rids, sids, provenance, he = service.syncImportHistory(ctx)
 	}()
 
-	valuation.ApplyMedia(all, service.cfg, service.imdbRatingsSnapshot())
+	valuation.ApplyMedia(all, service.cfg)
 	service.mu.Lock()
 	service.items = cloneMedia(all)
 	service.updated = time.Now()
@@ -481,13 +478,12 @@ func (service *Service) Refresh(ctx context.Context) error {
 	if len(service.cfg.ServicesOfType("qbittorrent")) == 0 {
 		service.mu.RLock()
 		files, mediaFileRefs, cfg := service.files, service.mediaFileRefs, service.cfg
-		imdbRatings := service.imdbRatings
 		generation := service.generation
 		service.mu.RUnlock()
 		applyMediaFileEstimates(all, files, mediaFileRefs)
 		attachSeasons(all, mediaFileRefs, files)
 		applySeasonFileEstimates(all, files, mediaFileRefs)
-		valuation.ApplyMedia(all, cfg, imdbRatings)
+		valuation.ApplyMedia(all, cfg)
 		if service.db != nil {
 			service.publishMu.Lock()
 			err := service.db.PublishInventory(generation, nil, nil, all)
@@ -631,7 +627,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		return strings.ToLower(torrentList[i].Name) < strings.ToLower(torrentList[j].Name)
 	})
 	projectTorrentRelations(all, torrentList)
-	valuation.ApplyMedia(all, service.cfg, service.imdbRatingsSnapshot())
+	valuation.ApplyMedia(all, service.cfg)
 	service.mu.Lock()
 	// Re-merge the newest topology while holding the generation lock. A file
 	// reconciliation may have completed after the earlier snapshot was read;
@@ -646,7 +642,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	applySeasonBundleEstimates(all, torrentList, service.files, service.mediaFileRefs, service.torrentFileRefs)
 	projectTorrentRelations(all, torrentList)
 	valuation.ApplyTorrentValue(torrentList, service.cfg, service.recentTorrentHistory())
-	valuation.ApplyMedia(all, service.cfg, service.imdbRatings)
+	valuation.ApplyMedia(all, service.cfg)
 	// setStageTiming locks service.mu itself, and it is already held here.
 	service.stageTimings["relationships merge"] = time.Since(relationshipsMergeStarted)
 	generation := service.generation

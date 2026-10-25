@@ -9,9 +9,9 @@ import (
 	"github.com/overfin/overtide/internal/valuation"
 )
 
-// RefreshOverfin reads Overfin's scores for what the libraries have. Like
-// RefreshSeerr, it keeps its results if the base generation moves on
-// mid-pass. While it runs, or after it failed, automatic removal planning
+// RefreshOverfin reads Overfin's scores for what the libraries have. It
+// keeps its results if the base generation moves on mid-pass: they're
+// merged by stable key onto whatever items are current. While it runs, or after it failed, automatic removal planning
 // is paused: with Overfin configured, its scores are the Retention Value.
 func (service *Service) RefreshOverfin(ctx context.Context) error {
 	defer service.publishChange()
@@ -46,7 +46,7 @@ func (service *Service) RefreshOverfin(ctx context.Context) error {
 	defer service.mu.Unlock()
 	items := cloneMedia(service.items)
 	mergeOverfinFacts(items, base)
-	valuation.ApplyMedia(items, service.cfg, service.imdbRatings)
+	valuation.ApplyMedia(items, service.cfg)
 	if service.db != nil {
 		if err := service.db.PublishEnrichment("overfin", service.generation, items); err != nil {
 			service.reliability.Overfin = "stale"
@@ -60,13 +60,15 @@ func (service *Service) RefreshOverfin(ctx context.Context) error {
 	if service.reliability.Valuation {
 		service.reliability.Message = "Media valuation is reliable."
 	} else {
-		service.reliability.Message = "Other enrichment is stale; automatic removal planning is paused."
+		service.reliability.Message = "Overfin's scores are not reliable yet; automatic removal planning is paused."
 	}
 	service.setStatusLocked(serviceName(service.cfg, "overfin", "Overfin"), true, true, nil)
 	return nil
 }
 
-// preserveOverfinFacts mirrors preserveSeerrFacts for Overfin's scores.
+// preserveOverfinFacts carries Overfin's last scores across a base
+// (Radarr/Sonarr) refresh, unless the title was re-identified: then the
+// scores were for another title, and the next read fetches the right ones.
 func preserveOverfinFacts(dst, previous []model.Media) {
 	byKey := make(map[string]model.Media, len(previous))
 	for _, m := range previous {

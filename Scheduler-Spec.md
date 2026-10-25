@@ -21,7 +21,7 @@ Confirmed policy decisions:
 ## 1. Purpose and boundary
 
 The scheduler coordinates when application work may run. It does not know what
-Radarr, Sonarr, Jellyfin, torrents, files, inventory, or removal mean.
+Radarr, Sonarr, Overfin, torrents, files, inventory, or removal mean.
 
 Domain code defines tasks, resource requirements, workflows, and durability.
 Task runners remain responsible for validating prerequisites, performing work,
@@ -342,11 +342,11 @@ special cases.
 - A removal after Base inventory success invalidates that step for the newer
   revision.
 - Automatic planning remains inhibited until the workflow is satisfied.
-- Jellyfin and Seerr enrichment are not implicitly part of this workflow.
+- Reading Overfin's scores is not implicitly part of this workflow.
 
 ### 11.4 Enrichment cooldown
 
-Jellyfin's post-removal cooldown is represented by a delayed trigger or policy,
+The Overfin scores task's post-removal cooldown is represented by a delayed trigger or policy,
 not by removal-specific fields in the scheduler. If interrupted for mutation,
 its still-required trigger is rescheduled after the cooldown.
 

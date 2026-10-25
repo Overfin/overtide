@@ -45,7 +45,7 @@ func TestRunnerReceivesTriggerContextAndEmitsOneSummary(t *testing.T) {
 
 func TestDegradedStatusReflectsCurrentAdvisoryNotAFrozenOne(t *testing.T) {
 	var warning atomic.Value
-	warning.Store("Jellyfin enrichment stale; Seerr enrichment stale")
+	warning.Store("Overfin scores stale; another advisory")
 	manager := New(Definition{ID: "inventory", Name: "Base inventory", Runner: func(context.Context) error { return nil }, Advisory: func() string { return warning.Load().(string) }})
 	startManager(t, manager)
 	receipt, err := manager.Submit(Request{TaskID: "inventory", Kind: TriggerManual})
@@ -56,7 +56,7 @@ func TestDegradedStatusReflectsCurrentAdvisoryNotAFrozenOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	status := manager.Snapshot()[0]
-	if status.State != "Degraded" || status.LastWarning != "Jellyfin enrichment stale; Seerr enrichment stale" {
+	if status.State != "Degraded" || status.LastWarning != "Overfin scores stale; another advisory" {
 		t.Fatalf("expected degraded status right after the run, got %#v", status)
 	}
 	// The underlying condition resolves without the task running again.
@@ -67,9 +67,9 @@ func TestDegradedStatusReflectsCurrentAdvisoryNotAFrozenOne(t *testing.T) {
 	}
 	// And if it becomes degraded again for a different reason, the display
 	// must show the fresh text, not the original run's frozen warning.
-	warning.Store("Seerr enrichment stale")
+	warning.Store("Overfin scores stale")
 	status = manager.Snapshot()[0]
-	if status.State != "Degraded" || status.LastWarning != "Seerr enrichment stale" {
+	if status.State != "Degraded" || status.LastWarning != "Overfin scores stale" {
 		t.Fatalf("expected the fresh advisory text, got %#v", status)
 	}
 }

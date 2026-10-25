@@ -304,10 +304,10 @@ func TestAddServiceFormNarrowsTypeOptionsByCategory(t *testing.T) {
 		wantTypes   []string
 		unwantTypes []string
 	}{
-		{"torrentclient", "Add torrent client", []string{"qbittorrent"}, []string{"radarr", "sonarr", "jellyfin", "seerr"}},
-		{"medialibrary", "Add media library", []string{"radarr", "sonarr"}, []string{"qbittorrent", "jellyfin", "seerr"}},
-		{"", "Add service", []string{"radarr", "sonarr", "qbittorrent", "jellyfin", "seerr"}, nil},
-		{"unknown", "Add service", []string{"radarr", "sonarr", "qbittorrent", "jellyfin", "seerr"}, nil},
+		{"torrentclient", "Add torrent client", []string{"qbittorrent"}, []string{"radarr", "sonarr", "overfin"}},
+		{"medialibrary", "Add media library", []string{"radarr", "sonarr"}, []string{"qbittorrent", "overfin"}},
+		{"", "Add service", []string{"radarr", "sonarr", "qbittorrent", "overfin"}, nil},
+		{"unknown", "Add service", []string{"radarr", "sonarr", "qbittorrent", "overfin"}, nil},
 	}
 	for _, c := range cases {
 		url := "/services/add"

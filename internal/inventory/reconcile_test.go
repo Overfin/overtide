@@ -150,7 +150,7 @@ func TestWalkStorageRootsMergesOverlappingServiceContexts(t *testing.T) {
 	}
 	files, err := walkStorageRoots([]storageRoot{
 		{Path: root, Service: config.Service{ID: "radarr", Type: "radarr", Name: "Movies"}},
-		{Path: root, Service: config.Service{ID: "jellyfin", Type: "jellyfin", Name: "Jellyfin"}},
+		{Path: root, Service: config.Service{ID: "sonarr", Type: "sonarr", Name: "Series"}},
 	})
 	if err != nil {
 		t.Fatal(err)

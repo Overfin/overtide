@@ -278,11 +278,11 @@ func TestPublishEnrichmentRollsBackMediaAndGenerationTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := db.PublishEnrichment("jellyfin", 1, []model.Media{{Type: model.Movie, SourceID: 1, Title: "old"}}); err != nil {
+	if err := db.PublishEnrichment("overfin", 1, []model.Media{{Type: model.Movie, SourceID: 1, Title: "old"}}); err != nil {
 		t.Fatal(err)
 	}
 	db.beforeCommit = func() error { return fmt.Errorf("injected commit failure") }
-	if err := db.PublishEnrichment("jellyfin", 2, []model.Media{{Type: model.Movie, SourceID: 2, Title: "new"}}); err == nil {
+	if err := db.PublishEnrichment("overfin", 2, []model.Media{{Type: model.Movie, SourceID: 2, Title: "new"}}); err == nil {
 		t.Fatal("expected injected failure")
 	}
 	db.beforeCommit = nil
@@ -293,7 +293,7 @@ func TestPublishEnrichmentRollsBackMediaAndGenerationTogether(t *testing.T) {
 	if len(media) != 1 || media[0].Title != "old" {
 		t.Fatalf("enrichment media changed after rollback: %#v", media)
 	}
-	generation, err := db.Meta("generation.enrichment.jellyfin")
+	generation, err := db.Meta("generation.enrichment.overfin")
 	if err != nil {
 		t.Fatal(err)
 	}

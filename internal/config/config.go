@@ -13,31 +13,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type ValueWeights struct {
-	Rating          float64 `json:"rating"`
-	NeverWatched    float64 `json:"never_watched"`
-	LastWatchedAge  float64 `json:"last_watched_age"`
-	LibraryAge      float64 `json:"library_age"`
-	LowPopularity   float64 `json:"low_popularity"`
-	OldRequest      float64 `json:"old_request"`
-	TorrentActivity float64 `json:"torrent_activity"`
-	// Popularity scores TMDB's own popularity metric (Media.Popularity) —
-	// zero unless TMDB enrichment is configured and has a match for this
-	// item, distinct from LowPopularity (which scores raw vote count, a
-	// weaker proxy Radarr/Sonarr already provide without TMDB).
-	Popularity float64 `json:"popularity"`
-	// SeasonRecency scores a Series season by how recently its episodes were
-	// added, independent of LibraryAge (which describes the whole series).
-	SeasonRecency float64 `json:"season_recency"`
-}
-
-type ValuationConfig struct {
-	Weights            ValueWeights `json:"weights"`
-	RequestValueBonus  float64      `json:"request_value_bonus"`
-	FavoriteValueBonus float64      `json:"favorite_value_bonus"`
-	KeepTagValueBonus  float64      `json:"keep_tag_value_bonus"`
-}
-
 // Removal.AutoMode's three valid values. Empty (a config.json written
 // before this field existed, or an invalid hand-edited value) behaves as
 // RemovalAutoDisabled — see SetRemovalSettings.
@@ -45,7 +20,7 @@ const (
 	RemovalAutoDisabled = "disabled"
 	// RemovalAutoConfirm runs the evaluation task on its normal schedule,
 	// applying every automatic-removal-only filter (unassociated-torrent
-	// gate, TMDB staleness) so the results are exactly what RemovalAutoAuto
+	// gate) so the results are exactly what RemovalAutoAuto
 	// would touch — but never submits anything; a human still has to act
 	// via the normal manual removal flow.
 	RemovalAutoConfirm = "confirm"
@@ -162,7 +137,7 @@ func validateService(service Service, seenNames map[string]bool) error {
 		return fmt.Errorf("service name %q must be unique (case-insensitive)", service.Name)
 	}
 	switch service.Type {
-	case "radarr", "sonarr", "qbittorrent", "jellyfin", "seerr", "overfin":
+	case "radarr", "sonarr", "qbittorrent", "overfin":
 		if service.URL == "" {
 			return fmt.Errorf("service %q (%s) requires url", service.Name, service.Type)
 		}
@@ -190,16 +165,6 @@ func (configuration *Config) populateDerivedServiceFields() {
 		configuration.Sonarr = Connection{URL: service.URL, APIKey: service.APIKey}
 	} else {
 		configuration.Sonarr = Connection{}
-	}
-	if service, ok := configuration.FirstService("jellyfin"); ok {
-		configuration.Jellyfin = Connection{URL: service.URL, APIKey: service.APIKey}
-	} else {
-		configuration.Jellyfin = Connection{}
-	}
-	if service, ok := configuration.FirstService("seerr"); ok {
-		configuration.Seerr = Connection{URL: service.URL, APIKey: service.APIKey}
-	} else {
-		configuration.Seerr = Connection{}
 	}
 	if service, ok := configuration.FirstService("overfin"); ok {
 		configuration.Overfin = Connection{URL: service.URL, APIKey: service.APIKey}
@@ -230,9 +195,7 @@ func (configuration Config) ServicesOfType(serviceType string) []Service {
 // multiInstanceAllowed reports whether serviceType may have more than one
 // configured entry. Radarr/Sonarr/qBittorrent are commonly run in more than
 // one instance (separate quality-tier libraries, a seedbox alongside a local
-// client); Jellyfin/Seerr are each a single centralized service in every
-// known real-world deployment, so they keep the simpler one-instance shape
-// (FirstService-derived Config.Jellyfin/Config.Seerr fields).
+// client); Overfin is one per server (FirstService-derived Config.Overfin).
 func multiInstanceAllowed(serviceType string) bool {
 	switch strings.ToLower(serviceType) {
 	case "radarr", "sonarr", "qbittorrent":
@@ -257,13 +220,11 @@ type Config struct {
 		RefreshInterval string `json:"refresh_interval"`
 	} `json:"server"`
 	Services []Service `json:"services"`
-	// Radarr, Sonarr, Jellyfin, Seerr and QBittorrent are not config keys; they
+	// Radarr, Sonarr, Overfin and QBittorrent are not config keys; they
 	// are populated below from Services for the current single-adapter-per-
 	// type runtime.
 	Radarr      Connection         `json:"-"`
 	Sonarr      Connection         `json:"-"`
-	Jellyfin    Connection         `json:"-"`
-	Seerr       Connection         `json:"-"`
 	Overfin     Connection         `json:"-"`
 	QBittorrent QBittorrentService `json:"-"`
 	Storage     struct {
@@ -275,32 +236,11 @@ type Config struct {
 		DeviceThresholds map[string]DeviceThreshold `json:"device_thresholds,omitempty"`
 	} `json:"storage"`
 	Protection struct {
-		Favorite          bool     `json:"favorite"`
-		SeerrRequestGrace string   `json:"seerr_request_grace"`
-		KeepTags          []string `json:"keep_tags"`
-		MinTorrentRatio   float64  `json:"min_torrent_ratio"`
-		KeepTorrentTags   []string `json:"keep_torrent_tags"`
+		KeepTags        []string `json:"keep_tags"`
+		MinTorrentRatio float64  `json:"min_torrent_ratio"`
+		KeepTorrentTags []string `json:"keep_torrent_tags"`
 	} `json:"protection"`
-	Valuation ValuationConfig `json:"valuation"`
-	Removal   RemovalConfig   `json:"removal"`
-	// TMDB is configured directly, unlike Radarr/Sonarr/Jellyfin/Seerr: it
-	// isn't self-hosted, has no URL, and there is only ever one instance —
-	// so it lives here as a standalone field (set from the Settings page)
-	// rather than as a config.Service.
-	TMDB struct {
-		APIKey string `json:"api_key,omitempty"`
-	} `json:"tmdb"`
-	// IMDb enrichment is a free, official, non-commercial dataset
-	// (title.ratings.tsv.gz), not a per-instance service — no URL or API
-	// key to configure, just an on/off switch, unlike TMDB. Stored
-	// inverted (Disabled, not Enabled) so a zero-value/omitted field — an
-	// existing config.json predating this setting, or a fresh install —
-	// means enabled, matching DeviceThreshold.AutomaticRemovalDisabled's
-	// same trick: IMDb should be on by default, not something every
-	// existing install silently loses until someone finds the toggle.
-	IMDb struct {
-		Disabled bool `json:"disabled,omitempty"`
-	} `json:"imdb"`
+	Removal RemovalConfig `json:"removal"`
 	// Auth holds the single admin account's credentials. An empty Username
 	// means no account has been created yet — the app's first-run setup
 	// screen is the only route reachable until SetCredentials is called.
@@ -309,7 +249,6 @@ type Config struct {
 	// setup, the same pattern used across the *arr ecosystem.
 	Auth            Auth          `json:"auth"`
 	RefreshInterval time.Duration `json:"-"`
-	RequestGrace    time.Duration `json:"-"`
 }
 
 type Auth struct {
@@ -351,24 +290,6 @@ func (configuration Config) VerifyPassword(password string) bool {
 type Connection struct {
 	URL    string `json:"url"`
 	APIKey string `json:"api_key"`
-}
-
-// SetTMDBAPIKey idempotently sets (or clears, with an empty string) the
-// TMDB enrichment API key. Clearing it is a deliberate, supported way to
-// disable TMDB enrichment entirely — there is no separate on/off switch.
-func SetTMDBAPIKey(configuration Config, apiKey string) Config {
-	updated := configuration
-	updated.TMDB.APIKey = strings.TrimSpace(apiKey)
-	return updated
-}
-
-// SetIMDbEnabled toggles IMDb ratings enrichment. Unlike TMDB there is no
-// key to set/clear — the dataset is free and keyless — so this is a
-// plain on/off switch instead.
-func SetIMDbEnabled(configuration Config, enabled bool) Config {
-	updated := configuration
-	updated.IMDb.Disabled = !enabled
-	return updated
 }
 
 // AddKeepTagToMedia idempotently adds tag to Protection.KeepTags — used
@@ -609,27 +530,9 @@ const defaultConfigJSON = `{
     "device_thresholds": {}
   },
   "protection": {
-    "favorite": true,
-    "seerr_request_grace": "8760h",
     "keep_tags": ["keep", "overtide_keep", "stewarr_keep"],
     "min_torrent_ratio": 0,
     "keep_torrent_tags": ["stewarr_keep"]
-  },
-  "valuation": {
-    "weights": {
-      "rating": 40,
-      "never_watched": 25,
-      "last_watched_age": 15,
-      "library_age": 10,
-      "low_popularity": 10,
-      "old_request": 12,
-      "torrent_activity": 10,
-      "popularity": 15,
-      "season_recency": 8
-    },
-    "request_value_bonus": 100,
-    "favorite_value_bonus": 100,
-    "keep_tag_value_bonus": 1000
   },
   "removal": {
     "dry_run": true,
@@ -672,16 +575,25 @@ func Load(path string) (Config, error) {
 		return configuration, err
 	}
 	var present struct {
-		Valuation struct {
-			Weights struct {
-				Popularity *json.RawMessage `json:"popularity"`
-			} `json:"weights"`
-		} `json:"valuation"`
 		Removal struct {
 			TorrentCarePercent *json.RawMessage `json:"torrent_care_percent"`
 		} `json:"removal"`
 	}
 	_ = json.Unmarshal(fileContents, &present)
+	// Jellyfin and Seerr were services before Overtide stopped valuing
+	// titles itself (Overfin does); a config.json from then still lists
+	// them. They're dropped, and the file is saved without them.
+	droppedServices := false
+	kept := configuration.Services[:0]
+	for _, service := range configuration.Services {
+		switch strings.ToLower(strings.TrimSpace(service.Type)) {
+		case "jellyfin", "seerr":
+			droppedServices = true
+		default:
+			kept = append(kept, service)
+		}
+	}
+	configuration.Services = kept
 	seenNames := map[string]bool{}
 	typeCounts := map[string]int{}
 	assignedFreshID := false
@@ -705,10 +617,8 @@ func Load(path string) (Config, error) {
 		}
 		typeCounts[service.Type]++
 	}
-	// Jellyfin/Seerr are each a single centralized service in every known
-	// real-world deployment (see multiInstanceAllowed); fail closed on a
-	// second one rather than silently using only the first and falsely
-	// classifying the other's data as Unmanaged.
+	// Overfin is one per server (see multiInstanceAllowed); fail closed on
+	// a second one rather than silently using only the first.
 	for serviceType, count := range typeCounts {
 		if count > 1 && !multiInstanceAllowed(serviceType) {
 			return configuration, fmt.Errorf("multiple %s service instances are not supported", serviceType)
@@ -728,33 +638,15 @@ func Load(path string) (Config, error) {
 	if configuration.RefreshInterval <= 0 {
 		return configuration, fmt.Errorf("server.refresh_interval must be greater than zero")
 	}
-	if configuration.Protection.SeerrRequestGrace == "" {
-		configuration.Protection.SeerrRequestGrace = "8760h"
-	}
-	configuration.RequestGrace, err = time.ParseDuration(configuration.Protection.SeerrRequestGrace)
-	if err != nil {
-		return configuration, fmt.Errorf("protection.seerr_request_grace: %w", err)
-	}
-	if configuration.RequestGrace < 0 {
-		return configuration, fmt.Errorf("protection.seerr_request_grace must not be negative")
-	}
-	// Popularity is a newer weight than the rest of Weights; a config.json
-	// written before it existed has no value for it at all, which would
-	// otherwise silently make TMDB's popularity signal count for nothing —
-	// even with TMDB fully enabled and fetching — until the user happened
-	// to add the key themselves.
-	if present.Valuation.Weights.Popularity == nil {
-		configuration.Valuation.Weights.Popularity = 15
-	}
 	// TorrentCarePercent's zero value (0) is a legitimate, meaningful
-	// setting ("never prefer torrents over media"), so it needs the same
-	// presence check as Popularity rather than a zero-value default.
+	// setting ("never prefer torrents over media"), so it needs a presence
+	// check rather than a zero-value default.
 	if present.Removal.TorrentCarePercent == nil {
 		configuration.Removal.TorrentCarePercent = 50
 	}
-	if assignedFreshID {
+	if assignedFreshID || droppedServices {
 		if err := Save(path, configuration); err != nil {
-			return configuration, fmt.Errorf("persist generated service id: %w", err)
+			return configuration, fmt.Errorf("persist updated services: %w", err)
 		}
 	}
 	return configuration, nil

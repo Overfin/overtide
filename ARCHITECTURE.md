@@ -28,17 +28,16 @@ is valued the same way whether it's on the server or not. Overfin gives
 values and counts per title, never who wanted or watched what. Size, physical
 identity, torrent value and resource limits are Overtide's alone. The
 current state, and the steps from it, are in [`ROADMAP.md`](ROADMAP.md),
-"Toward Overfin": until those steps are done, Overtide still reads Jellyfin,
-Seerr, TMDB and IMDb itself, as Overtide does, and what this document says of
-them describes that inherited state.
+"Toward Overfin". Overtide no longer reads Jellyfin, Seerr, TMDB or IMDb:
+a title's value is Overfin's score, unchanged.
 
-Inventory generations distinguish authoritative base facts from enrichment. Radarr, Sonarr and qBittorrent establish their own mutation ownership. Jellyfin contributes playback/favourite facts and Seerr contributes request facts without joining Overtide's filesystem namespace. Cached or partially enriched generations may be displayed, but they are explicitly valuation-unreliable and cannot produce automatic cleanup candidates. A failed service disables only capabilities depending on it and never expands another service's authority.
+Inventory generations distinguish authoritative base facts from enrichment. Radarr, Sonarr and qBittorrent establish their own mutation ownership. Overfin contributes title scores without joining Overtide's filesystem namespace. Cached or partially enriched generations may be displayed, but they are explicitly valuation-unreliable and cannot produce automatic cleanup candidates. A failed service disables only capabilities depending on it and never expands another service's authority.
 
 File topology is generation-bound. A reconciliation result is discarded if the authoritative base inventory changes before it is published. Its Files, claims, Unmanaged projection, Media and Torrents are committed atomically as one durable generation; readers cannot enter a replacement transaction halfway through. Direct filesystem removal has a stronger boundary still: at the final unlink boundary, after owner-backed actions finish, Overtide discovers the live torrent set and refreshes current Radarr/Sonarr file claims rather than treating cached absence as proof.
 
 ## Core facts and interpretations
 
-Raw service data should remain attributable facts: an *arr import event, a qBittorrent hash, Jellyfin playback state, a Seerr request, a filesystem inode/link count, a storage usage reading.
+Raw service data should remain attributable facts: an *arr import event, a qBittorrent hash, an Overfin score, a filesystem inode/link count, a storage usage reading.
 
 Overtide then derives interpretations from combinations of facts: Current, Superseded, Orphaned, Unassociated, former relationships, Value, reclaimable bytes, storage pressure, safe actions, inconsistencies and health conditions.
 
@@ -50,9 +49,9 @@ Do not blur those layers. A future change in interpretation should not require r
 A logical Library item managed today by Radarr or Sonarr. Future adapters may add albums, books and other content types.
 
 ### Retention Value
-A Library-media retention score. Higher means a stronger claim to remain. Retention Value is not storage size and should not be treated as a deletion eligibility flag.
+A Library-media retention score: Overfin's score, unchanged. Higher means a stronger claim to remain. Retention Value is not storage size and should not be treated as a deletion eligibility flag.
 
-Protection is an eligibility fact, not a very large Retention Value. Keep tags, configured Jellyfin favorites and recent Seerr requests are absolute protection states and are excluded from automatic candidates regardless of storage pressure.
+Protection is an eligibility fact, not a very large Retention Value. Keep tags, and titles Overfin didn't score, are absolute protection states and are excluded from automatic candidates regardless of storage pressure.
 
 ### Torrent
 A download/share representation managed by a torrent client. Torrent Value is conceptually separate from media Retention Value.
@@ -128,9 +127,9 @@ Interrupted idempotent maintenance may be retried; irreversible mutations defer
 restart decisions to their domain journal and otherwise require attention.
 
 Overtide composes a shared owner/filesystem mutation boundary and an exclusive
-inventory-publication boundary. Base inventory, Jellyfin enrichment and Seerr
-enrichment publish serially. File reconciliation may overlap inventory network
-work but cannot overlap a removal. Jellyfin is interruptible and resumes after
+inventory-publication boundary. Base inventory and Overfin's scores publish
+serially. File reconciliation may overlap inventory network work but cannot
+overlap a removal. Reading Overfin's scores is interruptible and resumes after
 its cooldown when it yields to a mutation.
 
 Confirmed removals are first written to the durable domain journal, then
@@ -145,13 +144,13 @@ workflow: Base inventory, then File reconciliation. Further mutations coalesce
 or create one necessary successor and retain the five-minute deadline from the
 first unsatisfied revision. A qualifying scheduled or manual execution
 may satisfy a step. Automatic planning remains paused until the workflow
-succeeds. Jellyfin and Seerr enrichment are not workflow steps.
+succeeds. Reading Overfin's scores is not a workflow step.
 
 Current tasks:
 
 - Base inventory — Radarr/Sonarr/qBittorrent plus incremental provenance, frequent.
-- Jellyfin enrichment — playback/favorites, twice daily and removal-isolated.
-- Seerr enrichment — request facts, hourly.
+- Overfin scores — each title's value, every 30 minutes and removal-isolated.
+- Torrent history sampling — torrent health over time, every 30 minutes.
 - File reconciliation — service/file-identity reconciliation, sparse (currently 12h).
 
 Future tasks may include full reconciliation, storage capability scans, statistics maintenance and service-specific reconciliation. Schedules should eventually be configurable through the GUI.
@@ -237,11 +236,9 @@ The long-term optimization question is:
 
 A service type exists only when Overtide has a defined adapter for it.
 Configuration cannot create a generic service merely by supplying a URL or
-filesystem root. The currently defined types are Radarr, Sonarr, Jellyfin,
-Seerr, qBittorrent and Overfin. With Overfin configured, its scores are the
-Retention Value (internal/valuation, applyOverfinValue) and its reliability
-gates automatic planning like the other enrichments'; Jellyfin and Seerr,
-and the TMDB and IMDb sources, go once nothing needs them any more.
+filesystem root. The currently defined types are Radarr, Sonarr, qBittorrent
+and Overfin. Overfin's scores are the Retention Value (internal/valuation,
+applyOverfinValue), and their reliability gates automatic planning.
 
 Adapters participate through explicit capabilities. An adapter need not
 subscribe to the File management layer to contribute value, request,

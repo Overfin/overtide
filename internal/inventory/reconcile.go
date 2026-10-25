@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/jellyfin"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
-	"github.com/overfin/overtide/internal/services/seerr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 	"github.com/overfin/overtide/internal/tasks"
 	"github.com/overfin/overtide/internal/valuation"
@@ -54,10 +52,6 @@ func (service *Service) validateServiceTypes(ctx context.Context, allowed map[st
 			fn = radarr.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "sonarr":
 			fn = sonarr.New(i.URL, i.APIKey).WithContext(ctx).Validate
-		case "jellyfin":
-			fn = jellyfin.New(i.URL, i.APIKey).WithContext(ctx).Validate
-		case "seerr":
-			fn = seerr.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "overfin":
 			fn = overfin.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "qbittorrent":
@@ -623,7 +617,6 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	tc := append([]model.Torrent(nil), service.torrents...)
 	mc := cloneMedia(service.items)
 	cfg := service.cfg
-	imdbRatings := service.imdbRatings
 	service.mu.RUnlock()
 	if !generationCurrent {
 		return service.setFilesError(fmt.Errorf("inventory changed during file reconciliation; result discarded"))
@@ -636,7 +629,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	applySeasonFileEstimates(mc, files, mediaRefs)
 	projectTorrentRelations(mc, tc)
 	valuation.ApplyTorrentValue(tc, cfg, service.recentTorrentHistory())
-	valuation.ApplyMedia(mc, cfg, imdbRatings)
+	valuation.ApplyMedia(mc, cfg)
 	metrics["relationships"] = time.Since(relationshipsStarted).Round(time.Millisecond)
 	stageStarted = time.Now()
 	// publishMu serializes this generation-check-then-write sequence against

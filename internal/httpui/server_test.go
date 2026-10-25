@@ -403,7 +403,7 @@ func TestLibraryTemplateRenders(t *testing.T) {
 	data := libraryData{
 		Rows: []mediaRow{{Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test", Year: 2026, RetentionValue: 12.5, SizeBytes: 1024}}},
 		Page: 1, PageSize: 50, TotalPages: 1, TotalItems: 1, Sort: "title", Order: "asc", HasMediaLibrary: true,
-		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "rating": "/library", "votes": "/library", "views": "/library", "lastwatched": "/library", "requested": "/library", "size": "/library", "torrents": "/library"},
+		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "size": "/library", "torrents": "/library"},
 		SizeLinks: []navLink{{Value: 25, URL: "/library"}, {Value: 50, URL: "/library"}, {Value: 100, URL: "/library"}, {Value: 250, URL: "/library"}},
 	}
 	var b bytes.Buffer
@@ -426,14 +426,14 @@ func TestTorrentTemplateRendersPaged(t *testing.T) {
 
 func TestFilterMedia(t *testing.T) {
 	items := []model.Media{
-		{Type: model.Movie, SourceID: 1, Title: "Alien", Requested: true, Views: 2, Torrents: []model.Torrent{{Hash: "a", AssociationStatus: model.TorrentCurrent}}, Tags: []string{"keep"}},
-		{Type: model.Series, SourceID: 2, Title: "Severance", Requested: false, Views: 0},
+		{Type: model.Movie, SourceID: 1, Title: "Alien", Torrents: []model.Torrent{{Hash: "a", AssociationStatus: model.TorrentCurrent}}, Tags: []string{"keep"}},
+		{Type: model.Series, SourceID: 2, Title: "Severance"},
 	}
-	got := filterMedia(items, "alien", "movie", "any", nil, "yes", "yes", "yes", true)
+	got := filterMedia(items, "alien", "movie", "any", nil, "yes", true)
 	if len(got) != 1 || got[0].Title != "Alien" {
 		t.Fatalf("unexpected media filter result: %#v", got)
 	}
-	got = filterMedia(items, "", "series", "any", nil, "any", "no", "no", true)
+	got = filterMedia(items, "", "series", "any", nil, "no", true)
 	if len(got) != 1 || got[0].Title != "Severance" {
 		t.Fatalf("unexpected series filter result: %#v", got)
 	}
@@ -478,11 +478,11 @@ func TestFilterMediaHidesNoFileMediaByDefault(t *testing.T) {
 		{Type: model.Movie, SourceID: 1, Title: "Present", SizeBytes: 1024},
 		{Type: model.Movie, SourceID: 2, Title: "Missing", SizeBytes: 0},
 	}
-	got := filterMedia(items, "", "any", "any", nil, "any", "any", "any", false)
+	got := filterMedia(items, "", "any", "any", nil, "any", false)
 	if len(got) != 1 || got[0].Title != "Present" {
 		t.Fatalf("unexpected default file filter: %#v", got)
 	}
-	got = filterMedia(items, "", "any", "any", nil, "any", "any", "any", true)
+	got = filterMedia(items, "", "any", "any", nil, "any", true)
 	if len(got) != 2 {
 		t.Fatalf("show-no-files should include both media, got %d", len(got))
 	}
@@ -509,8 +509,7 @@ func TestTaskGroupsHidesUnconfiguredServices(t *testing.T) {
 		{ID: "files", Name: "File reconciliation"},
 		{ID: removalTaskID, Name: "Removal operations"},
 		{ID: autoRemovalTaskID, Name: "Automatic removal"},
-		{ID: "jellyfin", Name: "Jellyfin enrichment"},
-		{ID: "seerr", Name: "Seerr enrichment"},
+		{ID: "overfin", Name: "Overfin scores"},
 	}
 
 	server := &Server{inv: inventory.New(config.Config{}, nil)}
@@ -523,18 +522,11 @@ func TestTaskGroupsHidesUnconfiguredServices(t *testing.T) {
 	}
 
 	cfg := config.Config{}
-	cfg.Jellyfin.URL = "http://jellyfin"
+	cfg.Overfin.URL = "http://overfin"
 	server = &Server{inv: inventory.New(cfg, nil)}
 	groups = server.taskGroups(all)
-	if len(groups) != 2 || groups[1].Name != "Jellyfin" || len(groups[1].Tasks) != 1 {
-		t.Fatalf("expected a Jellyfin group once configured, got %#v", groups)
-	}
-
-	cfg.Seerr.URL = "http://seerr"
-	server = &Server{inv: inventory.New(cfg, nil)}
-	groups = server.taskGroups(all)
-	if len(groups) != 3 || groups[1].Name != "Jellyfin" || groups[2].Name != "Seerr" {
-		t.Fatalf("expected both enrichment groups once both are configured, got %#v", groups)
+	if len(groups) != 2 || groups[1].Name != "Overfin" || len(groups[1].Tasks) != 1 {
+		t.Fatalf("expected an Overfin group once configured, got %#v", groups)
 	}
 }
 

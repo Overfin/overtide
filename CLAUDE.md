@@ -37,8 +37,8 @@ part of the Overfin project: it works the way Overfin's server does.
 - `cmd/overtide`: entry point
 - `internal/httpui`: the web UI, server-rendered (templates, htmx, Stimulus)
 - `internal/inventory`: what the services report, reconciled
-- `internal/valuation`: Retention Value (Overfin's scores when it's
-  configured) and Torrent Value
+- `internal/valuation`: Retention Value (Overfin's scores, unchanged) and
+  Torrent Value
 - `internal/services/*`: one client per service (Radarr, Sonarr,
   qBittorrent, Overfin…)
 - `internal/store`: SQLite

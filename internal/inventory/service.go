@@ -6,14 +6,10 @@ import (
 	"fmt"
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/imdb"
-	"github.com/overfin/overtide/internal/services/jellyfin"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
-	"github.com/overfin/overtide/internal/services/seerr"
 	"github.com/overfin/overtide/internal/services/sonarr"
-	"github.com/overfin/overtide/internal/services/tmdb"
 	"github.com/overfin/overtide/internal/store"
 	"github.com/overfin/overtide/internal/valuation"
 	"log"
@@ -35,9 +31,6 @@ type ServiceStatus struct {
 
 type Reliability struct {
 	Inventory bool   `json:"inventory"`
-	Jellyfin  string `json:"jellyfin"`
-	Seerr     string `json:"seerr"`
-	TMDB      string `json:"tmdb"`
 	Overfin   string `json:"overfin"`
 	Valuation bool   `json:"valuation"`
 	FileModel string `json:"fileModel"`
@@ -45,16 +38,10 @@ type Reliability struct {
 }
 
 type Service struct {
-	cfg      config.Config
-	mu       sync.RWMutex
-	items    []model.Media
-	torrents []model.Torrent
-	// imdbRatings is IMDb's own dataset (see internal/services/imdb),
-	// loaded at startup and replaced wholesale after each successful daily
-	// refresh — never mutated in place, so callers that copy the map
-	// reference under a read lock don't need to hold the lock while using
-	// it afterward.
-	imdbRatings      map[string]imdb.Rating
+	cfg              config.Config
+	mu               sync.RWMutex
+	items            []model.Media
+	torrents         []model.Torrent
 	unmanaged        []model.UnmanagedFile
 	unmanagedUpdated time.Time
 	unmanagedErr     error
@@ -96,18 +83,13 @@ type Service struct {
 	changed   chan struct{}
 	// rad/son/qb are keyed by config.Service.ID: Radarr, Sonarr, and
 	// qBittorrent are commonly run as more than one instance (separate
-	// quality-tier libraries, a seedbox alongside a local client). Jellyfin
-	// and Seerr are each a single centralized service in every known
-	// real-world deployment, so they keep the simpler single-client shape.
-	rad        map[string]*radarr.Client
-	son        map[string]*sonarr.Client
-	jf         *jellyfin.Client
-	seerr      *seerr.Client
-	tmdb       *tmdb.Client
-	imdbClient *imdb.Client
-	overfin    *overfin.Client
-	qb         map[string]*qbittorrent.Client
-	db         *store.Store
+	// quality-tier libraries, a seedbox alongside a local client). Overfin
+	// is one per server, so it keeps the simpler single-client shape.
+	rad     map[string]*radarr.Client
+	son     map[string]*sonarr.Client
+	overfin *overfin.Client
+	qb      map[string]*qbittorrent.Client
+	db      *store.Store
 	// configPath is where a live config mutation (AddService) persists
 	// the updated Config. Empty means live editing is unavailable (e.g. a
 	// Service built directly in tests, with no file backing it at all).
@@ -116,12 +98,6 @@ type Service struct {
 	// service.cfg/rebuild the affected client as one sequence, so concurrent
 	// calls can't race each other's read-modify-write of Services.
 	configMu sync.Mutex
-	// nowFunc is time.Now by default (set in New) — overridden by tests
-	// that need a deterministic wall-clock time regardless of when the
-	// test actually runs, e.g. RefreshIMDbRatings' due-check
-	// (imdb_ratings.go), which is genuinely time-of-day-sensitive and
-	// would otherwise flake depending on what hour it happens to run at.
-	nowFunc func() time.Time
 }
 
 // SetConfigPath records where live config mutations should be persisted.
@@ -135,30 +111,20 @@ func (service *Service) SetConfigPath(path string) {
 }
 
 func New(configuration config.Config, database *store.Store) *Service {
-	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), jf: jellyfin.New(configuration.Jellyfin.URL, configuration.Jellyfin.APIKey), seerr: seerr.New(configuration.Seerr.URL, configuration.Seerr.APIKey), tmdb: tmdb.New(configuration.TMDB.APIKey), imdbClient: imdb.New(), overfin: overfin.New(configuration.Overfin.URL, configuration.Overfin.APIKey), qb: buildQBittorrentClients(configuration), nowFunc: time.Now}
+	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), overfin: overfin.New(configuration.Overfin.URL, configuration.Overfin.APIKey), qb: buildQBittorrentClients(configuration)}
 	loadStarted := time.Now()
 	if database != nil {
 		if items, updated, err := database.LoadMedia(); err == nil {
 			service.items, service.updated = items, updated
 			if !updated.IsZero() {
 				service.reliability.Inventory = true
-				// Trust facts a database load just restored, rather than
+				// Trust scores a database load just restored, rather than
 				// enrichmentInitialState's "stale" — that's correct for a
 				// genuine cold start (no cache) or a fingerprint-changed
 				// reset (see Refresh), but here the persisted values were
 				// already reliable the moment they were saved. Marking them
 				// stale regardless would pause automatic removal planning
-				// for up to that source's own refresh interval after every
-				// single restart — TMDB's is 24h, so this was highly
-				// visible there even though nothing about the data actually
-				// changed. The genuinely precise per-item staleness check
-				// (mediaTMDBDataStale, internal/httpui/auto_removal.go)
-				// still independently excludes any item whose own
-				// TMDBEnrichedAt really is too old, regardless of this
-				// coarser reliability flag.
-				service.reliability.Jellyfin = enrichmentInitialStateFromCache(configuration.Jellyfin.URL != "")
-				service.reliability.Seerr = enrichmentInitialStateFromCache(configuration.Seerr.URL != "")
-				service.reliability.TMDB = enrichmentInitialStateFromCache(configuration.TMDB.APIKey != "")
+				// after every single restart.
 				service.reliability.Overfin = enrichmentInitialStateFromCache(configuration.Overfin.URL != "")
 				service.reliability.Valuation = service.reliability.valuationReady()
 				service.baseReadyOnce.Do(func() { close(service.baseReady) })
@@ -173,11 +139,6 @@ func New(configuration config.Config, database *store.Store) *Service {
 			}
 		} else {
 			log.Printf("[inventory] load cached torrents: %v", err)
-		}
-		if imdbRatings, _, err := database.LoadIMDbRatings(); err == nil {
-			service.imdbRatings = imdbRatings
-		} else {
-			log.Printf("[inventory] load cached IMDb ratings: %v", err)
 		}
 		if files, updated, err := database.LoadUnmanagedFiles(); err == nil {
 			service.unmanaged, service.unmanagedUpdated = files, updated
@@ -219,20 +180,11 @@ func New(configuration config.Config, database *store.Store) *Service {
 			applyTorrentFileEstimates(service.torrents, files, torrentRefs)
 			applyTorrentMediaHardlinks(service.torrents, service.items, files, mediaRefs, torrentRefs)
 			projectTorrentRelations(service.items, service.torrents)
-			valuation.ApplyMedia(service.items, service.cfg, service.imdbRatings)
+			valuation.ApplyMedia(service.items, service.cfg)
 		} else {
 			log.Printf("[inventory] load cached File topology: %v", err)
 		}
 		log.Printf("[inventory] timing startup cache load and relationships=%s", time.Since(loadStarted).Round(time.Millisecond))
-	}
-	if service.reliability.Jellyfin == "" {
-		service.reliability.Jellyfin = enrichmentInitialState(configuration.Jellyfin.URL != "")
-	}
-	if service.reliability.Seerr == "" {
-		service.reliability.Seerr = enrichmentInitialState(configuration.Seerr.URL != "")
-	}
-	if service.reliability.TMDB == "" {
-		service.reliability.TMDB = enrichmentInitialState(configuration.TMDB.APIKey != "")
 	}
 	if service.reliability.Overfin == "" {
 		service.reliability.Overfin = enrichmentInitialState(configuration.Overfin.URL != "")
@@ -246,7 +198,7 @@ func New(configuration config.Config, database *store.Store) *Service {
 				service.items[mediaIndex].Torrents[torrentIndex].AssociationStatus = model.NormalizeTorrentStatus(service.items[mediaIndex].Torrents[torrentIndex].AssociationStatus)
 			}
 		}
-		valuation.ApplyMedia(service.items, service.cfg, service.imdbRatings)
+		valuation.ApplyMedia(service.items, service.cfg)
 		service.generation = 1
 		service.baseFingerprint = inventoryFingerprint(service.items, service.torrents)
 		service.hasBaseFingerprint = true
@@ -302,37 +254,10 @@ func (service *Service) RefreshAdvisory() string {
 	service.mu.RLock()
 	defer service.mu.RUnlock()
 	parts := []string{}
-	if service.reliability.Jellyfin == "stale" {
-		parts = append(parts, "Jellyfin enrichment stale")
-	}
-	if service.reliability.Seerr == "stale" {
-		parts = append(parts, "Seerr enrichment stale")
-	}
-	if service.reliability.TMDB == "stale" {
-		parts = append(parts, "TMDB enrichment stale")
-	}
 	if service.reliability.Overfin == "stale" {
 		parts = append(parts, "Overfin scores stale")
 	}
 	return strings.Join(parts, "; ")
-}
-
-func (service *Service) ValidateJellyfin(ctx context.Context) error {
-	if service.cfg.Jellyfin.URL == "" {
-		return nil
-	}
-	err := service.jf.WithContext(ctx).Validate()
-	service.setStatus(serviceName(service.cfg, "jellyfin", "Jellyfin"), true, err == nil, err)
-	return err
-}
-
-func (service *Service) ValidateSeerr(ctx context.Context) error {
-	if service.cfg.Seerr.URL == "" {
-		return nil
-	}
-	err := service.seerr.WithContext(ctx).Validate()
-	service.setStatus(serviceName(service.cfg, "seerr", "Seerr"), true, err == nil, err)
-	return err
 }
 
 func (service *Service) ValidateOverfin(ctx context.Context) error {
@@ -342,17 +267,6 @@ func (service *Service) ValidateOverfin(ctx context.Context) error {
 	err := service.overfin.WithContext(ctx).Validate()
 	service.setStatus(serviceName(service.cfg, "overfin", "Overfin"), true, err == nil, err)
 	return err
-}
-
-// ValidateTMDB has no service-page status to report to (TMDB is not a
-// config.Service — see Config.TMDB), so unlike ValidateJellyfin/
-// ValidateSeerr it doesn't call setStatus; its result is only used as a
-// task Preflight check gating RefreshTMDB.
-func (service *Service) ValidateTMDB(ctx context.Context) error {
-	if service.cfg.TMDB.APIKey == "" {
-		return nil
-	}
-	return service.tmdb.WithContext(ctx).Validate()
 }
 
 func (service *Service) StageTimings() map[string]time.Duration {
@@ -454,16 +368,6 @@ func (service *Service) TorrentSnapshot() []model.Torrent {
 	service.mu.RLock()
 	defer service.mu.RUnlock()
 	return cloneTorrents(service.torrents)
-}
-
-// imdbRatingsSnapshot returns the current IMDb ratings map reference for a
-// caller that isn't already holding service.mu — safe without cloning
-// since imdbRatings is only ever replaced wholesale (see the field's own
-// comment), never mutated in place.
-func (service *Service) imdbRatingsSnapshot() map[string]imdb.Rating {
-	service.mu.RLock()
-	defer service.mu.RUnlock()
-	return service.imdbRatings
 }
 
 // TorrentDetail enriches the locally indexed relationship/storage facts with

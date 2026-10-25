@@ -49,8 +49,6 @@ type libraryData struct {
 	TypeOptions      []mediaTypeOption
 	SourceFilter     string
 	SourceOptions    []mediaSource
-	RequestedFilter  string
-	WatchedFilter    string
 	TorrentFilter    string
 	ShowNoFiles      bool
 	ClearURL         string
@@ -195,7 +193,7 @@ func mediaMatchesSearch(m model.Media, q string) bool {
 	return false
 }
 
-func filterMedia(items []model.Media, q, typeFilter, sourceFilter string, serviceRoots map[string][]string, requestedFilter, watchedFilter, torrentFilter string, showNoFiles bool) []model.Media {
+func filterMedia(items []model.Media, q, typeFilter, sourceFilter string, serviceRoots map[string][]string, torrentFilter string, showNoFiles bool) []model.Media {
 	out := make([]model.Media, 0, len(items))
 	for _, m := range items {
 		if !showNoFiles && m.SizeBytes <= 0 {
@@ -208,19 +206,6 @@ func filterMedia(items []model.Media, q, typeFilter, sourceFilter string, servic
 			continue
 		}
 		if sourceFilter != "any" && mediaSourceFor(m, serviceRoots).Key != sourceFilter {
-			continue
-		}
-		if requestedFilter == "yes" && !m.Requested {
-			continue
-		}
-		if requestedFilter == "no" && m.Requested {
-			continue
-		}
-		watched := m.Views > 0 || m.LastWatched != nil
-		if watchedFilter == "yes" && !watched {
-			continue
-		}
-		if watchedFilter == "no" && watched {
 			continue
 		}
 		hasTorrent := false
@@ -254,7 +239,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 		if server.tasks != nil && server.tasks.ConsistencyPending() {
 			last = notice("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
-			last = notice(fmt.Sprintf("Automatic removal planning paused. Jellyfin: %s; Seerr: %s; Overfin: %s; File topology: %s", reliability.Jellyfin, reliability.Seerr, reliability.Overfin, reliability.FileModel))
+			last = notice(fmt.Sprintf("Automatic removal planning paused. Overfin: %s; File topology: %s", reliability.Overfin, reliability.FileModel))
 		}
 	}
 
@@ -272,8 +257,6 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 
 	qtext := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	typeFilter := normalizeMediaTypeFilter(r.URL.Query().Get("type"), availableTypes)
-	requestedFilter := normalizeBoolFilter(r.URL.Query().Get("requested"))
-	watchedFilter := normalizeBoolFilter(r.URL.Query().Get("watched"))
 	torrentFilter := "any"
 	if hasTorrentClient {
 		torrentFilter = normalizeBoolFilter(r.URL.Query().Get("torrent"))
@@ -311,7 +294,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items = filterMedia(items, qtext, typeFilter, sourceFilter, serviceRoots, requestedFilter, watchedFilter, torrentFilter, showNoFiles)
+	items = filterMedia(items, qtext, typeFilter, sourceFilter, serviceRoots, torrentFilter, showNoFiles)
 
 	pageSize := allowedPageSize(queryInt(r, "page_size", 50))
 	page := queryInt(r, "page", 1)
@@ -364,12 +347,6 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 		if sourceFilter != "any" {
 			q.Set("source", sourceFilter)
 		}
-		if requestedFilter != "any" {
-			q.Set("requested", requestedFilter)
-		}
-		if watchedFilter != "any" {
-			q.Set("watched", watchedFilter)
-		}
 		if torrentFilter != "any" {
 			q.Set("torrent", torrentFilter)
 		}
@@ -379,7 +356,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 		return "/library?" + q.Encode()
 	}
 	sortURLs := map[string]string{}
-	for _, key := range []string{"value", "title", "type", "rating", "votes", "views", "lastwatched", "requested", "size", "torrents"} {
+	for _, key := range []string{"value", "title", "type", "size", "torrents"} {
 		nextOrder := defaultSortOrder(key)
 		if sortKey == key {
 			if order == "asc" {
@@ -398,7 +375,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 	for pg := maxInt(1, page-2); pg <= minInt(totalPages, page+2); pg++ {
 		pageLinks = append(pageLinks, navLink{Value: pg, URL: mkURL(pg, pageSize, sortKey, order)})
 	}
-	d := libraryData{Rows: rows, Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: totalPages, HasPrev: page > 1, HasNext: page < totalPages, Sort: sortKey, Order: order, SortURLs: sortURLs, SizeLinks: sizeLinks, PageLinks: pageLinks, Query: r.URL.Query().Get("q"), TypeFilter: typeFilter, TypeOptions: typeOptions, RequestedFilter: requestedFilter, WatchedFilter: watchedFilter, TorrentFilter: torrentFilter, ShowNoFiles: showNoFiles, ClearURL: "/library", HasMediaLibrary: hasMediaLibrary, HasTorrentClient: hasTorrentClient}
+	d := libraryData{Rows: rows, Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: totalPages, HasPrev: page > 1, HasNext: page < totalPages, Sort: sortKey, Order: order, SortURLs: sortURLs, SizeLinks: sizeLinks, PageLinks: pageLinks, Query: r.URL.Query().Get("q"), TypeFilter: typeFilter, TypeOptions: typeOptions, TorrentFilter: torrentFilter, ShowNoFiles: showNoFiles, ClearURL: "/library", HasMediaLibrary: hasMediaLibrary, HasTorrentClient: hasTorrentClient}
 	if showSourceFilter {
 		d.SourceFilter = sourceFilter
 		d.SourceOptions = sourceOptions
@@ -416,7 +393,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 
 func validMediaSort(v string) bool {
 	switch v {
-	case "value", "title", "type", "rating", "votes", "views", "lastwatched", "requested", "size", "torrents":
+	case "value", "title", "type", "size", "torrents":
 		return true
 	}
 	return false
@@ -447,35 +424,6 @@ func sortMediaItems(items []model.Media, key, order string) {
 			cmp = strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
 		case "type":
 			cmp = strings.Compare(string(a.Type), string(b.Type))
-		case "rating":
-			if a.Rating < b.Rating {
-				cmp = -1
-			} else if a.Rating > b.Rating {
-				cmp = 1
-			}
-		case "votes":
-			cmp = a.VoteCount - b.VoteCount
-		case "views":
-			cmp = a.Views - b.Views
-		case "lastwatched":
-			av, bv := int64(0), int64(0)
-			if a.LastWatched != nil {
-				av = a.LastWatched.Unix()
-			}
-			if b.LastWatched != nil {
-				bv = b.LastWatched.Unix()
-			}
-			if av < bv {
-				cmp = -1
-			} else if av > bv {
-				cmp = 1
-			}
-		case "requested":
-			if !a.Requested && b.Requested {
-				cmp = -1
-			} else if a.Requested && !b.Requested {
-				cmp = 1
-			}
 		case "size":
 			if a.SizeBytes < b.SizeBytes {
 				cmp = -1
@@ -539,7 +487,7 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 	items, updated, last := server.inv.Snapshot()
 	reliability := server.inv.ReliabilitySnapshot()
 	if !reliability.Valuation && last == nil {
-		last = fmt.Errorf("%s Jellyfin: %s; Seerr: %s; Overfin: %s", reliability.Message, reliability.Jellyfin, reliability.Seerr, reliability.Overfin)
+		last = fmt.Errorf("%s Overfin: %s", reliability.Message, reliability.Overfin)
 	}
 	resolved, resolvedOK := mediaRefFor(items, mediaType, sourceID, serviceID)
 	if resolvedOK {

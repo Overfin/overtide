@@ -8,14 +8,10 @@ import (
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/imdb"
-	"github.com/overfin/overtide/internal/services/jellyfin"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
-	"github.com/overfin/overtide/internal/services/seerr"
 	"github.com/overfin/overtide/internal/services/sonarr"
-	"github.com/overfin/overtide/internal/services/tmdb"
 	"github.com/overfin/overtide/internal/valuation"
 )
 
@@ -246,102 +242,6 @@ func (service *Service) syncDeviceRegistry() {
 	service.mu.Unlock()
 }
 
-// SetTMDBAPIKey idempotently persists the TMDB enrichment API key (an
-// empty string disables it). Like SetCredentials/SetDeviceThreshold this
-// isn't a config.Service concept — TMDB has no URL and only ever one
-// instance — so it lives here directly rather than going through
-// AddService/EditService. No connection check runs before persisting;
-// RefreshTMDB's own Preflight (ValidateTMDB) catches a bad key on its next
-// scheduled run instead.
-func (service *Service) SetTMDBAPIKey(apiKey string) error {
-	service.configMu.Lock()
-	defer service.configMu.Unlock()
-
-	if service.configPath == "" {
-		return fmt.Errorf("live config editing is unavailable: no config file path is set")
-	}
-
-	service.mu.RLock()
-	currentCfg := service.cfg
-	service.mu.RUnlock()
-
-	updatedCfg := config.SetTMDBAPIKey(currentCfg, apiKey)
-
-	if err := config.Save(service.configPath, updatedCfg); err != nil {
-		return fmt.Errorf("persist config: %w", err)
-	}
-
-	service.mu.Lock()
-	service.cfg = updatedCfg
-	service.tmdb = tmdb.New(updatedCfg.TMDB.APIKey)
-	// Turning TMDB off is a deliberate opt-out: stop influencing valuation
-	// immediately rather than leaving last-known rating/popularity values
-	// to linger until something else happens to overwrite them.
-	if updatedCfg.TMDB.APIKey == "" && service.generation > 0 {
-		items := cloneMedia(service.items)
-		clearTMDBFacts(items)
-		valuation.ApplyMedia(items, service.cfg, service.imdbRatings)
-		if service.db != nil {
-			_ = service.db.PublishEnrichment("tmdb", service.generation, items)
-		}
-		service.items = items
-		service.reliability.TMDB = "not configured"
-		service.reliability.Valuation = service.reliability.valuationReady()
-	}
-	service.mu.Unlock()
-	return nil
-}
-
-// SetIMDbEnabled toggles IMDb ratings enrichment. Enabling immediately
-// loads whatever snapshot is already cached on disk (from a previous
-// enabled period) into memory rather than waiting for the next scheduled
-// daily fetch — cheap, no network involved, and re-scores right away so
-// re-enabling doesn't sit inert until the next fetch window. Disabling
-// clears the in-memory map (not the on-disk table, so re-enabling later
-// doesn't force a redundant re-download) and re-scores immediately, the
-// same deliberate-opt-out treatment SetTMDBAPIKey gives clearing its key.
-func (service *Service) SetIMDbEnabled(enabled bool) error {
-	service.configMu.Lock()
-	defer service.configMu.Unlock()
-
-	if service.configPath == "" {
-		return fmt.Errorf("live config editing is unavailable: no config file path is set")
-	}
-
-	service.mu.RLock()
-	currentCfg := service.cfg
-	service.mu.RUnlock()
-
-	updatedCfg := config.SetIMDbEnabled(currentCfg, enabled)
-
-	if err := config.Save(service.configPath, updatedCfg); err != nil {
-		return fmt.Errorf("persist config: %w", err)
-	}
-
-	var loaded map[string]imdb.Rating
-	if enabled && service.db != nil {
-		if ratings, _, err := service.db.LoadIMDbRatings(); err == nil {
-			loaded = ratings
-		} else {
-			log.Printf("[inventory] load cached IMDb ratings on enable: %v", err)
-		}
-	}
-
-	service.mu.Lock()
-	service.cfg = updatedCfg
-	service.imdbRatings = loaded
-	if service.generation > 0 {
-		items := cloneMedia(service.items)
-		valuation.ApplyMedia(items, service.cfg, service.imdbRatings)
-		if service.db != nil {
-			_ = service.db.PublishEnrichment("imdb", service.generation, items)
-		}
-		service.items = items
-	}
-	service.mu.Unlock()
-	return nil
-}
-
 // overtideKeepTag is the fixed tag ProtectMedia/ProtectTorrent write to the
 // owning service (Radarr/Sonarr movie or series tag, qBittorrent torrent
 // tag) — the same mechanism a user manually tagging the item themselves
@@ -434,9 +334,9 @@ func (service *Service) ensureKeepTagRegistered(forMedia bool) error {
 // SetRemovalSettings idempotently persists the global auto-removal switches
 // (auto-removal is also still gated per-service by Service.
 // AllowAutomaticRemoval — see EditService). Nothing here needs a connection
-// check or an in-memory side effect beyond swapping the config: unlike
-// TMDB, these flags only change what the next scheduled evaluation or
-// removal submission does, never anything already published.
+// check or an in-memory side effect beyond swapping the config: these
+// flags only change what the next scheduled evaluation or removal
+// submission does, never anything already published.
 func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociated, dryRun bool, torrentCarePercent float64, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
@@ -468,7 +368,7 @@ func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociat
 // live client per configured instance of their type, keyed by the
 // service's stable ID. Radarr/Sonarr/qBittorrent are the three types
 // that support more than one configured instance (see
-// config.multiInstanceAllowed); Jellyfin/Seerr stay single-client.
+// config.multiInstanceAllowed); Overfin stays single-client.
 func buildRadarrClients(configuration config.Config) map[string]*radarr.Client {
 	out := map[string]*radarr.Client{}
 	for _, svc := range configuration.ServicesOfType("radarr") {
@@ -495,7 +395,7 @@ func buildQBittorrentClients(configuration config.Config) map[string]*qbittorren
 
 // activateClientLocked (re)builds the client for service from its
 // current fields and activates it under its stable ID (for the
-// multi-instance types) or as the single client (Jellyfin/Seerr). Called
+// multi-instance types) or as the single client (Overfin). Called
 // with service.mu already held for writing.
 func (service *Service) activateClientLocked(svc config.Service) {
 	switch svc.Type {
@@ -503,10 +403,6 @@ func (service *Service) activateClientLocked(svc config.Service) {
 		service.rad[svc.ID] = radarr.New(svc.URL, svc.APIKey)
 	case "sonarr":
 		service.son[svc.ID] = sonarr.New(svc.URL, svc.APIKey)
-	case "jellyfin":
-		service.jf = jellyfin.New(svc.URL, svc.APIKey)
-	case "seerr":
-		service.seerr = seerr.New(svc.URL, svc.APIKey)
 	case "overfin":
 		// Its scores are the Retention Value: planning waits until they're
 		// read with the new address or key.
@@ -521,7 +417,7 @@ func (service *Service) activateClientLocked(svc config.Service) {
 // deactivateClientLocked removes service's client entirely (for the
 // multi-instance types, so a removed instance stops matching any future
 // lookup by ID) or resets it to the "unconfigured" shape every
-// reconciliation loop assumes is never nil (Jellyfin/Seerr). Called with
+// reconciliation loop assumes is never nil (Overfin). Called with
 // service.mu already held for writing.
 func (service *Service) deactivateClientLocked(svc config.Service) {
 	switch svc.Type {
@@ -531,19 +427,16 @@ func (service *Service) deactivateClientLocked(svc config.Service) {
 		delete(service.son, svc.ID)
 	case "qbittorrent":
 		delete(service.qb, svc.ID)
-	case "jellyfin":
-		service.jf = jellyfin.New("", "")
-	case "seerr":
-		service.seerr = seerr.New("", "")
 	case "overfin":
-		// Back to Overtide's own valuation at once, not Overfin's last scores.
+		// Nothing is valued without Overfin, so everything is protected at
+		// once, rather than planned with Overfin's last scores.
 		service.overfin = overfin.New("", "")
 		if service.generation > 0 {
 			items := cloneMedia(service.items)
 			for i := range items {
 				items[i].OverfinScore, items[i].OverfinSeasonScores, items[i].OverfinEnrichedAt = nil, nil, time.Time{}
 			}
-			valuation.ApplyMedia(items, service.cfg, service.imdbRatings) // without Overfin already
+			valuation.ApplyMedia(items, service.cfg) // without Overfin already
 			service.items = items
 		}
 		service.reliability.Overfin = "not configured"
@@ -557,10 +450,6 @@ func validateServiceConnection(ctx context.Context, svc config.Service) error {
 		return radarr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "sonarr":
 		return sonarr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
-	case "jellyfin":
-		return jellyfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
-	case "seerr":
-		return seerr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "overfin":
 		return overfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "qbittorrent":

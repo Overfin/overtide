@@ -2,14 +2,12 @@ package valuation
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/imdb"
 )
 
 func daysSince(timestamp time.Time) float64 { return time.Since(timestamp).Hours() / 24 }
@@ -62,153 +60,20 @@ func splitTags(tags string) []string {
 	return out
 }
 
-// effectiveRating returns the rating/vote data valuation should score, and
-// which source it came from (for the Rating reason's Note). IMDb's own
-// dataset always wins when this item's IMDBID has a match there —
-// regardless of its own vote count — since it's a single authoritative
-// source, not a per-item confidence comparison: TMDB's live vote_average
-// let a handful of votes on a niche/regional title (e.g. a Quebec series
-// scoring 2.7 on TMDB's own API vs. 7.3 on both IMDb and Radarr/Sonarr's
-// own native rating) silently override a far better number that was
-// already available. Falls back to TMDB's own numbers when TMDB
-// enrichment has a match (TMDBVoteCount>0), then to Radarr/Sonarr's own
-// Rating/VoteCount — unchanged from before IMDb existed as a source. A
-// title with no IMDb match today starts being preferred the moment a
-// later daily refresh adds one, since this always re-checks the live
-// map rather than caching a decision per item.
-func effectiveRating(mediaItem model.Media, imdbRatings map[string]imdb.Rating) (rating float64, votes int, source string) {
-	if mediaItem.IMDBID != "" {
-		if r, ok := imdbRatings[mediaItem.IMDBID]; ok {
-			return r.Value, r.Votes, "IMDb"
-		}
-	}
-	if mediaItem.TMDBVoteCount > 0 {
-		return mediaItem.TMDBRating, mediaItem.TMDBVoteCount, "TMDB"
-	}
-	return mediaItem.Rating, mediaItem.VoteCount, ""
-}
-
-// Apply assigns Retention Value to every media. Higher Retention Value
-// survives longer; cleanup ordering is lowest-value first. Retention Value is
-// intentionally unbounded.
-func ApplyMedia(mediaItems []model.Media, configuration config.Config, imdbRatings map[string]imdb.Rating) {
-	now := time.Now()
+// ApplyMedia assigns each title its Retention Value: Overfin's score.
+// Overtide doesn't value titles itself; Overfin does (what people watch,
+// ask for and like), and Overtide weighs that against storage and torrents
+// (Torrent Value, kept apart). Without Overfin, nothing is scored, so
+// everything is protected. Cleanup ordering is lowest value first, the
+// larger title first on a tie.
+func ApplyMedia(mediaItems []model.Media, configuration config.Config) {
 	for mediaIndex := range mediaItems {
 		mediaItem := &mediaItems[mediaIndex]
-		value := 0.0
 		mediaItem.RetentionValueReasons = nil
 		mediaItem.Protected = false
 		mediaItem.ProtectionReason = ""
 		mediaItem.RemovalRestricted = !serviceAllowsRemoval(configuration, mediaItem.ServiceID)
-		if configuration.Overfin.URL != "" {
-			applyOverfinValue(mediaItem, configuration)
-			continue
-		}
-		if hasTag(mediaItem.Tags, configuration.Protection.KeepTags) {
-			mediaItem.Protected = true
-			mediaItem.ProtectionReason = "Keep tag"
-			value += configuration.Valuation.KeepTagValueBonus
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Keep tag", Value: strings.Join(mediaItem.Tags, ", "), Points: configuration.Valuation.KeepTagValueBonus})
-		}
-		if configuration.Protection.Favorite && mediaItem.Favorite {
-			mediaItem.Protected = true
-			if mediaItem.ProtectionReason == "" {
-				mediaItem.ProtectionReason = "Jellyfin favorite"
-			}
-			value += configuration.Valuation.FavoriteValueBonus
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Favorite", Value: "yes", Points: configuration.Valuation.FavoriteValueBonus})
-		}
-		if mediaItem.Requested && mediaItem.RequestedAt != nil {
-			requestAge := now.Sub(*mediaItem.RequestedAt)
-			points := configuration.Valuation.Weights.OldRequest
-			label := "Old request"
-			if requestAge < configuration.RequestGrace {
-				mediaItem.Protected = true
-				if mediaItem.ProtectionReason == "" {
-					mediaItem.ProtectionReason = "Recent request"
-				}
-				points = configuration.Valuation.RequestValueBonus
-				label = "Recent request"
-			}
-			value += points
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: label, Value: fmt.Sprintf("%.0f days ago", requestAge.Hours()/24), Points: points})
-		}
-		rating, voteCount, ratingSource := effectiveRating(*mediaItem, imdbRatings)
-		if rating > 0 {
-			points := clamp(rating/10, 0, 1) * configuration.Valuation.Weights.Rating
-			value += points
-			reason := model.Reason{Label: "Rating", Value: fmt.Sprintf("%.1f/10", rating), Points: points}
-			if ratingSource != "" {
-				reason.Note = ratingSource + "'s own rating."
-			}
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, reason)
-		}
-		if mediaItem.Views == 0 {
-			value += configuration.Valuation.Weights.NeverWatched
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Never watched", Value: "0 views", Points: configuration.Valuation.Weights.NeverWatched})
-		} else if mediaItem.LastWatched != nil {
-			points := (1 - clamp(daysSince(*mediaItem.LastWatched)/730, 0, 1)) * configuration.Valuation.Weights.LastWatchedAge
-			value += points
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Last watched", Value: fmt.Sprintf("%.0f days ago", daysSince(*mediaItem.LastWatched)), Points: points})
-		}
-		if !mediaItem.AddedAt.IsZero() {
-			points := (1 - clamp(daysSince(mediaItem.AddedAt)/1095, 0, 1)) * configuration.Valuation.Weights.LibraryAge
-			value += points
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Library age", Value: fmt.Sprintf("%.0f days", daysSince(mediaItem.AddedAt)), Points: points})
-		}
-		if voteCount > 0 {
-			points := clamp(math.Log10(float64(voteCount)+1)/5, 0, 1) * configuration.Valuation.Weights.LowPopularity
-			value += points
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Vote count", Value: fmt.Sprintf("%d votes", voteCount), Points: points})
-		}
-		if mediaItem.Popularity > 0 {
-			points := clamp(math.Log10(mediaItem.Popularity+1)/3, 0, 1) * configuration.Valuation.Weights.Popularity
-			value += points
-			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Popularity", Value: fmt.Sprintf("%.1f", mediaItem.Popularity), Points: points, Note: "TMDB's own popularity score."})
-		}
-		// Everything above this point (protection, rating, watch state,
-		// popularity) describes the whole series and applies identically to
-		// every season; LibraryAge and TorrentActivity below are whole-series
-		// scoped and are replaced, per season, by SeasonRecency and
-		// season-scoped torrent activity in applySeasonValues.
-		seriesWideValue := value
-		seriesWideReasons := append([]model.Reason(nil), mediaItem.RetentionValueReasons...)
-		if len(mediaItem.Torrents) > 0 && configuration.Valuation.Weights.TorrentActivity != 0 {
-			leechers := 0
-			contributingTorrentCount := 0
-			for _, torrent := range mediaItem.Torrents {
-				// Only a current relationship physically proven to be hardlinked to
-				// this media can transfer torrent health into media Retention Value.
-				// Mere import provenance and unrelated hardlinks are insufficient.
-				if model.NormalizeTorrentStatus(torrent.AssociationStatus) != model.TorrentCurrent || !torrent.MediaHardlinked {
-					continue
-				}
-				contributingTorrentCount++
-				if torrent.LeechersSwarm > 0 {
-					leechers += torrent.LeechersSwarm
-				}
-			}
-			if contributingTorrentCount > 0 {
-				// Swarm demand is intentionally logarithmic: popularity can keep
-				// adding Retention Value without one huge swarm dominating
-				// everything. Live upload speed was deliberately dropped as an
-				// input here (same reasoning as Torrent Value's own formula):
-				// it depends entirely on the exact instant a calculation runs,
-				// not any lasting property of the torrent.
-				points := configuration.Valuation.Weights.TorrentActivity * math.Log2(1+float64(leechers))
-				value += points
-				mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{
-					Label:  "Associated torrent",
-					Value:  fmt.Sprintf("%d hardlinked torrent(s), %d swarm leechers", contributingTorrentCount, leechers),
-					Points: points,
-					Note:   "The torrent health contributes to the media Retention Value because their files are hardlinked.",
-				})
-			}
-		}
-		mediaItem.RetentionValue = value
-		if mediaItem.Type == model.Series && len(mediaItem.Seasons) > 0 {
-			applySeasonValues(mediaItem, seriesWideValue, seriesWideReasons, configuration, now)
-		}
+		applyOverfinValue(mediaItem, configuration)
 	}
 	sort.SliceStable(mediaItems, func(leftIndex, rightIndex int) bool {
 		leftMedia, rightMedia := mediaItems[leftIndex], mediaItems[rightIndex]
@@ -217,64 +82,6 @@ func ApplyMedia(mediaItems []model.Media, configuration config.Config, imdbRatin
 		}
 		return leftMedia.SizeBytes > rightMedia.SizeBytes
 	})
-}
-
-// applySeasonValues assigns each Series season its own Retention Value:
-// series-wide factors (protection, rating, watch state, popularity) apply
-// identically to every season via seriesWideValue/seriesWideReasons, plus
-// one season-specific factor (recency of that season's most recently aired
-// episode — the content's own age, not when it was imported) and torrent
-// activity scoped to torrents proven hardlinked to that specific season
-// rather than the whole series.
-func applySeasonValues(mediaItem *model.Media, seriesWideValue float64, seriesWideReasons []model.Reason, configuration config.Config, now time.Time) {
-	for seasonIndex := range mediaItem.Seasons {
-		season := &mediaItem.Seasons[seasonIndex]
-		season.Protected = mediaItem.Protected
-		season.ProtectionReason = mediaItem.ProtectionReason
-		season.RemovalRestricted = mediaItem.RemovalRestricted
-		value := seriesWideValue
-		reasons := append([]model.Reason(nil), seriesWideReasons...)
-		if !season.LastAiredAt.IsZero() {
-			points := (1 - clamp(daysSince(season.LastAiredAt)/1095, 0, 1)) * configuration.Valuation.Weights.SeasonRecency
-			value += points
-			reasons = append(reasons, model.Reason{Label: "Season recency", Value: fmt.Sprintf("%.0f days since last aired", daysSince(season.LastAiredAt)), Points: points})
-		}
-		if configuration.Valuation.Weights.TorrentActivity != 0 {
-			leechers := 0
-			contributingTorrentCount := 0
-			for _, torrent := range mediaItem.Torrents {
-				if model.NormalizeTorrentStatus(torrent.AssociationStatus) != model.TorrentCurrent || !torrent.MediaHardlinked {
-					continue
-				}
-				inSeason := false
-				for _, s := range torrent.HardlinkedSeasons {
-					if s == season.Number {
-						inSeason = true
-						break
-					}
-				}
-				if !inSeason {
-					continue
-				}
-				contributingTorrentCount++
-				if torrent.LeechersSwarm > 0 {
-					leechers += torrent.LeechersSwarm
-				}
-			}
-			if contributingTorrentCount > 0 {
-				points := configuration.Valuation.Weights.TorrentActivity * math.Log2(1+float64(leechers))
-				value += points
-				reasons = append(reasons, model.Reason{
-					Label:  "Associated torrent",
-					Value:  fmt.Sprintf("%d hardlinked torrent(s), %d swarm leechers", contributingTorrentCount, leechers),
-					Points: points,
-					Note:   "The torrent health contributes to this season's Retention Value because their files are hardlinked to this season specifically.",
-				})
-			}
-		}
-		season.RetentionValue = value
-		season.RetentionValueReasons = reasons
-	}
 }
 
 // notValued is the protection of what Overfin didn't score: never removed

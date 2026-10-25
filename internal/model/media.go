@@ -230,34 +230,11 @@ type Media struct {
 	Year        int       `json:"year"`
 	Path        string    `json:"path"`
 	SizeBytes   int64     `json:"sizeBytes"`
-	Rating      float64   `json:"rating"`
-	VoteCount   int       `json:"voteCount"`
 	AddedAt     time.Time `json:"addedAt"`
 	Tags        []string  `json:"tags"`
 	TMDBID      int       `json:"tmdbId"`
 	TVDBID      int       `json:"tvdbId"`
 	IMDBID      string    `json:"imdbId"`
-
-	Views         int        `json:"views"`
-	UniqueViewers int        `json:"uniqueViewers"`
-	LastWatched   *time.Time `json:"lastWatched,omitempty"`
-	Favorite      bool       `json:"favorite"`
-	// JellyfinEnrichedAt is when Views/UniqueViewers/LastWatched/Favorite
-	// were last confirmed against Jellyfin for this specific item — set
-	// after every successful Apply() call this item was included in
-	// (Jellyfin's own pass is all-or-nothing, unlike TMDB's per-item
-	// fetches, so a successful call means every item it covered was
-	// checked, whether or not Jellyfin actually had a match for it). Zero
-	// means never yet checked — see EnrichNewMedia in
-	// internal/inventory/service.go, which fetches a newly discovered (or
-	// re-identified) item's enrichment immediately rather than waiting for
-	// RefreshJellyfin's next scheduled pass.
-	JellyfinEnrichedAt time.Time `json:"jellyfinEnrichedAt,omitempty"`
-
-	Requested   bool       `json:"requested"`
-	RequestedAt *time.Time `json:"requestedAt,omitempty"`
-	// SeerrEnrichedAt mirrors JellyfinEnrichedAt for Requested/RequestedAt.
-	SeerrEnrichedAt time.Time `json:"seerrEnrichedAt,omitempty"`
 
 	// OverfinScore is a film's value from Overfin, 0 to 100, and
 	// OverfinSeasonScores a series' values by season number; nil when
@@ -266,32 +243,9 @@ type Media struct {
 	// weighs that against storage and torrents.
 	OverfinScore        *float64        `json:"overfinScore,omitempty"`
 	OverfinSeasonScores map[int]float64 `json:"overfinSeasonScores,omitempty"`
-	// OverfinEnrichedAt mirrors JellyfinEnrichedAt for the scores.
+	// OverfinEnrichedAt is when the scores were last read from Overfin;
+	// zero means never yet.
 	OverfinEnrichedAt time.Time `json:"overfinEnrichedAt,omitempty"`
-
-	// TMDBRating/TMDBVoteCount are TMDB's own rating data, populated by TMDB
-	// enrichment when configured. They are deliberately separate from
-	// Rating/VoteCount (Radarr/Sonarr's own numbers) rather than overwriting
-	// them in place: valuation prefers these when present (TMDBVoteCount>0)
-	// and falls back to Rating/VoteCount otherwise, so an unenriched item —
-	// TMDB unconfigured, unreachable, or no match for this title — never
-	// loses its existing rating signal.
-	TMDBRating    float64 `json:"tmdbRating,omitempty"`
-	TMDBVoteCount int     `json:"tmdbVoteCount,omitempty"`
-	// Popularity is TMDB's own popularity score. It has no fallback source
-	// anywhere — zero means "not yet enriched," not "unpopular," the same
-	// treatment VoteCount==0 already gets.
-	Popularity float64 `json:"popularity,omitempty"`
-	// TMDBEnrichedAt is when TMDBRating/TMDBVoteCount/Popularity were last
-	// successfully fetched for this specific item — TMDB enrichment fetches
-	// one item at a time, so unlike Jellyfin/Seerr's all-or-nothing passes,
-	// one item's fetch can fail while its neighbors succeed. Zero means
-	// never successfully enriched. This does not gate whether valuation
-	// uses the data (a transient failure preserves the last known values
-	// rather than blanking them); it only lets auto-removal specifically
-	// exclude an item whose data has gone stale — see cmd/overtide/main.go
-	// and internal/httpui/auto_removal.go.
-	TMDBEnrichedAt time.Time `json:"tmdbEnrichedAt,omitempty"`
 
 	DownloadIDs []string  `json:"downloadIds,omitempty"`
 	Torrents    []Torrent `json:"torrents,omitempty"`

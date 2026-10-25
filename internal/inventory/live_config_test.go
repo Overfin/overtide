@@ -134,7 +134,7 @@ func TestAddServiceAllowsSecondRadarrInstanceAtRuntime(t *testing.T) {
 
 func TestAddServiceRejectsSecondInstanceOfSingleInstanceTypeAtRuntime(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(configPath, []byte(`{"services":[{"type":"jellyfin","name":"Jellyfin","url":"http://jellyfin:8096"}],"storage":{}}`), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{"services":[{"type":"overfin","name":"Overfin","url":"http://overfin:8081"}],"storage":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	baseCfg, err := config.Load(configPath)
@@ -144,8 +144,8 @@ func TestAddServiceRejectsSecondInstanceOfSingleInstanceTypeAtRuntime(t *testing
 	service := New(baseCfg, nil)
 	service.SetConfigPath(configPath)
 
-	if err := service.AddService(context.Background(), config.Service{Type: "jellyfin", Name: "Jellyfin 2", URL: "http://jellyfin2:8096"}); err == nil {
-		t.Fatal("expected a second jellyfin instance to be rejected at runtime, same as a static config would reject it")
+	if err := service.AddService(context.Background(), config.Service{Type: "overfin", Name: "Overfin 2", URL: "http://overfin2:8081"}); err == nil {
+		t.Fatal("expected a second overfin instance to be rejected at runtime, same as a static config would reject it")
 	}
 }
 

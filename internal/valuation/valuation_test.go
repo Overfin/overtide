@@ -3,7 +3,6 @@ package valuation
 import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/imdb"
 	"github.com/overfin/overtide/internal/store"
 	"testing"
 	"time"
@@ -12,6 +11,13 @@ import (
 // sufficientTorrentHistory gives every "client|hash" key in keys a single
 // sample old enough to satisfy torrentHistorySufficient's elapsed-time
 // path, so tests unrelated to that gate aren't tripped by it.
+func testConfig() config.Config {
+	var c config.Config
+	c.Overfin.URL = "http://overfin.example.org"
+	c.Protection.KeepTags = []string{"keep"}
+	return c
+}
+
 func sufficientTorrentHistory(keys ...string) map[string][]store.TorrentHistorySample {
 	sample := store.TorrentHistorySample{SampledAt: time.Now().Add(-TorrentContributionWindow - time.Hour)}
 	history := make(map[string][]store.TorrentHistorySample, len(keys))
@@ -21,262 +27,6 @@ func sufficientTorrentHistory(keys ...string) map[string][]store.TorrentHistoryS
 	return history
 }
 
-func testConfig() config.Config {
-	var c config.Config
-	c.Valuation.Weights.Rating = 40
-	c.Valuation.Weights.LastWatchedAge = 15
-	c.Valuation.Weights.LibraryAge = 10
-	c.Valuation.Weights.LowPopularity = 10
-	c.Valuation.Weights.OldRequest = 12
-	c.Valuation.RequestValueBonus = 100
-	c.Valuation.FavoriteValueBonus = 1000
-	c.Valuation.KeepTagValueBonus = 10000
-	c.Protection.Favorite = true
-	c.RequestGrace = 365 * 24 * time.Hour
-	c.Protection.KeepTags = []string{"keep"}
-	return c
-}
-func TestLowestValueComesFirst(t *testing.T) {
-	c := testConfig()
-	items := []model.Media{{Title: "Strong", Rating: 8.5}, {Title: "Weak", Rating: 5.5}, {Title: "Weakest", Rating: 3.5}}
-	ApplyMedia(items, c, nil)
-	if items[0].Title != "Weakest" || items[1].Title != "Weak" || items[2].Title != "Strong" {
-		t.Fatalf("unexpected order: %s, %s, %s", items[0].Title, items[1].Title, items[2].Title)
-	}
-}
-
-// TestTMDBRatingTakesPrecedenceOverRadarrSonarrOwnRating guards the
-// override rule: once TMDB enrichment has a match (TMDBVoteCount>0), its
-// rating/vote numbers are what gets scored, not Radarr/Sonarr's own.
-func TestTMDBRatingTakesPrecedenceOverRadarrSonarrOwnRating(t *testing.T) {
-	c := testConfig()
-	items := []model.Media{{Title: "Enriched", Rating: 1.0, VoteCount: 5, TMDBRating: 9.0, TMDBVoteCount: 500}}
-	ApplyMedia(items, c, nil)
-	foundRating := false
-	for _, reason := range items[0].RetentionValueReasons {
-		if reason.Label == "Rating" {
-			foundRating = true
-			if reason.Value != "9.0/10" {
-				t.Fatalf("expected the TMDB rating to be scored, got %q", reason.Value)
-			}
-		}
-	}
-	if !foundRating {
-		t.Fatal("expected a Rating reason")
-	}
-}
-
-// TestIMDbRatingAlwaysPrevailsOverTMDBRegardlessOfVoteCount is the concrete
-// regression case that motivated this: a real Quebec series ("La
-// marraine") scored 2.7 on TMDB's live API but 73% (7.3) on both IMDb and
-// Sonarr's own native rating — TMDB's vote_average let a handful of votes
-// on a niche/regional title silently override a far better, more reliable
-// number that was already available. IMDb must win here even though its
-// own vote count is lower than TMDB's, since IMDb is a single
-// authoritative source once matched, not chosen by a per-item confidence
-// comparison.
-func TestIMDbRatingAlwaysPrevailsOverTMDBRegardlessOfVoteCount(t *testing.T) {
-	c := testConfig()
-	items := []model.Media{{
-		Title: "La marraine", IMDBID: "tt3560348",
-		Rating: 7.3, VoteCount: 200, // Sonarr's own native rating
-		TMDBRating: 2.7, TMDBVoteCount: 50,
-	}}
-	imdbRatings := map[string]imdb.Rating{"tt3560348": {Tconst: "tt3560348", Value: 7.3, Votes: 80}}
-	ApplyMedia(items, c, imdbRatings)
-	foundRating := false
-	for _, reason := range items[0].RetentionValueReasons {
-		if reason.Label == "Rating" {
-			foundRating = true
-			if reason.Value != "7.3/10" {
-				t.Fatalf("expected IMDb's 7.3 rating to win over TMDB's 2.7, got %q", reason.Value)
-			}
-			if reason.Note != "IMDb's own rating." {
-				t.Fatalf("expected the reason to disclose IMDb as the source, got %q", reason.Note)
-			}
-		}
-		if reason.Label == "Vote count" && reason.Value != "80 votes" {
-			t.Fatalf("expected IMDb's own vote count (80) to be used for LowPopularity too, got %q", reason.Value)
-		}
-	}
-	if !foundRating {
-		t.Fatal("expected a Rating reason")
-	}
-}
-
-// TestIMDbFallsBackToTMDBThenNativeWhenUnmatched guards the rest of the
-// priority chain: no IMDb match falls to TMDB (unchanged rule), no TMDB
-// match falls to Radarr/Sonarr's own native rating (unchanged rule).
-func TestIMDbFallsBackToTMDBThenNativeWhenUnmatched(t *testing.T) {
-	noIMDbMatch := model.Media{IMDBID: "tt0000000", Rating: 1.0, VoteCount: 5, TMDBRating: 9.0, TMDBVoteCount: 500}
-	rating, votes, source := effectiveRating(noIMDbMatch, map[string]imdb.Rating{"tt9999999": {Value: 5.0, Votes: 10}})
-	if rating != 9.0 || votes != 500 || source != "TMDB" {
-		t.Fatalf("expected the TMDB fallback when IMDb has no match, got rating=%v votes=%v source=%q", rating, votes, source)
-	}
-
-	noTMDBMatchEither := model.Media{IMDBID: "tt0000000", Rating: 6.5, VoteCount: 300}
-	rating, votes, source = effectiveRating(noTMDBMatchEither, nil)
-	if rating != 6.5 || votes != 300 || source != "" {
-		t.Fatalf("expected the native Radarr/Sonarr fallback when neither IMDb nor TMDB match, got rating=%v votes=%v source=%q", rating, votes, source)
-	}
-}
-
-// TestIMDbRatingStartsWinningAsSoonAsALaterMatchAppears guards "if a
-// missing IMDb match is ever found later, it still prevails" — nothing
-// caches a per-item decision, so a title unmatched on one ApplyMedia call
-// starts using IMDb the moment a later call's map contains it.
-func TestIMDbRatingStartsWinningAsSoonAsALaterMatchAppears(t *testing.T) {
-	c := testConfig()
-	item := model.Media{IMDBID: "tt1234567", TMDBRating: 4.0, TMDBVoteCount: 50}
-
-	items := []model.Media{item}
-	ApplyMedia(items, c, nil)
-	rating, _, _ := effectiveRating(items[0], nil)
-	if rating != 4.0 {
-		t.Fatalf("expected the TMDB rating before any IMDb match exists, got %v", rating)
-	}
-
-	items = []model.Media{item}
-	ApplyMedia(items, c, map[string]imdb.Rating{"tt1234567": {Value: 8.1, Votes: 900}})
-	rating, _, source := effectiveRating(items[0], map[string]imdb.Rating{"tt1234567": {Value: 8.1, Votes: 900}})
-	if rating != 8.1 || source != "IMDb" {
-		t.Fatalf("expected IMDb to win as soon as a match appears, got rating=%v source=%q", rating, source)
-	}
-}
-
-// TestEffectiveRatingFallsBackWithoutTMDBEnrichment guards the other half
-// of the same rule: an item TMDB has never enriched (TMDBVoteCount==0)
-// must keep using Radarr/Sonarr's own Rating/VoteCount — TMDB being
-// unconfigured, unreachable, or unmatched must never remove the signal
-// Radarr/Sonarr already provided.
-func TestEffectiveRatingFallsBackWithoutTMDBEnrichment(t *testing.T) {
-	rating, votes, _ := effectiveRating(model.Media{Rating: 6.5, VoteCount: 300}, nil)
-	if rating != 6.5 || votes != 300 {
-		t.Fatalf("expected the Radarr/Sonarr rating to be used, got rating=%v votes=%v", rating, votes)
-	}
-}
-
-// TestPopularityHasNoFallbackAndIsUnknownRatherThanZeroWhenAbsent guards
-// Popularity's distinct treatment from Rating: it has no source to fall
-// back to (Radarr/Sonarr don't supply an equivalent), so an unenriched
-// item simply contributes nothing from it rather than being scored as
-// "unpopular."
-func TestPopularityHasNoFallbackAndIsUnknownRatherThanZeroWhenAbsent(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.Popularity = 20
-	unenriched := []model.Media{{Title: "Unenriched"}}
-	ApplyMedia(unenriched, c, nil)
-	for _, reason := range unenriched[0].RetentionValueReasons {
-		if reason.Label == "Popularity" {
-			t.Fatalf("expected no Popularity reason for an unenriched item, got %#v", reason)
-		}
-	}
-	enriched := []model.Media{{Title: "Enriched", Popularity: 500}}
-	ApplyMedia(enriched, c, nil)
-	found := false
-	for _, reason := range enriched[0].RetentionValueReasons {
-		if reason.Label == "Popularity" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("expected a Popularity reason once TMDB enrichment has a value")
-	}
-	if enriched[0].RetentionValue <= unenriched[0].RetentionValue {
-		t.Fatalf("expected the enriched, more popular item to score higher: enriched=%v unenriched=%v", enriched[0].RetentionValue, unenriched[0].RetentionValue)
-	}
-}
-
-func TestKeepTagCreatesAbsoluteProtection(t *testing.T) {
-	c := testConfig()
-	items := []model.Media{{Title: "Tagged", Rating: 1, Tags: []string{"keep"}}, {Title: "Ordinary", Rating: 9}}
-	ApplyMedia(items, c, nil)
-	if items[0].Title != "Ordinary" || items[1].Title != "Tagged" {
-		t.Fatalf("value ordering failed: %#v", items)
-	}
-	if !items[1].Protected || items[1].ProtectionReason != "Keep tag" {
-		t.Fatalf("keep-tagged media must be absolutely protected: %#v", items[1])
-	}
-}
-
-func TestNeverWatchedWeightIsApplied(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.NeverWatched = 25
-	items := []model.Media{{Title: "Unwatched"}}
-	ApplyMedia(items, c, nil)
-	if items[0].RetentionValue != 25 || len(items[0].RetentionValueReasons) == 0 || items[0].RetentionValueReasons[0].Points != 25 {
-		t.Fatalf("never-watched weight was ignored: %#v", items[0])
-	}
-}
-func TestSizeBreaksEqualValueTie(t *testing.T) {
-	c := testConfig()
-	items := []model.Media{{Title: "Small", Rating: 5, SizeBytes: 10}, {Title: "Large", Rating: 5, SizeBytes: 100}}
-	ApplyMedia(items, c, nil)
-	if items[0].Title != "Large" {
-		t.Fatalf("larger equal-value media should fall first: %#v", items)
-	}
-}
-
-func TestHistoricalTorrentsDoNotAddMediaValue(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.TorrentActivity = 10
-	items := []model.Media{{
-		Title: "Test",
-		Torrents: []model.Torrent{
-			{Hash: "current", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: true, LeechersSwarm: 1},
-			{Hash: "old", AssociationStatus: "SUPERSEDED", LeechersSwarm: 1023},
-		},
-	}}
-	ApplyMedia(items, c, nil)
-	// Only the single current leecher should count: 10 * log2(2) = 10.
-	if items[0].RetentionValue != 10 {
-		t.Fatalf("historical torrent activity must not inflate media value: got %.2f", items[0].RetentionValue)
-	}
-}
-
-func TestCurrentTorrentMustBeHardlinkedToAddMediaValue(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.TorrentActivity = 10
-	items := []model.Media{{
-		Title: "Test",
-		Torrents: []model.Torrent{
-			{Hash: "copy", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: false, LeechersSwarm: 1023},
-			{Hash: "unknown", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: false, LeechersSwarm: 1023},
-		},
-	}}
-	ApplyMedia(items, c, nil)
-	if items[0].RetentionValue != 0 {
-		t.Fatalf("non-hardlinked activity must not add media value: got %.2f", items[0].RetentionValue)
-	}
-	for _, reason := range items[0].RetentionValueReasons {
-		if reason.Label == "Associated torrent" {
-			t.Fatalf("non-hardlinked torrent produced a contribution: %#v", reason)
-		}
-	}
-}
-
-func TestHardlinkedTorrentContributionExplainsWhy(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.TorrentActivity = 10
-	items := []model.Media{{Title: "Test", Torrents: []model.Torrent{{AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: true, LeechersSwarm: 1}}}}
-	ApplyMedia(items, c, nil)
-	found := false
-	for _, reason := range items[0].RetentionValueReasons {
-		if reason.Label == "Associated torrent" && reason.Note != "" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("missing hardlink-gated explanation: %#v", items[0].RetentionValueReasons)
-	}
-}
-
-// TestApplyMediaSetsRemovalRestrictedFromServiceOptIn guards the fix for
-// series (and any other media) appearing as removal candidates even though
-// their owning service hasn't checked "Allow automatic removal": an
-// unrecognized or opted-out ServiceID must fail closed to restricted, an
-// opted-in one must not, and a season must inherit its parent series' value
-// exactly like Protected already does.
 func TestApplyMediaSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
 	c := testConfig()
 	c.Services = []config.Service{
@@ -289,7 +39,7 @@ func TestApplyMediaSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
 		{Title: "Unknown service", ServiceID: "does-not-exist"},
 		{Title: "Series", Type: model.Series, ServiceID: "radarr-out", Seasons: []model.Season{{Number: 1}}},
 	}
-	ApplyMedia(items, c, nil)
+	ApplyMedia(items, c)
 	if items[0].RemovalRestricted {
 		t.Fatalf("expected an opted-in service's media to not be removal-restricted: %#v", items[0])
 	}
@@ -326,60 +76,13 @@ func TestApplyMediaSeasonsInheritSeriesWideProtection(t *testing.T) {
 		Type: model.Series, Title: "Show", Tags: []string{"keep"},
 		Seasons: []model.Season{{Number: 1}, {Number: 2}},
 	}}
-	ApplyMedia(items, c, nil)
+	ApplyMedia(items, c)
 	if !items[0].Protected {
 		t.Fatalf("expected series to be protected via keep tag: %#v", items[0])
 	}
 	for _, season := range items[0].Seasons {
 		if !season.Protected || season.ProtectionReason != items[0].ProtectionReason {
 			t.Fatalf("expected every season to inherit series-wide protection: %#v", season)
-		}
-	}
-}
-
-func TestApplyMediaSeasonsDifferByRecency(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.SeasonRecency = 20
-	now := time.Now()
-	items := []model.Media{{
-		Type: model.Series, Title: "Show",
-		Seasons: []model.Season{
-			{Number: 1, LastAiredAt: now.AddDate(-3, 0, 0)},
-			{Number: 2, LastAiredAt: now},
-		},
-	}}
-	ApplyMedia(items, c, nil)
-	old, recent := items[0].Seasons[0], items[0].Seasons[1]
-	if recent.RetentionValue <= old.RetentionValue {
-		t.Fatalf("expected the more recently aired season to have higher Retention Value: old=%#v recent=%#v", old, recent)
-	}
-}
-
-func TestApplyMediaSeasonsScopeTorrentActivityToTheirOwnSeason(t *testing.T) {
-	c := testConfig()
-	c.Valuation.Weights.TorrentActivity = 10
-	items := []model.Media{{
-		Type: model.Series, Title: "Show",
-		Torrents: []model.Torrent{{Hash: "s1", AssociationStatus: model.TorrentCurrent, MediaHardlinkKnown: true, MediaHardlinked: true, HardlinkedSeasons: []int{1}, LeechersSwarm: 100}},
-		Seasons:  []model.Season{{Number: 1}, {Number: 2}},
-	}}
-	ApplyMedia(items, c, nil)
-	season1, season2 := items[0].Seasons[0], items[0].Seasons[1]
-	if season1.RetentionValue <= season2.RetentionValue {
-		t.Fatalf("expected season 1 alone to receive the hardlinked torrent's activity contribution: season1=%#v season2=%#v", season1, season2)
-	}
-	foundReason := false
-	for _, r := range season1.RetentionValueReasons {
-		if r.Label == "Associated torrent" {
-			foundReason = true
-		}
-	}
-	if !foundReason {
-		t.Fatalf("expected season 1 to explain the torrent contribution: %#v", season1.RetentionValueReasons)
-	}
-	for _, r := range season2.RetentionValueReasons {
-		if r.Label == "Associated torrent" {
-			t.Fatalf("season 2 must not receive a season-1-only torrent's contribution: %#v", season2.RetentionValueReasons)
 		}
 	}
 }
@@ -430,24 +133,21 @@ func TestApplyTorrentValueBothRatioAndTagCanProtectTheSameTorrent(t *testing.T) 
 	}
 }
 
-// With Overfin configured, its scores are the Retention Value: a film's,
-// each season's, a series' best season's; nothing else of Overtide's
-// valuation counts (not Jellyfin's favorites, not Seerr's requests), keep
-// tags still protect, and what Overfin didn't score is protected.
+// Overfin's scores are the Retention Value, as Overfin gives them: a
+// film's, each season's, a series' best season's. Keep tags protect
+// without changing the value, and what Overfin didn't score is protected.
 func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 	c := testConfig()
-	c.Overfin.URL = "http://overfin.lan"
 	low, high := 12.5, 80.0
-	requested := time.Now()
 	items := []model.Media{
-		{Type: model.Movie, TMDBID: 1, OverfinScore: &high, Favorite: true, Requested: true, RequestedAt: &requested},
-		{Type: model.Movie, TMDBID: 2, OverfinScore: &low, Rating: 9.5},
+		{Type: model.Movie, TMDBID: 1, OverfinScore: &high},
+		{Type: model.Movie, TMDBID: 2, OverfinScore: &low},
 		{Type: model.Movie, TMDBID: 3},
 		{Type: model.Movie, TMDBID: 4, OverfinScore: &low, Tags: []string{"keep"}},
 		{Type: model.Series, TMDBID: 5, Seasons: []model.Season{{Number: 1}, {Number: 2}, {Number: 3}},
 			OverfinSeasonScores: map[int]float64{1: 20, 2: 55}},
 	}
-	ApplyMedia(items, c, nil)
+	ApplyMedia(items, c)
 	by := map[int]model.Media{}
 	for _, m := range items {
 		by[m.TMDBID] = m
@@ -459,7 +159,7 @@ func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 		t.Errorf("an unscored film: %+v", by[3])
 	}
 	if !by[4].Protected || by[4].ProtectionReason != "Keep tag" || by[4].RetentionValue != 12.5 {
-		t.Errorf("a kept film: %+v", by[4])
+		t.Errorf("a kept film keeps Overfin's score: %+v", by[4])
 	}
 	series := by[5]
 	if series.RetentionValue != 55 || series.Protected {
@@ -471,5 +171,39 @@ func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 	}
 	if items[0].TMDBID != 2 {
 		t.Errorf("the least valuable first: %+v", items[0])
+	}
+}
+
+func TestTorrentsDoNotChangeOverfinsScore(t *testing.T) {
+	c := testConfig()
+	score := 40.0
+	items := []model.Media{{Type: model.Movie, TMDBID: 1, OverfinScore: &score, Torrents: []model.Torrent{
+		{AssociationStatus: model.TorrentCurrent, MediaHardlinked: true, LeechersSwarm: 50},
+	}}}
+	ApplyMedia(items, c)
+	if items[0].RetentionValue != 40 {
+		t.Fatalf("a hardlinked, busy torrent changed Overfin's score: %+v", items[0])
+	}
+}
+
+func TestWithoutOverfinNothingIsValued(t *testing.T) {
+	c := testConfig()
+	c.Overfin.URL = ""
+	items := []model.Media{{Type: model.Movie, Title: "Film"}, {Type: model.Series, Title: "Show", Seasons: []model.Season{{Number: 1}}}}
+	ApplyMedia(items, c)
+	for _, m := range items {
+		if !m.Protected || m.ProtectionReason != notValued {
+			t.Fatalf("expected everything protected without Overfin: %+v", m)
+		}
+	}
+}
+
+func TestSizeBreaksEqualValueTie(t *testing.T) {
+	c := testConfig()
+	score := 30.0
+	items := []model.Media{{Title: "Small", SizeBytes: 10, OverfinScore: &score}, {Title: "Large", SizeBytes: 100, OverfinScore: &score}}
+	ApplyMedia(items, c)
+	if items[0].Title != "Large" {
+		t.Fatalf("larger equal-value media should fall first: %#v", items)
 	}
 }

@@ -31,7 +31,7 @@ Inherited from Stewarr, and kept:
 
 - Correlates Radarr/Sonarr library media with qBittorrent torrents using authoritative import data, not fuzzy title matching.
 - Proves whether a torrent's files are still physically hardlinked to library media, so you know what removing it would *actually* free, not just what it appears to occupy.
-- Ranks library media by **Retention Value** to decide what's safest to remove first when storage gets tight. With Overfin added as a service, it's Overfin's score for each film and season (anything Overfin didn't score is protected); without it, it comes from Jellyfin, Seerr, TMDB and IMDb, as in Stewarr.
+- Ranks library media by **Retention Value** to decide what's safest to remove first when storage gets tight: Overfin's score for each film and season, as Overfin gives it. Anything Overfin didn't score is protected, and without Overfin nothing is removed automatically. Overtide no longer values titles itself: Stewarr's Jellyfin, Seerr, TMDB and IMDb sources are gone.
 - Scores torrents by their own **Torrent Value**, from the history Overtide records: ratio, contribution over time, consistency, seeding time, private trackers.
 - Finds files on disk that no service claims ("Unmanaged").
 - Plans every removal as a re-validated plan, dry run by default, carried out through the owning service's own API (Radarr, Sonarr, qBittorrent) rather than by deleting files directly.
@@ -47,7 +47,7 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 ## Navigation
 
 - **Home**: storage state, library and torrent summaries, service health, storage capabilities and lifetime cleanup statistics.
-- **Library**: Radarr/Sonarr media, searchable, filterable, ranked by Retention Value.
+- **Library**: Radarr/Sonarr media, searchable, filterable, with Overfin's value.
 - **Torrents**: the torrent client's inventory, with provenance and reclaimable space.
 - **Unmanaged files**: paths no service claims. Removable by hand, never picked automatically.
 - **Tasks**: background tasks, their schedules and status, and **Run now**.
@@ -57,7 +57,7 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 
 ### Retention Value
 
-How much a library item deserves to stay when storage gets scarce; higher survives longer. It's deliberately separate from size: how much space something *takes* and how much it's *worth keeping* are different questions, and Overtide weighs the two only when it picks what to remove.
+How much a library item deserves to stay when storage gets scarce; higher survives longer. It's Overfin's score, unchanged: what people watch, ask for and like. It's deliberately separate from size: how much space something *takes* and how much it's *worth keeping* are different questions, and Overtide weighs the two only when it picks what to remove.
 
 Protection is separate from value: a keep tag, for instance, takes an item out of automatic removal whatever its value.
 

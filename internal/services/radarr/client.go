@@ -46,16 +46,6 @@ type movie struct {
 	TMDBID     int       `json:"tmdbId"`
 	IMDBID     string    `json:"imdbId"`
 	Tags       []int     `json:"tags"`
-	Ratings    struct {
-		TMDB struct {
-			Value float64 `json:"value"`
-			Votes int     `json:"votes"`
-		} `json:"tmdb"`
-		IMDB struct {
-			Value float64 `json:"value"`
-			Votes int     `json:"votes"`
-		} `json:"imdb"`
-	} `json:"ratings"`
 }
 type tag struct {
 	ID    int    `json:"id"`
@@ -118,17 +108,13 @@ func (client *Client) Inventory() ([]model.Media, error) {
 	}
 	out := make([]model.Media, 0, len(ms))
 	for _, m := range ms {
-		rating, votes := m.Ratings.TMDB.Value, m.Ratings.TMDB.Votes
-		if rating == 0 {
-			rating, votes = m.Ratings.IMDB.Value, m.Ratings.IMDB.Votes
-		}
 		labels := []string{}
 		for _, id := range m.Tags {
 			if s := tm[id]; s != "" {
 				labels = append(labels, s)
 			}
 		}
-		out = append(out, model.Media{Type: model.Movie, SourceID: m.ID, Title: m.Title, Year: m.Year, Path: m.Path, SizeBytes: m.SizeOnDisk, Rating: rating, VoteCount: votes, AddedAt: m.Added, Tags: labels, TMDBID: m.TMDBID, IMDBID: m.IMDBID})
+		out = append(out, model.Media{Type: model.Movie, SourceID: m.ID, Title: m.Title, Year: m.Year, Path: m.Path, SizeBytes: m.SizeOnDisk, AddedAt: m.Added, Tags: labels, TMDBID: m.TMDBID, IMDBID: m.IMDBID})
 	}
 	return out, nil
 }

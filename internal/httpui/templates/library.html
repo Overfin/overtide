@@ -19,15 +19,7 @@
         </select></label>{{end}}{{if .SourceOptions}}<label>Source<select name=source>
         <option value="any" {{if eq .SourceFilter "any"}}selected{{end}}>Any</option>
         {{range .SourceOptions}}<option value="{{.Key}}" {{if eq $.SourceFilter .Key}}selected{{end}}>{{.Label}}</option>{{end}}
-        </select></label>{{end}}<label>Requested<select name=requested>
-        <option value="any" {{if eq .RequestedFilter "any"}}selected{{end}}>Any</option>
-        <option value="yes" {{if eq .RequestedFilter "yes"}}selected{{end}}>Yes</option>
-        <option value="no" {{if eq .RequestedFilter "no"}}selected{{end}}>No</option>
-        </select></label><label>Watched<select name=watched>
-        <option value="any" {{if eq .WatchedFilter "any"}}selected{{end}}>Any</option>
-        <option value="yes" {{if eq .WatchedFilter "yes"}}selected{{end}}>Watched</option>
-        <option value="no" {{if eq .WatchedFilter "no"}}selected{{end}}>Unwatched</option>
-        </select></label>{{if .HasTorrentClient}}<label>Torrent<select name=torrent>
+        </select></label>{{end}}{{if .HasTorrentClient}}<label>Torrent<select name=torrent>
         <option value="any" {{if eq .TorrentFilter "any"}}selected{{end}}>Any</option>
         <option value="yes" {{if eq .TorrentFilter "yes"}}selected{{end}}>Current</option>
         <option value="no" {{if eq .TorrentFilter "no"}}selected{{end}}>None</option>
@@ -48,13 +40,8 @@
         <thead>
           <tr>
             <th><a href="{{index .SortURLs "title"}}">Media</a></th>
-            <th><a href="{{index .SortURLs "value"}}">Retention Value</a></th>
+            <th><a href="{{index .SortURLs "value"}}">Overfin value</a></th>
             <th><a href="{{index .SortURLs "type"}}">Type</a></th>
-            <th><a href="{{index .SortURLs "rating"}}">Rating</a></th>
-            <th><a href="{{index .SortURLs "votes"}}">Votes</a></th>
-            <th><a href="{{index .SortURLs "views"}}">Views</a></th>
-            <th><a href="{{index .SortURLs "lastwatched"}}">Last watched</a></th>
-            <th><a href="{{index .SortURLs "requested"}}">Requested</a></th>
             <th><a href="{{index .SortURLs "size"}}">Size</a></th>
             <th><a href="{{index .SortURLs "torrents"}}">Torrents</a></th>
             <th></th>
@@ -68,11 +55,6 @@
             </td>
             <td class=value>{{printf "%.1f" $m.RetentionValue}}</td>
             <td>{{$m.Type}}</td>
-            <td>{{if gt $m.Rating 0.0}}{{printf "%.1f" $m.Rating}}{{else}}—{{end}}</td>
-            <td>{{$m.VoteCount}}</td>
-            <td>{{$m.Views}}</td>
-            <td>{{fmtTime $m.LastWatched}}</td>
-            <td>{{if $m.Requested}}yes{{else}}no{{end}}</td>
             <td>{{human $m.SizeBytes}}</td>
             <td>{{len $m.Torrents}}</td>
             <td>
@@ -81,7 +63,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan=11 class=muted>No media match these filters.</td>
+            <td colspan=6 class=muted>No media match these filters.</td>
           </tr>
           {{end}}
         </tbody>

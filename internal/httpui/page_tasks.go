@@ -38,21 +38,6 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	if len(core) > 0 {
 		groups = append(groups, taskGroup{Name: "Library & Storage", Tasks: core})
 	}
-	if cfg.Jellyfin.URL != "" {
-		if status, ok := byID["jellyfin"]; ok {
-			groups = append(groups, taskGroup{Name: "Jellyfin", Tasks: []tasks.Status{status}})
-		}
-	}
-	if cfg.Seerr.URL != "" {
-		if status, ok := byID["seerr"]; ok {
-			groups = append(groups, taskGroup{Name: "Seerr", Tasks: []tasks.Status{status}})
-		}
-	}
-	if cfg.TMDB.APIKey != "" {
-		if status, ok := byID["tmdb"]; ok {
-			groups = append(groups, taskGroup{Name: "TMDB", Tasks: []tasks.Status{status}})
-		}
-	}
 	if cfg.Overfin.URL != "" {
 		if status, ok := byID["overfin"]; ok {
 			groups = append(groups, taskGroup{Name: "Overfin", Tasks: []tasks.Status{status}})

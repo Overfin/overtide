@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/config"
@@ -13,33 +12,6 @@ import (
 	"github.com/overfin/overtide/internal/removal"
 	"github.com/overfin/overtide/internal/store"
 )
-
-// TestMediaTMDBDataStale guards the auto-removal-only exclusion added on
-// top of TMDB enrichment: an item that was never enriched, or hasn't been
-// successfully re-enriched in over two refresh cycles, must not be acted
-// on automatically — but only once TMDB is actually configured, and never
-// for a torrent action (which has no Media at all).
-func TestMediaTMDBDataStale(t *testing.T) {
-	fresh := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{TMDBEnrichedAt: time.Now().Add(-time.Hour)}}
-	if mediaTMDBDataStale(fresh, true) {
-		t.Fatal("a recently enriched item must not be considered stale")
-	}
-	neverEnriched := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{}}
-	if !mediaTMDBDataStale(neverEnriched, true) {
-		t.Fatal("an item that was never enriched must be considered stale")
-	}
-	old := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{TMDBEnrichedAt: time.Now().Add(-3 * 24 * time.Hour)}}
-	if !mediaTMDBDataStale(old, true) {
-		t.Fatal("data older than two refresh cycles must be considered stale")
-	}
-	if mediaTMDBDataStale(neverEnriched, false) {
-		t.Fatal("nothing should be excluded as stale when TMDB isn't configured at all")
-	}
-	torrentAction := cleanup.Action{Kind: cleanup.StandaloneTorrent}
-	if mediaTMDBDataStale(torrentAction, true) {
-		t.Fatal("a torrent action has no Media at all and must never be considered stale")
-	}
-}
 
 // TestActionIsUnassociatedTorrentTreatsFormerRelationshipAsKnown guards the
 // distinction between "Overtide has never had any relationship for this

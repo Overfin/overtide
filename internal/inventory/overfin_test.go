@@ -28,7 +28,7 @@ func TestRefreshOverfin(t *testing.T) {
 	service := New(config.Config{}, nil)
 	service.cfg.Overfin = config.Connection{URL: server.URL, APIKey: "ofapp_k"}
 	service.overfin = overfin.New(server.URL, "ofapp_k")
-	service.reliability = Reliability{Inventory: true, Jellyfin: "not configured", Seerr: "not configured", TMDB: "not configured", Overfin: "stale"}
+	service.reliability = Reliability{Inventory: true, Overfin: "stale"}
 	service.generation = 1
 	service.items = []model.Media{{Type: model.Movie, SourceID: 1, TMDBID: 7}, {Type: model.Movie, SourceID: 2, TMDBID: 8}}
 

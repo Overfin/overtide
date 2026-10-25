@@ -56,8 +56,6 @@ var allServiceTypes = []serviceTypeOption{
 	{"radarr", "Radarr"},
 	{"sonarr", "Sonarr"},
 	{"qbittorrent", "qBittorrent"},
-	{"jellyfin", "Jellyfin"},
-	{"seerr", "Seerr"},
 	{"overfin", "Overfin"},
 }
 

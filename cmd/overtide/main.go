@@ -22,27 +22,15 @@ import (
 )
 
 const (
-	databasePath               = "/config/state/inventory.db"
-	logDirectory               = "/config/log"
-	logRetentionDays           = 10
-	fileReconcileInterval      = 12 * time.Hour
-	jellyfinEnrichmentInterval = time.Hour
-	seerrEnrichmentInterval    = time.Hour
+	databasePath          = "/config/state/inventory.db"
+	logDirectory          = "/config/log"
+	logRetentionDays      = 10
+	fileReconcileInterval = 12 * time.Hour
 	// overfinScoresInterval: Overfin's scores move with what people do,
 	// slowly; half an hour keeps them close without asking too often.
-	overfinScoresInterval = 30 * time.Minute
-	// tmdbEnrichmentInterval is much longer than Jellyfin/Seerr's: rating,
-	// vote, and popularity data don't need to track library changes in
-	// real time the way playback/request facts do, and refreshing less
-	// often keeps steady-state API usage low regardless of library size.
-	tmdbEnrichmentInterval    = 24 * time.Hour
+	overfinScoresInterval     = 30 * time.Minute
 	enrichmentRemovalCooldown = 30 * time.Minute
 	torrentHistoryInterval    = 30 * time.Minute
-	// imdbRatingsCheckInterval is short and cheap on purpose: the task
-	// itself self-gates on the configured wall-clock hour (see
-	// imdbRatingsDue in internal/inventory/imdb_ratings.go) rather than
-	// this interval actually pacing the real, once-a-day download.
-	imdbRatingsCheckInterval = 30 * time.Minute
 )
 
 func main() {
@@ -111,29 +99,9 @@ func main() {
 			} else {
 				err = inv.Refresh(ctx)
 			}
-			if err != nil {
-				return err
-			}
-			// Fire-and-forget: a newly imported (or re-identified) movie or
-			// show gets every applicable source's enrichment right away
-			// instead of waiting for that source's next scheduled pass —
-			// see EnrichNewMedia's doc comment for why this is the only
-			// place a new item's enrichment is ever fetched. Failure here
-			// isn't fatal to the base refresh itself — the next base
-			// refresh's own trigger, or that source's next scheduled run,
-			// will retry.
-			go func() {
-				if enrichErr := inv.EnrichNewMedia(context.Background()); enrichErr != nil {
-					log.Printf("[inventory] immediate enrichment of newly discovered media failed: %v", enrichErr)
-				}
-			}()
-			return nil
+			return err
 		}), Advisory: inv.RefreshAdvisory, Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
-		tasks.Definition{ID: "jellyfin", Name: "Jellyfin enrichment", Description: "Refresh playback and favorite facts used by automatic planning.", Interval: jellyfinEnrichmentInterval, Preflight: retryable(inv.ValidateJellyfin), Runner: retryable(inv.RefreshJellyfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
-		tasks.Definition{ID: "seerr", Name: "Seerr enrichment", Description: "Refresh request facts used by automatic planning.", Interval: seerrEnrichmentInterval, Preflight: retryable(inv.ValidateSeerr), Runner: retryable(inv.RefreshSeerr), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "overfin", Name: "Overfin scores", Description: "Read each film's and season's value from Overfin, used as Retention Value.", Interval: overfinScoresInterval, Preflight: retryable(inv.ValidateOverfin), Runner: retryable(inv.RefreshOverfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
-		tasks.Definition{ID: "tmdb", Name: "TMDB enrichment", Description: "Refresh rating, vote, and popularity facts used by automatic planning.", Interval: tmdbEnrichmentInterval, Preflight: retryable(inv.ValidateTMDB), Runner: retryable(inv.RefreshTMDB), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
-		tasks.Definition{ID: "imdb", Name: "IMDb ratings refresh", Description: "Once daily, replace IMDb's own rating/vote-count dataset used to prefer its numbers over TMDB's.", Interval: imdbRatingsCheckInterval, Runner: retryable(inv.RefreshIMDbRatings), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "files", Name: "File reconciliation", Description: "Scan service storage and reconcile file ownership.", Interval: fileReconcileInterval, Preflight: retryable(inv.ValidateReconciliation), AttachCompatible: fullScanAttachCompatible, Runner: retryable(func(ctx context.Context) error {
 			if tasks.TriggeredOnlyBy(ctx, tasks.TriggerWorkflow) {
 				return inv.ReconcileFilesAfterMutation(ctx)
@@ -167,31 +135,11 @@ func main() {
 		if !inv.WaitForBase(ctx) {
 			return
 		}
-		// File topology is independent of value enrichment and runs alongside it.
+		// File topology is independent of Overfin's scores and runs alongside them.
 		_, _ = taskManager.Submit(tasks.Request{TaskID: "files", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
-		// IMDb's own due-check inside RefreshIMDbRatings decides whether a
-		// fetch is actually needed (past the fetch hour, not already done
-		// today) — submitting it unconditionally at every startup, rather
-		// than waiting for its next periodic tick, is what catches the
-		// very first run (no data yet) and a restart after a day or more
-		// of downtime (stale data) immediately instead of up to
-		// imdbRatingsCheckInterval later.
-		_, _ = taskManager.Submit(tasks.Request{TaskID: "imdb", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
-		// Enrichments share a scheduler group, so they publish one at a time.
-		seerrTrigger, err := taskManager.Submit(tasks.Request{TaskID: "seerr", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
-		if err == nil {
-			_, err = taskManager.Await(ctx, seerrTrigger.TriggerID)
-		}
-		if err != nil {
-			log.Printf("[inventory] initial Seerr enrichment failed: %v", err)
-		}
-		jellyfinTrigger, err := taskManager.Submit(tasks.Request{TaskID: "jellyfin", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
-		if err == nil {
-			_, err = taskManager.Await(ctx, jellyfinTrigger.TriggerID)
-		}
-		if err != nil {
-			log.Printf("[inventory] initial Jellyfin enrichment failed: %v", err)
-		}
+		// Overfin's scores are read again at once: a restart may follow a
+		// long gap.
+		_, _ = taskManager.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
 	}()
 
 	runError := httpui.Run(ctx, cfg.Server.Listen, ui.Handler())

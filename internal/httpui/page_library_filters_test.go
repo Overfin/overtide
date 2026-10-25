@@ -44,7 +44,7 @@ func TestLibraryTemplateHidesTypeFilterWithSingleType(t *testing.T) {
 		Rows:            []mediaRow{{Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}}},
 		TypeOptions:     []mediaTypeOption{{Value: "movie", Label: "Movies"}},
 		Page:            1, PageSize: 50, TotalPages: 1, TotalItems: 1, Sort: "title", Order: "asc",
-		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "rating": "/library", "votes": "/library", "views": "/library", "lastwatched": "/library", "requested": "/library", "size": "/library", "torrents": "/library"},
+		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "size": "/library", "torrents": "/library"},
 		SizeLinks: []navLink{{Value: 50, URL: "/library"}},
 	}
 	recorder := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestLibraryTemplateShowsTorrentFilterOnlyWithTorrentClient(t *testing.T) {
 		Rows:            []mediaRow{{Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}}},
 		TypeOptions:     []mediaTypeOption{{Value: "movie", Label: "Movies"}},
 		Page:            1, PageSize: 50, TotalPages: 1, TotalItems: 1, Sort: "title", Order: "asc",
-		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "rating": "/library", "votes": "/library", "views": "/library", "lastwatched": "/library", "requested": "/library", "size": "/library", "torrents": "/library"},
+		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "size": "/library", "torrents": "/library"},
 		SizeLinks: []navLink{{Value: 50, URL: "/library"}},
 	}
 
@@ -114,7 +114,7 @@ func TestLibraryTemplateShowsTypeAndSourceFiltersWhenPopulated(t *testing.T) {
 		SourceFilter:    "any",
 		SourceOptions:   []mediaSource{{Key: "Movies", Label: "Movies"}, {Key: "Movies 4K", Label: "Movies 4K"}},
 		Page:            1, PageSize: 50, TotalPages: 1, TotalItems: 1, Sort: "title", Order: "asc",
-		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "rating": "/library", "votes": "/library", "views": "/library", "lastwatched": "/library", "requested": "/library", "size": "/library", "torrents": "/library"},
+		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "size": "/library", "torrents": "/library"},
 		SizeLinks: []navLink{{Value: 50, URL: "/library"}},
 	}
 	recorder := httptest.NewRecorder()

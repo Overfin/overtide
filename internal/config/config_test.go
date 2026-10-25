@@ -360,30 +360,6 @@ func TestSetCredentialsRejectsEmptyUsernameAndShortPassword(t *testing.T) {
 	}
 }
 
-// TestIMDbEnabledDefaultsTrue guards the whole point of storing this
-// inverted (IMDb.Disabled, not "enabled"): a config predating this
-// setting, or a fresh install, has no explicit entry at all and must
-// still default to IMDb ratings being on, not silently opted out the
-// moment this field was introduced.
-func TestIMDbEnabledDefaultsTrue(t *testing.T) {
-	var c Config
-	if c.IMDb.Disabled {
-		t.Fatal("expected IMDb ratings to default to enabled")
-	}
-}
-
-func TestSetIMDbEnabledTogglesTheInvertedField(t *testing.T) {
-	var c Config
-	disabled := SetIMDbEnabled(c, false)
-	if !disabled.IMDb.Disabled {
-		t.Fatal("expected SetIMDbEnabled(false) to set Disabled=true")
-	}
-	enabled := SetIMDbEnabled(disabled, true)
-	if enabled.IMDb.Disabled {
-		t.Fatal("expected SetIMDbEnabled(true) to set Disabled=false")
-	}
-}
-
 func TestAddKeepTagToMediaIsIdempotent(t *testing.T) {
 	var c Config
 	c.Protection.KeepTags = []string{"keep"}
@@ -411,18 +387,6 @@ func TestAddKeepTagToTorrentsIsIdempotent(t *testing.T) {
 	again := AddKeepTagToTorrents(updated, "overtide_keep")
 	if len(again.Protection.KeepTorrentTags) != 1 {
 		t.Fatalf("expected no duplicate on a second call, got %#v", again.Protection.KeepTorrentTags)
-	}
-}
-
-func TestSetTMDBAPIKeyTrimsAndClears(t *testing.T) {
-	var c Config
-	updated := SetTMDBAPIKey(c, "  a-real-key  ")
-	if updated.TMDB.APIKey != "a-real-key" {
-		t.Fatalf("expected the key to be trimmed, got %q", updated.TMDB.APIKey)
-	}
-	cleared := SetTMDBAPIKey(updated, "")
-	if cleared.TMDB.APIKey != "" {
-		t.Fatalf("expected an empty string to clear the key, got %q", cleared.TMDB.APIKey)
 	}
 }
 
@@ -535,48 +499,12 @@ func TestLoadAllowsMultipleSonarrInstances(t *testing.T) {
 
 func TestLoadFailsClosedOnDuplicateSingleInstanceRuntimeType(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	body := `{"services":[{"type":"jellyfin","name":"J1","url":"http://j1"},{"type":"jellyfin","name":"J2","url":"http://j2"}],"storage":{"target_usage_percent":90,"critical_usage_percent":95}}`
+	body := `{"services":[{"type":"overfin","name":"O1","url":"http://o1"},{"type":"overfin","name":"O2","url":"http://o2"}],"storage":{"target_usage_percent":90,"critical_usage_percent":95}}`
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(p); err == nil {
-		t.Fatal("expected duplicate jellyfin instances to fail closed")
-	}
-}
-
-// TestLoadDefaultsPopularityWeightForConfigWrittenBeforeItExisted guards
-// the fix for a real gap: Popularity is a newer weight than the rest of
-// Weights, so a config.json predating it has no value at all — which
-// would otherwise silently make TMDB's popularity signal count for
-// nothing even with TMDB fully enabled and fetching, until the user
-// happened to notice and add the key themselves.
-func TestLoadDefaultsPopularityWeightForConfigWrittenBeforeItExisted(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "config.json")
-	body := `{"valuation":{"weights":{"rating":40}},"storage":{}}`
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c, err := Load(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Valuation.Weights.Popularity == 0 {
-		t.Fatal("expected a nonzero default Popularity weight for a config.json that predates the key")
-	}
-}
-
-func TestExplicitZeroPopularityWeightIsPreserved(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "config.json")
-	body := `{"valuation":{"weights":{"popularity":0}},"storage":{}}`
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c, err := Load(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Valuation.Weights.Popularity != 0 {
-		t.Fatalf("explicit zero popularity weight was replaced: %v", c.Valuation.Weights.Popularity)
+		t.Fatal("expected duplicate overfin instances to fail closed")
 	}
 }
 
@@ -609,7 +537,7 @@ func TestSaveThenLoadRoundTripsServices(t *testing.T) {
 func TestSaveIsAtomicNoPartialFileOnMarshalableConfig(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
-	if err := Save(p, Config{Services: []Service{{Type: "seerr", Name: "Requests", URL: "http://seerr:5055"}}}); err != nil {
+	if err := Save(p, Config{Services: []Service{{Type: "radarr", Name: "Movies", URL: "http://radarr:7878"}}}); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -669,9 +597,9 @@ func TestAddServiceAllowsSecondInstanceOfMultiInstanceType(t *testing.T) {
 }
 
 func TestAddServiceRejectsSecondInstanceOfSingleInstanceType(t *testing.T) {
-	base := Config{Services: []Service{{Type: "jellyfin", Name: "Jellyfin", URL: "http://jellyfin:8096"}}}
-	if _, err := AddService(base, Service{Type: "jellyfin", Name: "Jellyfin 2", URL: "http://jellyfin2:8096"}); err == nil {
-		t.Fatal("expected a second jellyfin instance to be rejected")
+	base := Config{Services: []Service{{Type: "overfin", Name: "Overfin", URL: "http://overfin:8081"}}}
+	if _, err := AddService(base, Service{Type: "overfin", Name: "Overfin 2", URL: "http://overfin2:8081"}); err == nil {
+		t.Fatal("expected a second overfin instance to be rejected")
 	}
 }
 
@@ -839,5 +767,32 @@ func TestAddOverfinService(t *testing.T) {
 	}
 	if _, err := AddService(updated, Service{Type: "overfin", Name: "Overfin 2", URL: "http://other:8081"}); err == nil {
 		t.Error("a second Overfin was accepted")
+	}
+}
+
+// TestLoadDropsJellyfinAndSeerr: a config.json from before Overtide
+// stopped valuing titles itself still lists them; they're dropped, and
+// the file is saved without them, so the rest of it still loads.
+func TestLoadDropsJellyfinAndSeerr(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	body := `{"services":[{"type":"radarr","name":"Movies","url":"http://radarr:7878"},{"type":"jellyfin","name":"Jellyfin","url":"http://jellyfin:8096"},{"type":"seerr","name":"Seerr","url":"http://seerr:5055"}],"tmdb":{"api_key":"k"},"imdb":{"disabled":true},"storage":{}}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Services) != 1 || c.Services[0].Type != "radarr" {
+		t.Fatalf("expected only Radarr to remain, got %#v", c.Services)
+	}
+	saved, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"jellyfin", "seerr", "tmdb", "imdb"} {
+		if strings.Contains(string(saved), gone) {
+			t.Fatalf("expected %q gone from the saved file:\n%s", gone, saved)
+		}
 	}
 }

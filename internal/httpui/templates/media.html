@@ -17,24 +17,19 @@
         </div>
         <div>
           <div class=value>{{printf "%.1f" .Media.RetentionValue}}</div>
-          <div class=muted style="text-align:right">Retention Value</div>
+          <div class=muted style="text-align:right">Overfin value</div>
         </div>
         <button class=trash title="{{if or (gt .FileCount 0) .Current .Superseded .Unassociated}}Remove{{else}}Nothing to remove{{end}}" {{if or (gt .FileCount 0) .Current .Superseded .Unassociated}}data-removal-url="/removal/media?type={{.Media.Type}}&id={{.Media.SourceID}}&service_id={{.Media.ServiceID}}"{{else}}disabled{{end}}>🗑</button>
       </div>
       <div class=summary>
         <section class=panel>
-          <h2>Retention Value breakdown</h2>
+          <h2>Value</h2>
           <table class=reasons>
-            {{if .Media.RetentionValueReasons}}{{range .Media.RetentionValueReasons}}
+            {{range .Media.RetentionValueReasons}}
             <tr>
               <td>
                 <strong>{{.Label}}</strong><br><span class=muted>{{.Value}}</span>{{if .Note}}<br><small class="reason-note muted">{{.Note}}</small>{{end}}
               </td>
-              <td class=positive>{{printf "%+.1f" .Points}}</td>
-            </tr>
-            {{end}}{{else}}
-            <tr>
-              <td class=muted>No Retention Value contributions.</td>
             </tr>
             {{end}}
           </table>
@@ -52,32 +47,16 @@
             <div>
               {{if .Media.AddedAt.IsZero}}Unknown{{else}}{{.Media.AddedAt.Local.Format "2006-01-02"}}{{end}}
             </div>
-            <div>Rating</div>
-            <div>
-              {{if gt .Media.Rating 0.0}}{{printf "%.1f" .Media.Rating}} / 10{{else}}—{{end}}
-            </div>
-            <div>Votes</div>
-            <div>{{.Media.VoteCount}}</div>
-            <div>Requested</div>
-            <div>{{if .Media.Requested}}yes{{else}}no{{end}}</div>
-            <div>Favorite</div>
-            <div>{{if .Media.Favorite}}yes{{else}}no{{end}}</div>
           </div>
         </section>
         <section class=panel>
-          <h2>Activity & IDs</h2>
+          <h2>IDs</h2>
           <div class=kv>
-            <div>Views</div>
-            <div>{{.Media.Views}}</div>
-            <div>Unique viewers</div>
-            <div>{{.Media.UniqueViewers}}</div>
-            <div>Last watched</div>
-            <div>{{fmtTime .Media.LastWatched}}</div>
             <div>TMDB</div>
             <div>{{if .Media.TMDBID}}{{.Media.TMDBID}}{{else}}—{{end}}</div>
             <div>TVDB</div>
             <div>{{if .Media.TVDBID}}{{.Media.TVDBID}}{{else}}—{{end}}</div>
-            <div>IMDB</div>
+            <div>IMDb</div>
             <div>{{if .Media.IMDBID}}{{.Media.IMDBID}}{{else}}—{{end}}</div>
           </div>
         </section>

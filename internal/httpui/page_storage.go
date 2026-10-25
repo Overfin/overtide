@@ -250,8 +250,8 @@ func (server *Server) cleanupPlanForm(w http.ResponseWriter, r *http.Request) {
 // left checked (see actionKey) — available regardless of removal.auto_mode,
 // the same standing as manually removing any single item today, just
 // batched. Deliberately does not apply Auto mode's unattended-only safety
-// gates (actionIsUnassociatedTorrent/actionIsIncompleteTorrent/
-// mediaTMDBDataStale in auto_removal.go) — those substitute for human
+// gates (actionIsUnassociatedTorrent/actionIsIncompleteTorrent in
+// auto_removal.go) — those substitute for human
 // judgment during *unattended* execution; a human explicitly reviewing
 // this list and clicking Clean already is that judgment. It does still
 // apply removal.dry_run (read live inside submitAutoRemoval's own

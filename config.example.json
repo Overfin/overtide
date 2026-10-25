@@ -19,15 +19,9 @@
       "allow_automatic_removal": false
     },
     {
-      "type": "jellyfin",
-      "name": "Jellyfin",
-      "url": "http://jellyfin:8096",
-      "api_key": ""
-    },
-    {
-      "type": "seerr",
-      "name": "Seerr",
-      "url": "http://seerr:5055",
+      "type": "overfin",
+      "name": "Overfin",
+      "url": "http://overfin:8081",
       "api_key": ""
     },
     {
@@ -44,8 +38,6 @@
     "device_thresholds": {}
   },
   "protection": {
-    "favorite": true,
-    "seerr_request_grace": "8760h",
     "keep_tags": [
       "keep",
       "overtide_keep",
@@ -55,22 +47,6 @@
     "keep_torrent_tags": [
       "stewarr_keep"
     ]
-  },
-  "valuation": {
-    "weights": {
-      "rating": 40,
-      "never_watched": 25,
-      "last_watched_age": 15,
-      "library_age": 10,
-      "low_popularity": 10,
-      "old_request": 12,
-      "torrent_activity": 10,
-      "popularity": 15,
-      "season_recency": 8
-    },
-    "request_value_bonus": 100,
-    "favorite_value_bonus": 100,
-    "keep_tag_value_bonus": 1000
   },
   "removal": {
     "dry_run": true,

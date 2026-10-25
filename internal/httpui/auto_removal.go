@@ -20,17 +20,6 @@ import (
 const autoRemovalTaskID = "auto-removal"
 const autoRemovalEvalInterval = 15 * time.Minute
 
-// tmdbStalenessThreshold mirrors "2 refresh cycles" of TMDB enrichment
-// (cmd/overtide/main.go's tmdbEnrichmentInterval, currently 24h) — kept as
-// its own constant here since internal/httpui cannot import cmd/overtide.
-// An item whose TMDB data is older than this (or was never fetched at
-// all) is excluded from automatic removal specifically — it's still
-// shown and scored normally everywhere else (see model.Media.
-// TMDBEnrichedAt) — since a temporary gap in TMDB reachability shouldn't
-// let an unattended removal decision rely on data that might no longer
-// reflect reality.
-const tmdbStalenessThreshold = 2 * 24 * time.Hour
-
 // runAutoRemovalEvaluation evaluates every known storage device's
 // cross-domain Cleanup plan. In config.RemovalAutoDisabled (the default,
 // and whatever an empty/invalid value falls back to) it does nothing at
@@ -62,7 +51,6 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 	reliable := server.planningReliable(server.inv.ReliabilitySnapshot())
 	mediaByDevice := server.inv.MediaByDevice(items)
 	torrentsByDevice := server.inv.TorrentsByDevice(torrents)
-	tmdbConfigured := cfg.TMDB.APIKey != ""
 	for _, device := range server.inv.StorageDevices() {
 		if !cfg.AutomaticRemovalEnabledFor(device.RepresentativePath) {
 			continue
@@ -77,9 +65,6 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 				continue
 			}
 			if actionIsIncompleteTorrent(action) && !cfg.Removal.AutoRemoveIncompleteTorrents {
-				continue
-			}
-			if mediaTMDBDataStale(action, tmdbConfigured) {
 				continue
 			}
 			if cfg.Removal.AutoMode != config.RemovalAutoAuto {
@@ -143,21 +128,6 @@ func actionIsIncompleteTorrent(action cleanup.Action) bool {
 		return false
 	}
 	return action.Torrents[0].AmountLeftBytes > 0
-}
-
-// mediaTMDBDataStale reports whether action's media has gone too long
-// without a successful TMDB enrichment to trust it for an automatic
-// (unattended) removal decision — see tmdbStalenessThreshold. It's
-// meaningless, and always false, for a StandaloneTorrent action (no Media
-// at all) or when TMDB enrichment isn't configured (there's nothing to be
-// stale relative to, and every item would otherwise be wrongly excluded
-// forever for users who never opted into TMDB at all).
-func mediaTMDBDataStale(action cleanup.Action, tmdbConfigured bool) bool {
-	if !tmdbConfigured || action.Kind == cleanup.StandaloneTorrent {
-		return false
-	}
-	enrichedAt := action.Media.TMDBEnrichedAt
-	return enrichedAt.IsZero() || time.Since(enrichedAt) > tmdbStalenessThreshold
 }
 
 // formForAction builds the exact url.Values shape a browser's manual removal
