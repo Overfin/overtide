@@ -201,7 +201,12 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 			return nil, err
 		}
 		if server.adder != nil {
-			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding", Description: "Read the import lists and try the titles whose turn it is (see the Adding page).", Interval: adding.RunEvery, Runner: server.adder.Run}); err != nil {
+			// One at a time: both change the waiting list.
+			claim := []tasks.ResourceClaim{{Resource: "adding", Mode: tasks.ClaimExclusive}}
+			if err := taskManager.Register(tasks.Definition{ID: addingReadTaskID, Name: "Adding: read suggestions", Description: "Read Overfin's suggestions and the import lists into the waiting list (see the Adding page).", Interval: adding.ReadEvery, Runner: server.adder.Read, Resources: claim}); err != nil {
+				return nil, err
+			}
+			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding: try titles", Description: "Try the titles whose turn it is: add, search, keep only if a download started.", Interval: adding.RunEvery, Runner: server.adder.Run, Resources: claim}); err != nil {
 				return nil, err
 			}
 		}

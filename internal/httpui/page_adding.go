@@ -14,7 +14,12 @@ import (
 	"github.com/overfin/overtide/internal/model"
 )
 
-const addingTaskID = "adding"
+// The adding tasks: trying titles (its ID kept from when it also read),
+// and reading the suggestions.
+const (
+	addingTaskID     = "adding"
+	addingReadTaskID = "adding-read"
+)
 
 // addingRowsShown is how many titles a group shows before "Show all".
 const addingRowsShown = 50
@@ -76,6 +81,9 @@ type addingPageData struct {
 	Query    string
 	Source   string
 	Matching int
+	// NextRead and NextRun are when the suggestions are read and the
+	// titles tried next.
+	NextRead time.Time
 	NextRun  time.Time
 	// WithoutFiles counts what Radarr and Sonarr have without files that
 	// isn't Overtide's: what "Hand them all over" takes.
@@ -118,7 +126,10 @@ func (server *Server) addingData(query url.Values) addingPageData {
 	}
 	if server.tasks != nil {
 		for _, status := range server.tasks.Snapshot() {
-			if status.ID == addingTaskID {
+			switch status.ID {
+			case addingReadTaskID:
+				data.NextRead = status.NextRun
+			case addingTaskID:
 				data.NextRun = status.NextRun
 			}
 		}
@@ -269,7 +280,10 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "task manager unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		_, err = server.tasks.RunAsyncApp(addingTaskID)
+		// Read first, then try: they queue one after the other.
+		if _, err = server.tasks.RunAsyncApp(addingReadTaskID); err == nil {
+			_, err = server.tasks.RunAsyncApp(addingTaskID)
+		}
 	default:
 		http.NotFound(w, r)
 		return

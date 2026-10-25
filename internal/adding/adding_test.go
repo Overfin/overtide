@@ -186,26 +186,3 @@ func TestHandOver(t *testing.T) {
 		t.Error("handed the same titles twice")
 	}
 }
-
-// The lists are read once a day.
-func TestListsDue(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	now := *day("2026-10-25")
-	service := New(inventory.New(config.Config{}, database))
-	service.now = func() time.Time { return now }
-	if !service.listsDue() {
-		t.Fatal("never read, not due")
-	}
-	_ = database.SetMeta(listsReadKey, now.Add(-time.Hour).Format(time.RFC3339))
-	if service.listsDue() {
-		t.Fatal("read an hour ago, due again")
-	}
-	_ = database.SetMeta(listsReadKey, now.Add(-25*time.Hour).Format(time.RFC3339))
-	if !service.listsDue() {
-		t.Fatal("read yesterday, not due")
-	}
-}

@@ -30,7 +30,7 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	}
 	var groups []taskGroup
 	var core []tasks.Status
-	for _, id := range []string{"inventory", "files", removalTaskID, autoRemovalTaskID, addingTaskID} {
+	for _, id := range []string{"inventory", "files", removalTaskID, autoRemovalTaskID, addingReadTaskID, addingTaskID} {
 		if status, ok := byID[id]; ok {
 			core = append(core, status)
 		}

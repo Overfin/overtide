@@ -26,21 +26,17 @@ import (
 // Tag marks, in Radarr and Sonarr, the titles Overtide manages.
 const Tag = "overtide"
 
-// RunEvery is how often the adding task runs, and RunFor how long one run
+// RunEvery is how often the titles are tried, and RunFor how long one run
 // goes on trying titles, one search at a time: under RunEvery, so runs
-// never overlap. What's left is tried by the next run.
+// never overlap. What's left is tried by the next run. ReadEvery is how
+// often Overfin's suggestions and the import lists are read (Read).
 const (
-	RunEvery = 15 * time.Minute
-	RunFor   = 14 * time.Minute
+	RunEvery  = 15 * time.Minute
+	RunFor    = 14 * time.Minute
+	ReadEvery = time.Hour
 )
 
-const (
-	storeKey     = "adding.waiting"
-	listsReadKey = "adding.lists_read_at"
-	// ListsEvery is how often the import lists are read: like Radarr, once
-	// a day. Reading them makes Radarr fetch them from where they live.
-	ListsEvery = 24 * time.Hour
-)
+const storeKey = "adding.waiting"
 
 // Source is where a title in the waiting list comes from. Requests go
 // first, then Overfin's suggestions (its picks and, by the discovery
@@ -220,8 +216,27 @@ func titleKey(m model.Media) string {
 	return ""
 }
 
-// Run is the adding task: it reads the import lists, follows what's
-// downloading, then tries the titles whose turn it is.
+// Read is the reading task: it brings the import lists' titles and
+// Overfin's suggestions into the waiting list.
+func (service *Service) Read(ctx context.Context) error {
+	cfg := service.inv.Config()
+	if cfg.Adding.Mode != config.AddingDryRun && cfg.Adding.Mode != config.AddingOn {
+		return nil
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	entries, err := service.load()
+	if err != nil {
+		return err
+	}
+	if entries, err = service.readLists(ctx, cfg, entries); err != nil {
+		return err
+	}
+	return service.save(service.readOverfin(ctx, cfg, entries))
+}
+
+// Run is the trying task: it follows what's downloading, then tries the
+// titles whose turn it is.
 func (service *Service) Run(ctx context.Context) error {
 	cfg := service.inv.Config()
 	mode := cfg.Adding.Mode
@@ -233,15 +248,6 @@ func (service *Service) Run(ctx context.Context) error {
 	entries, err := service.load()
 	if err != nil {
 		return err
-	}
-	if service.listsDue() {
-		if entries, err = service.readLists(ctx, cfg, entries); err != nil {
-			return err
-		}
-		entries = service.readOverfin(ctx, cfg, entries)
-		if err := service.inv.Store().SetMeta(listsReadKey, service.now().UTC().Format(time.RFC3339)); err != nil {
-			return err
-		}
 	}
 	entries = service.match(entries)
 	service.follow(ctx, entries)
@@ -264,17 +270,6 @@ func (service *Service) Run(ctx context.Context) error {
 		}
 	}
 	return service.save(entries)
-}
-
-// listsDue reports whether the import lists haven't been read for a day
-// (or ever).
-func (service *Service) listsDue() bool {
-	raw, err := service.inv.Store().Meta(listsReadKey)
-	if err != nil || raw == "" {
-		return true
-	}
-	readAt, err := time.Parse(time.RFC3339, raw)
-	return err != nil || service.now().Sub(readAt) >= ListsEvery
 }
 
 // sortForTries orders the waiting list: by source (requests first), then
