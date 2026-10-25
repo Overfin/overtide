@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/overfin/overtide/internal/model"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -49,6 +50,7 @@ const maxPages = 1000
 type page struct {
 	Titles []struct {
 		Kind   string   `json:"kind"`
+		Name   string   `json:"name"`
 		TMDB   string   `json:"tmdbId"`
 		TVDB   string   `json:"tvdbId"`
 		Season *int     `json:"season"`
@@ -174,6 +176,72 @@ func (client *Client) Apply(items []model.Media) error {
 	}
 	scores.Apply(items)
 	return nil
+}
+
+// Missing is a title the libraries lack, as Overfin suggests it: a film,
+// or a series with the seasons Overfin valued.
+type Missing struct {
+	Kind model.MediaType
+	Name string
+	TMDB int
+	TVDB int // series; 0 when Overfin doesn't know it
+	// Score is the film's, or the series' best season's.
+	Score float64
+}
+
+// Suggestions are at most max of the titles the libraries lack, in
+// Overfin's order: by score, or, for a list ("trending", "popular"), in
+// TMDB's order. A series comes once, at its first season's place.
+func (client *Client) Suggestions(list string, max int) ([]Missing, error) {
+	if client.base == "" || client.key == "" {
+		return nil, nil
+	}
+	var out []Missing
+	series := map[int]int{} // TMDB ID → index in out
+	cursor := ""
+	for range maxPages {
+		q := url.Values{"inLibrary": {"false"}, "fields": {"score"}, "limit": {strconv.Itoa(pageSize)}}
+		if list != "" {
+			q.Set("list", list)
+		} else {
+			q.Set("sort", "score")
+			q.Set("order", "desc")
+		}
+		if cursor != "" {
+			q.Set("cursor", cursor)
+		}
+		var p page
+		if err := client.get("/apps/v1/titles", q, &p); err != nil {
+			return nil, err
+		}
+		for _, t := range p.Titles {
+			tmdb, _ := strconv.Atoi(t.TMDB)
+			tvdb, _ := strconv.Atoi(t.TVDB)
+			score := 0.0
+			if t.Score != nil {
+				score = *t.Score
+			}
+			switch {
+			case tmdb <= 0:
+			case t.Kind == "movie":
+				if len(out) < max {
+					out = append(out, Missing{Kind: model.Movie, Name: t.Name, TMDB: tmdb, Score: score})
+				}
+			case t.Kind == "season":
+				if i, ok := series[tmdb]; ok {
+					out[i].Score = math.Max(out[i].Score, score)
+				} else if len(out) < max {
+					series[tmdb] = len(out)
+					out = append(out, Missing{Kind: model.Series, Name: t.Name, TMDB: tmdb, TVDB: tvdb, Score: score})
+				}
+			}
+		}
+		if p.Next == "" || len(out) >= max {
+			return out, nil
+		}
+		cursor = p.Next
+	}
+	return out, nil
 }
 
 // Validate checks the address and that the key may read values.

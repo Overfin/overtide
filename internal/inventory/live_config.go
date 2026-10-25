@@ -269,6 +269,25 @@ func (service *Service) SetAddingMode(mode string) error {
 	})
 }
 
+// SetDiscoveryShare saves the discovery share (see config.AddingConfig).
+func (service *Service) SetDiscoveryShare(share int) error {
+	if _, err := config.SetDiscoveryShare(config.Config{}, share); err != nil {
+		return err
+	}
+	return service.changeConfig(func(c config.Config) config.Config {
+		updated, _ := config.SetDiscoveryShare(c, share)
+		return updated
+	})
+}
+
+// OverfinClient is the client of Overfin, for its suggestions; its address
+// is empty without Overfin.
+func (service *Service) OverfinClient() *overfin.Client {
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	return service.overfin
+}
+
 func (service *Service) changeKept(change func(config.Config) config.Config) error {
 	if err := service.changeConfig(change); err != nil {
 		return err

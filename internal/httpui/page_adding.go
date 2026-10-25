@@ -1,8 +1,10 @@
 package httpui
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/config"
@@ -19,9 +21,12 @@ type addingGroup struct {
 }
 
 type addingPageData struct {
-	Mode   string
-	Groups []addingGroup
-	Total  int
+	Mode string
+	// DiscoveryShare is the part, in percent, of Overfin's suggestions
+	// from TMDB's trending and popular titles.
+	DiscoveryShare int
+	Groups         []addingGroup
+	Total          int
 	// WithoutFiles counts what Radarr and Sonarr have without files that
 	// isn't Overtide's: what "Hand them all over" takes.
 	WithoutFiles int
@@ -40,14 +45,14 @@ var addingGroups = []struct {
 	Open  bool
 }{
 	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", true},
-	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's picks, then the rest. A try adds the title, searches for it, and takes it out again if nothing started.", true},
+	{adding.Waiting, "Waiting", "In the order they're tried: requests first, then Overfin's suggestions (its picks, with trending and popular titles by the discovery share), then the import lists. A try adds the title, searches for it, and takes it out again if nothing started.", true},
 	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", false},
 	{adding.Imported, "Imported", "Overtide's, with their files.", false},
 }
 
 func (server *Server) addingData() addingPageData {
 	cfg := server.inv.Config()
-	data := addingPageData{Mode: cfg.Adding.Mode, WithoutFiles: server.adder.WithoutFiles()}
+	data := addingPageData{Mode: cfg.Adding.Mode, DiscoveryShare: cfg.Adding.Discovery(), WithoutFiles: server.adder.WithoutFiles()}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
 	}
@@ -125,6 +130,14 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/adding/mode":
 		err = server.inv.SetAddingMode(r.FormValue("mode"))
+		if raw := r.FormValue("discovery_share"); err == nil && raw != "" {
+			share, convErr := strconv.Atoi(raw)
+			if convErr != nil {
+				err = fmt.Errorf("discovery share must be a whole number from 0 to 100")
+			} else {
+				err = server.inv.SetDiscoveryShare(share)
+			}
+		}
 	case "/adding/hand-over":
 		_, err = server.adder.HandOver()
 	case "/adding/run":

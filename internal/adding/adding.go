@@ -1,5 +1,6 @@
 // Package adding brings titles into the libraries: it keeps a waiting list
-// of titles to add, fed by the import lists of Radarr and Sonarr, and tries
+// of titles to add, fed by Overfin's suggestions and the import lists of
+// Radarr and Sonarr, and tries
 // them one by one. A try adds the title, tagged, searches for it, and keeps
 // it only if a download started; otherwise the title leaves Radarr or
 // Sonarr at once and waits for its next try. See the ROADMAP's "Managed
@@ -42,13 +43,18 @@ const (
 )
 
 // Source is where a title in the waiting list comes from. Requests go
-// first, then Overfin's own picks, then the rest (import lists).
+// first, then Overfin's suggestions (its picks and, by the discovery
+// share, TMDB's trending and popular titles), then the rest (import
+// lists).
 type Source string
 
 const (
 	FromRequest Source = "request"
 	FromOverfin Source = "overfin"
-	FromList    Source = "list"
+	// FromDiscovery: TMDB's trending and popular titles, through Overfin,
+	// whatever their value.
+	FromDiscovery Source = "discovery"
+	FromList      Source = "list"
 	// HandedOver: in Radarr or Sonarr without files, handed over by the
 	// operator (HandOver).
 	HandedOver Source = "handed over"
@@ -58,7 +64,7 @@ func (source Source) rank() int {
 	switch source {
 	case FromRequest:
 		return 0
-	case FromOverfin:
+	case FromOverfin, FromDiscovery:
 		return 1
 	}
 	return 2
@@ -127,7 +133,7 @@ func (service *Service) Entries() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	sortForTries(entries)
+	sortForTries(entries, service.inv.Config().Adding.Discovery())
 	return entries, nil
 }
 
@@ -212,13 +218,14 @@ func (service *Service) Run(ctx context.Context) error {
 		if entries, err = service.readLists(ctx, cfg, entries); err != nil {
 			return err
 		}
+		entries = service.readOverfin(ctx, cfg, entries)
 		if err := service.inv.Store().SetMeta(listsReadKey, service.now().UTC().Format(time.RFC3339)); err != nil {
 			return err
 		}
 	}
 	entries = service.match(entries)
 	service.follow(ctx, entries)
-	sortForTries(entries)
+	sortForTries(entries, cfg.Adding.Discovery())
 	stopAt := service.now().Add(RunFor)
 	for i := range entries {
 		if ctx.Err() != nil || service.now().After(stopAt) {
@@ -251,8 +258,9 @@ func (service *Service) listsDue() bool {
 }
 
 // sortForTries orders the waiting list: by source (requests first), then
-// by place in its list.
-func sortForTries(entries []Entry) {
+// by place in its list; Overfin's suggestions mixed by the discovery share
+// (interleave).
+func sortForTries(entries []Entry, share int) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Source.rank() != entries[j].Source.rank() {
 			return entries[i].Source.rank() < entries[j].Source.rank()
@@ -262,6 +270,24 @@ func sortForTries(entries []Entry) {
 		}
 		return entries[i].Position < entries[j].Position
 	})
+	var picks, discovered []Entry
+	start := -1
+	for i, entry := range entries {
+		if entry.Source.rank() != 1 {
+			continue
+		}
+		if start < 0 {
+			start = i
+		}
+		if entry.Source == FromDiscovery {
+			discovered = append(discovered, entry)
+		} else {
+			picks = append(picks, entry)
+		}
+	}
+	if start >= 0 {
+		copy(entries[start:], interleave(picks, discovered, share))
+	}
 }
 
 // match drops from the waiting list the titles already in Radarr or

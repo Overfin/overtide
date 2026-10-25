@@ -259,6 +259,32 @@ type Config struct {
 type AddingConfig struct {
 	// Mode is AddingOff (also what empty means), AddingDryRun or AddingOn.
 	Mode string `json:"mode"`
+	// DiscoveryShare is the part, in percent, of the titles Overfin
+	// suggests that come from TMDB's trending and popular lists whatever
+	// their score, so people have things to discover; nil means
+	// DefaultDiscoveryShare, 0 none.
+	DiscoveryShare *int `json:"discovery_share,omitempty"`
+}
+
+// DefaultDiscoveryShare is the discovery share until the operator sets one.
+const DefaultDiscoveryShare = 50
+
+// Discovery is the discovery share in use, from 0 to 100.
+func (adding AddingConfig) Discovery() int {
+	if adding.DiscoveryShare == nil {
+		return DefaultDiscoveryShare
+	}
+	return min(max(*adding.DiscoveryShare, 0), 100)
+}
+
+// SetDiscoveryShare sets the discovery share, from 0 to 100.
+func SetDiscoveryShare(configuration Config, share int) (Config, error) {
+	if share < 0 || share > 100 {
+		return configuration, fmt.Errorf("discovery share must be from 0 to 100")
+	}
+	updated := configuration
+	updated.Adding.DiscoveryShare = &share
+	return updated, nil
 }
 
 const (

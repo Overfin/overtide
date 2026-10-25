@@ -19,7 +19,10 @@
               <option value="dry_run" {{if eq .Mode "dry_run"}}selected{{end}}>Dry run</option>
               <option value="on" {{if eq .Mode "on"}}selected{{end}}>On</option>
             </select>
-            <span class="muted">Overtide reads your Radarr and Sonarr import lists once a day, and every 15 minutes tries the titles whose turn it is, one search at a time: it adds a title tagged "overtide", searches for it, and keeps it only if a download started; otherwise it takes it out again and tries later (after 1 day, then 2, 4, 8, 16, then every 30). Titles not out yet wait for their release. Nothing is added to a disk over its target. Dry run only reads. Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</span>
+            <span class="muted">Overtide reads Overfin's suggestions and your Radarr and Sonarr import lists once a day, and every 15 minutes tries the titles whose turn it is, one search at a time: it adds a title tagged "overtide", searches for it, and keeps it only if a download started; otherwise it takes it out again and tries later (after 1 day, then 2, 4, 8, 16, then every 30). Titles not out yet wait for their release. Nothing is added to a disk over its target. Dry run only reads. Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</span>
+          </label>
+          <label for="adding-discovery">Discovery share %<input id="adding-discovery" name="discovery_share" type="number" min="0" max="100" step="1" value="{{.DiscoveryShare}}">
+            <span class="muted">Of the titles Overfin suggests, the part that comes from TMDB's trending and popular titles whatever their value, so people have new things to discover and the titles they hear about come in. The rest are Overfin's picks, by value. 0 turns discovery off. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out.</span>
           </label>
           <div class="actions"><button type="submit">Save</button></div>
         </form>

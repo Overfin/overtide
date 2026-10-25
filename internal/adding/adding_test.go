@@ -80,7 +80,7 @@ func TestSortForTries(t *testing.T) {
 		{Key: "list-1", Source: FromList, From: "A", Position: 1},
 		{Key: "request", Source: FromRequest},
 	}
-	sortForTries(entries)
+	sortForTries(entries, 50)
 	got := ""
 	for _, entry := range entries {
 		got += entry.Key + " "
