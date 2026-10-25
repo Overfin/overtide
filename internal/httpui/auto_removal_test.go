@@ -296,3 +296,19 @@ func TestReclaimableOnce(t *testing.T) {
 		t.Fatalf("%d %d %d", reclaimableOnce(a), reclaimableOnce(b), reclaimableOnce(gone))
 	}
 }
+
+// Clean removes only the rows that were on screen, as they were.
+func TestShownActions(t *testing.T) {
+	movie := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{Type: model.Movie, ServiceID: "r", SourceID: 1}}
+	group := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Hash: "aa", ServiceID: "q"}, {Hash: "bb", ServiceID: "q"}}}
+	shown := []string{shownKey(movie), shownKey(group)}
+
+	grown := group
+	grown.Torrents = append(append([]model.Torrent(nil), group.Torrents...), model.Torrent{Hash: "cc", ServiceID: "q"})
+	newcomer := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{Type: model.Movie, ServiceID: "r", SourceID: 2}}
+
+	kept, gone := shownActions([]cleanup.Action{movie, grown, newcomer}, shown)
+	if len(kept) != 1 || kept[0].Media.SourceID != 1 || gone != 1 {
+		t.Fatalf("kept %#v, gone %d", kept, gone)
+	}
+}

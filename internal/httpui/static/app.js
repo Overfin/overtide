@@ -2987,6 +2987,7 @@ Copyright © 2023 Basecamp, LLC
       const thenOverlayURL = form.dataset.backgroundSubmitThenOverlay;
       if (form.matches("[data-background-submit], [data-background-submit-then-overlay]")) {
         event.preventDefault();
+        if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
         const button = form.querySelector("button[type=submit]");
         if (button) button.disabled = true;
         const errorTarget = form.querySelector("[data-modal-error]");

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -186,6 +187,7 @@ type cleanupPlanData struct {
 	// reproduces exactly this same filtered view server-side rather than
 	// risking drift between what's displayed and what gets acted on.
 	Excluded []string
+	DryRun   bool
 }
 
 // planForDevice rebuilds the named device's current cleanup plan fresh,
@@ -207,7 +209,7 @@ func (server *Server) planForDevice(path string, excluded map[string]bool) (clea
 	}
 	for _, view := range server.deviceViews(items, ts, planningReliable, excluded) {
 		if view.Storage.RepresentativePath == path {
-			return cleanupPlanData{RepresentativePath: path, RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList}, true
+			return cleanupPlanData{RepresentativePath: path, RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList, DryRun: server.inv.Config().Removal.DryRun}, true
 		}
 	}
 	return cleanupPlanData{RepresentativePath: path, Excluded: excludedList}, false
@@ -272,23 +274,54 @@ func (server *Server) cleanupPlanClean(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	// The excluded set carried forward from the modal's own hidden fields
-	// (see cleanupPlanData.Excluded) is what makes this recompute produce
-	// exactly the plan the user is currently looking at — every excluded/
-	// protected-this-session row already replaced by its own backfill
-	// candidate, rather than Clean silently cleaning fewer bytes than the
-	// device's target calls for.
+	// The plan is built again, with the rows skipped in the modal left out,
+	// and only the rows the modal showed are acted on (see shownActions):
+	// anything that changed since is left alone and reported.
 	data, found := server.planForDevice(r.FormValue("path"), excludedSetFrom(r.Form["excluded"]))
 	if !found {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
-	errs := server.cleanActions(data.Plan.Actions, server.inv.Config())
+	actions, gone := shownActions(data.Plan.Actions, r.Form["shown"])
+	errs := server.cleanActions(actions, server.inv.Config())
+	if gone > 0 {
+		errs = append(errs, fmt.Sprintf("%d item(s) changed since the plan was opened and were left alone; reopen the plan to see them", gone))
+	}
 	if len(errs) > 0 {
 		http.Error(w, strings.Join(errs, "; "), http.StatusConflict)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// shownKey identifies a plan row as it was shown: its action and every
+// torrent removed with it. A row whose torrents changed (a cross-seed added
+// to its group, say) no longer matches what was shown.
+func shownKey(action cleanup.Action) string {
+	hashes := make([]string, 0, len(action.Torrents))
+	for _, t := range action.Torrents {
+		hashes = append(hashes, strings.ToLower(t.Hash))
+	}
+	sort.Strings(hashes)
+	return cleanup.ActionKey(action) + "|" + strings.Join(hashes, ",")
+}
+
+// shownActions keeps, of a freshly built plan, only the actions shown when
+// Clean was clicked: what wasn't on screen is never removed. gone counts
+// the rows shown that the plan no longer has as they were.
+func shownActions(actions []cleanup.Action, shown []string) (kept []cleanup.Action, gone int) {
+	wanted := map[string]bool{}
+	for _, key := range shown {
+		wanted[key] = true
+	}
+	for _, action := range actions {
+		key := shownKey(action)
+		if wanted[key] {
+			kept = append(kept, action)
+			delete(wanted, key)
+		}
+	}
+	return kept, len(wanted)
 }
 
 // cleanActions submits every given action through the existing
