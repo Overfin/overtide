@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -153,24 +152,16 @@ func (server *Server) startSession(w http.ResponseWriter, r *http.Request) error
 }
 
 // authGate enforces Overtide's single-admin login in front of every route.
-// It fails open when no durable store is available (Store() nil) because
-// sessions cannot be persisted at all without one — every real deployment
-// opens a store before constructing Server (see cmd/overtide/main.go), so
-// this only ever applies to handler-level tests built without one. That
-// bypass is loud, not silent: the first request it affects logs a warning,
-// so a future caller that unexpectedly ends up here in a real deployment
-// has a visible signal something is wrong rather than a quietly open door.
+// Without a database there are no sessions, so nothing but the assets and
+// /healthz is served.
 func (server *Server) authGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if server.inv == nil || server.inv.Store() == nil {
-			server.authBypassWarned.Do(func() {
-				log.Printf("[http] WARNING: no durable store configured — authentication is disabled for every route")
-			})
+		if strings.HasPrefix(r.URL.Path, "/assets/") || r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/assets/") || r.URL.Path == "/healthz" {
-			next.ServeHTTP(w, r)
+		if server.inv == nil || server.inv.Store() == nil {
+			http.Error(w, "Overtide has no database: sign-in is unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		cfg := server.inv.Config()

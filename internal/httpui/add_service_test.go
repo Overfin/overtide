@@ -57,7 +57,7 @@ func TestAddServiceEndToEndOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	// The overlay fragment loads via GET.
 	getRecorder := httptest.NewRecorder()
@@ -133,7 +133,7 @@ func TestAddServiceSchedulesStorageDiscovery(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/services/create", body)
 	request.Header.Set("Content-Type", contentType)
-	server.Handler().ServeHTTP(recorder, request)
+	server.routes().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 on success, got status=%d body=%q", recorder.Code, recorder.Body.String())
 	}
@@ -167,7 +167,7 @@ func TestAddServiceEndToEndRejectsBadConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	body, contentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": brokenSrv.URL, "api_key": "bad"})
 	postRecorder := httptest.NewRecorder()
@@ -215,7 +215,7 @@ func TestTestServiceConnectionPersistsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	body, contentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": radarrSrv.URL, "api_key": "key"})
 	recorder := httptest.NewRecorder()
@@ -266,7 +266,7 @@ func TestAddServiceSetsAllowAutomaticRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	body, contentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": radarrSrv.URL, "api_key": "key", "allow_automatic_removal": "on"})
 	recorder := httptest.NewRecorder()
@@ -296,7 +296,7 @@ func TestAddServiceFormNarrowsTypeOptionsByCategory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	cases := []struct {
 		category    string

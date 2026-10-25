@@ -32,7 +32,7 @@ func TestEditServiceEndToEndOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	addBody, addContentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": oldRadarr.URL, "api_key": "key"})
 	addRecorder := httptest.NewRecorder()
@@ -100,7 +100,7 @@ func TestEditServiceRoundTripsAllowAutomaticRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	addBody, addContentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": radarrSrv.URL, "api_key": "key", "allow_automatic_removal": "on"})
 	addRecorder := httptest.NewRecorder()
@@ -163,7 +163,7 @@ func TestRemoveServiceEndToEndOverHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	addBody, addContentType := multipartServiceForm(t, map[string]string{"type": "radarr", "name": "Movies", "url": radarrSrv.URL, "api_key": "key"})
 	addRecorder := httptest.NewRecorder()

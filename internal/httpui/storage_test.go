@@ -508,7 +508,7 @@ func TestStorageStatsServesCheapJSONWithoutARemovalPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/storage/stats", nil))
@@ -543,7 +543,7 @@ func TestDeviceSettingsFormRendersCurrentThresholds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/storage/device-settings?path=/data/movies", nil))
@@ -575,7 +575,7 @@ func TestCleanupPlanFormRoutesAndRendersEmptyStateForUnknownDevice(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/storage/cleanup-plan?path=/data/movies", nil))
@@ -595,7 +595,7 @@ func TestCleanupPlanCleanAndProtectRouteToUnknownDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	for _, path := range []string{"/storage/cleanup-plan/clean", "/storage/cleanup-plan/protect"} {
 		recorder := httptest.NewRecorder()
@@ -628,7 +628,7 @@ func TestSetDeviceThresholdPersistsFromStoragePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := server.routes()
 
 	// The real browser form submits via shell.ts's data-background-submit,
 	// which always sends multipart/form-data (fetch + FormData), never

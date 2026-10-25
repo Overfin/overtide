@@ -8,7 +8,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/http/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,10 +68,6 @@ type Server struct {
 	// directly to verify the rotation fires without waiting minutes.
 	sseMaxLifetime time.Duration
 	loginLimiter   *loginLimiter
-	// authBypassWarned ensures the "no durable store, authentication
-	// disabled" warning logs once per server instance rather than once per
-	// request.
-	authBypassWarned sync.Once
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
@@ -208,19 +203,15 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	}
 	return server, nil
 }
+
+// Handler is every route behind the sign-in (see authGate).
 func (server *Server) Handler() http.Handler {
+	return server.authGate(server.routes())
+}
+
+// routes is every route, without the sign-in: tests use it directly.
+func (server *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	// Temporary diagnostic endpoints for tracking down a real, still-open
-	// production hang (app-wide slow pages with no CPU/disk/memory signal,
-	// surviving an earlier lock-contention fix that didn't resolve it).
-	// /debug/pprof/goroutine?debug=2 dumps every goroutine's stack — captured
-	// during an actual hang, it shows exactly what's blocked and on what,
-	// instead of guessing from reading code. Remove once this is resolved.
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.Handle("/assets/", server.staticHandler)
 	mux.HandleFunc("/ui/events", server.uiEvents)
 	mux.HandleFunc("/ui/status", server.uiStatus)
@@ -269,7 +260,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/settings", server.settingsPage)
 	mux.HandleFunc("/settings/password", server.changePassword)
 	mux.HandleFunc("/settings/removal", server.setRemovalSettings)
-	return server.authGate(sameOriginWrites(mux))
+	return sameOriginWrites(mux)
 }
 
 // notice is an error whose text is shown to people as it is, a sentence.
@@ -390,7 +381,8 @@ func errString(e error) string {
 	return e.Error()
 }
 func Run(ctx context.Context, addr string, h http.Handler) error {
-	srv := &http.Server{Addr: addr, Handler: h}
+	// A client gets 10 seconds to send its request headers.
+	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)

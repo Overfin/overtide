@@ -1,8 +1,6 @@
 package httpui
 
 import (
-	"bytes"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -344,35 +342,15 @@ func TestAssetsAndHealthzBypassAuthGate(t *testing.T) {
 	}
 }
 
-// TestAuthGateWarnsOnceWhenBypassingWithoutAStore guards against the
-// fail-open path for a server built without a durable store being silent.
-// It can't be persisted-store-safe (there's nothing to persist a session
-// to), so every real deployment always opens one first — this path exists
-// only for handler-level tests — but if it were ever hit unexpectedly in a
-// real deployment, a loud, once-per-process log line is the difference
-// between "every route is unauthenticated and nobody knows" and a visible
-// signal something is misconfigured.
-func TestAuthGateWarnsOnceWhenBypassingWithoutAStore(t *testing.T) {
-	var output bytes.Buffer
-	originalWriter := log.Writer()
-	log.SetOutput(&output)
-	defer log.SetOutput(originalWriter)
-
-	inv := inventory.New(config.Config{}, nil)
-	server, err := New(inv, nil)
+// Without a database there are no sessions: the gate lets nothing through
+// but the assets and /healthz.
+func TestAuthGateFailsClosedWithoutAStore(t *testing.T) {
+	server, err := New(inventory.New(config.Config{}, nil), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
-
-	for i := 0; i < 3; i++ {
-		if response := getPath(t, handler, "/", nil); response.Code != http.StatusOK {
-			t.Fatalf("request %d status=%d", i, response.Code)
-		}
-	}
-	occurrences := strings.Count(output.String(), "authentication is disabled")
-	if occurrences != 1 {
-		t.Fatalf("expected exactly one warning across repeated requests, got %d in log: %q", occurrences, output.String())
+	if response := getPath(t, server.Handler(), "/", nil); response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d", response.Code)
 	}
 }
 

@@ -250,11 +250,14 @@ func (server *Server) submitEditService(w http.ResponseWriter, r *http.Request) 
 		Password:              existing.Password,
 		AllowAutomaticRemoval: r.FormValue("allow_automatic_removal") == "on",
 	}
+	// The form never shows a saved password or key: left empty, it stays.
 	if strings.EqualFold(existing.Type, "qbittorrent") {
 		updates.Username = r.FormValue("username")
-		updates.Password = r.FormValue("password")
-	} else {
-		updates.APIKey = r.FormValue("api_key")
+		if password := r.FormValue("password"); password != "" {
+			updates.Password = password
+		}
+	} else if key := r.FormValue("api_key"); key != "" {
+		updates.APIKey = key
 	}
 	if err := server.inv.EditService(r.Context(), id, updates); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
