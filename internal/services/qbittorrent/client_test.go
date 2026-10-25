@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/overfin/overtide/internal/model"
@@ -365,5 +366,16 @@ func TestTorrentSaveRootsGathersSideBySideFolders(t *testing.T) {
 	want := []string{"/data/downloads/complete", "/data/downloads/cross-seed"}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// Delete refuses anything that isn't one info hash: qBittorrent reads
+// "all" as every torrent.
+func TestDeleteRefusesWhatIsNotAnInfoHash(t *testing.T) {
+	c := New("qBittorrent", "http://192.0.2.1:8080", "", "", "token")
+	for _, hash := range []string{"all", "", "abc", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"} {
+		if err := c.Delete(hash); err == nil || !strings.Contains(err.Error(), "not a torrent info hash") {
+			t.Fatalf("%q: %v", hash, err)
+		}
 	}
 }

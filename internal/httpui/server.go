@@ -48,6 +48,7 @@ type Server struct {
 	torrentTpl         *template.Template
 	torrentDetailTpl   *template.Template
 	unmanagedTpl       *template.Template
+	filesMissingTpl    *template.Template
 	tasksTpl           *template.Template
 	removalTpl         *template.Template
 	operationTpl       *template.Template
@@ -125,6 +126,10 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
+	filesMissingTemplate, err := parseUITemplate("files_missing.html", templateFunctions)
+	if err != nil {
+		return nil, err
+	}
 	cleanupPlanTemplate, err := parseUITemplate("cleanup_plan.html", templateFunctions)
 	if err != nil {
 		return nil, err
@@ -185,7 +190,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
+	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
@@ -228,7 +233,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
 	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
 	mux.HandleFunc("/storage/keep", server.keepPost)
-	mux.HandleFunc("/torrents/remove-missing", server.removeFilesMissing)
+	mux.HandleFunc("/torrents/missing", server.filesMissingDialog)
 	mux.HandleFunc("/services", server.servicesPage)
 	mux.HandleFunc("/services/add", server.addServiceForm)
 	mux.HandleFunc("/services/test", server.testServiceConnection)

@@ -1,7 +1,9 @@
 package inventory
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/overfin/overtide/internal/model"
@@ -82,5 +84,38 @@ func TestMissingTorrentFiles(t *testing.T) {
 	missing := missingTorrentFiles(refs, found, []storageRoot{{Path: root}, {Path: "/nowhere"}})
 	if len(missing) != 1 || missing[0].Path != filepath.Join(root, "gone.mkv") || missing[0].Exists {
 		t.Fatalf("%#v", missing)
+	}
+}
+
+// A root where the walk found nothing (an unmounted share's empty mount
+// point) marks nothing missing.
+func TestMissingTorrentFilesIgnoresAnEmptyRoot(t *testing.T) {
+	root := t.TempDir()
+	refs := []model.TorrentFileRef{{Hash: "a", Path: filepath.Join(root, "gone.mkv")}}
+	if missing := missingTorrentFiles(refs, map[string]bool{}, []storageRoot{{Path: root}}); len(missing) != 0 {
+		t.Fatalf("%#v", missing)
+	}
+}
+
+// Before removing a torrent whose files are missing, they're checked again:
+// back on disk, or under an empty root, it's left alone.
+func TestFilesStillMissing(t *testing.T) {
+	root := t.TempDir()
+	roots := []storageRoot{{Path: root}}
+	gone := filepath.Join(root, "gone.mkv")
+	if got := filesStillMissing([]string{gone}, roots); !strings.Contains(got, "is it mounted") {
+		t.Fatalf("empty root: %q", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "other.mkv"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := filesStillMissing([]string{gone}, roots); got != "" {
+		t.Fatalf("gone under a root with files: %q", got)
+	}
+	if err := os.WriteFile(gone, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := filesStillMissing([]string{gone}, roots); got != "its files are back on disk" {
+		t.Fatalf("back: %q", got)
 	}
 }

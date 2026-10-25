@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -664,10 +665,38 @@ func (client *Client) AllFiles(torrents map[string]model.Torrent) (map[string][]
 // Delete removes a torrent and asks qBittorrent, the owning application, to
 // remove its torrent-owned data. Hardlinked library paths remain intact.
 func (client *Client) Delete(hash string) error {
+	return client.delete(hash, true)
+}
+
+// DeleteKeepFiles removes the torrent from qBittorrent and leaves its files
+// on disk.
+func (client *Client) DeleteKeepFiles(hash string) error {
+	return client.delete(hash, false)
+}
+
+func (client *Client) delete(hash string, deleteFiles bool) error {
 	if !client.enabled() {
 		return fmt.Errorf("qbittorrent is not configured")
 	}
-	return client.postForm("/api/v2/torrents/delete", url.Values{"hashes": {strings.TrimSpace(hash)}, "deleteFiles": {"true"}})
+	hash = strings.ToLower(strings.TrimSpace(hash))
+	// qBittorrent reads "all" as every torrent and "|" as a list: only ever
+	// send one real info hash (40 or 64 hex digits).
+	if !validInfoHash(hash) {
+		return fmt.Errorf("not a torrent info hash: %q", hash)
+	}
+	return client.postForm("/api/v2/torrents/delete", url.Values{"hashes": {hash}, "deleteFiles": {strconv.FormatBool(deleteFiles)}})
+}
+
+func validInfoHash(hash string) bool {
+	if len(hash) != 40 && len(hash) != 64 {
+		return false
+	}
+	for _, c := range hash {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // Validate verifies that the configured qBittorrent endpoint and credentials work.

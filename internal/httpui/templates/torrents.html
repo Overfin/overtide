@@ -16,10 +16,8 @@
     </div>
     {{if .FilesMissing}}
     <div class="card" id="files-missing">
-      <h2>Files missing</h2>
-      <p class="muted">qBittorrent still lists {{len .FilesMissing}} torrent{{if ne (len .FilesMissing) 1}}s{{end}} whose files are gone from disk. They take no space; removing them only tidies qBittorrent{{if $.DryRun}} (dry run: nothing is removed yet){{end}}.</p>
-      <details><summary>Show them</summary><ul class="missing-list">{{range .FilesMissing}}<li><a href="/torrents/{{.Hash}}?service_id={{.ServiceID}}">{{.Name}}</a> <span class=muted>· {{.AssociationStatus}}</span></li>{{end}}</ul></details>
-      <form method="post" action="/torrents/remove-missing"><button type="submit">Remove them from qBittorrent</button></form>
+      <div class="card-head"><h2>Files missing</h2><button type="button" class="card-link" data-overlay-url="/torrents/missing">Review and remove</button></div>
+      <p class="muted">qBittorrent still lists {{len .FilesMissing}} torrent{{if ne (len .FilesMissing) 1}}s{{end}} whose files are gone from disk. They take no space. Removing them from qBittorrent keeps any file.</p>
     </div>
     {{end}}
     <div class=card>

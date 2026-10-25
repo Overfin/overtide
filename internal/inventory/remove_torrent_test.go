@@ -20,7 +20,7 @@ func TestRemoveTorrentUsesRadarrQueueForIncompleteCurrentDownload(t *testing.T) 
 	radarrSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v3/queue":
-			_, _ = w.Write([]byte(`{"pageSize":250,"totalRecords":1,"records":[{"id":42,"downloadId":"ABCHASH"}]}`))
+			_, _ = w.Write([]byte(`{"pageSize":250,"totalRecords":1,"records":[{"id":42,"downloadId":"ABCDEF0123456789ABCDEF0123456789ABCDEF01"}]}`))
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/v3/queue/42":
 			if r.URL.Query().Get("removeFromClient") != "true" {
 				t.Fatalf("expected removeFromClient=true, got %q", r.URL.RawQuery)
@@ -49,12 +49,12 @@ func TestRemoveTorrentUsesRadarrQueueForIncompleteCurrentDownload(t *testing.T) 
 	service := New(cfg, nil)
 	service.torrents = []model.Torrent{{
 		ServiceID:       "q1",
-		Hash:            "abchash",
+		Hash:            "abcdef0123456789abcdef0123456789abcdef01",
 		AmountLeftBytes: 123,
 		MediaItems:      []model.MediaRef{{Type: model.Movie, ServiceID: "r1", ServiceName: "Movies", SourceID: 1}},
 	}}
 
-	if err := service.RemoveTorrent(context.Background(), "abchash", "q1"); err != nil {
+	if err := service.RemoveTorrent(context.Background(), "abcdef0123456789abcdef0123456789abcdef01", "q1"); err != nil {
 		t.Fatal(err)
 	}
 	if !queueDeleted {
@@ -85,11 +85,11 @@ func TestRemoveTorrentFallsBackToQBittorrentWithoutQueueEntry(t *testing.T) {
 	service := New(cfg, nil)
 	service.torrents = []model.Torrent{{
 		ServiceID:       "q1",
-		Hash:            "abchash",
+		Hash:            "abcdef0123456789abcdef0123456789abcdef01",
 		AmountLeftBytes: 123,
 	}}
 
-	if err := service.RemoveTorrent(context.Background(), "abchash", "q1"); err != nil {
+	if err := service.RemoveTorrent(context.Background(), "abcdef0123456789abcdef0123456789abcdef01", "q1"); err != nil {
 		t.Fatal(err)
 	}
 	if !qbDeleteCalled {
@@ -123,12 +123,12 @@ func TestRemoveTorrentSkipsQueuePathForCompleteTorrents(t *testing.T) {
 	service := New(cfg, nil)
 	service.torrents = []model.Torrent{{
 		ServiceID:       "q1",
-		Hash:            "abchash",
+		Hash:            "abcdef0123456789abcdef0123456789abcdef01",
 		AmountLeftBytes: 0,
 		MediaItems:      []model.MediaRef{{Type: model.Movie, ServiceID: "r1", ServiceName: "Movies", SourceID: 1}},
 	}}
 
-	if err := service.RemoveTorrent(context.Background(), "abchash", "q1"); err != nil {
+	if err := service.RemoveTorrent(context.Background(), "abcdef0123456789abcdef0123456789abcdef01", "q1"); err != nil {
 		t.Fatal(err)
 	}
 	if !qbDeleteCalled {

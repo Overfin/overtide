@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 )
@@ -384,28 +383,34 @@ func filesMissing(torrents []model.Torrent) []model.Torrent {
 	return out
 }
 
-// removeFilesMissing removes from the torrent client every torrent whose
-// files are gone (dry run applies, as to every removal), then goes back to
-// the Torrents page.
-func (server *Server) removeFilesMissing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+// filesMissingDialog shows, in an overlay, the torrents whose files are
+// gone from disk and offers to remove them from qBittorrent, files kept.
+func (server *Server) filesMissingDialog(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		data := struct {
+			Torrents []model.Torrent
+			DryRun   bool
+		}{filesMissing(server.inv.TorrentSnapshot()), server.inv.Config().Removal.DryRun}
+		if err := renderTemplate(w, server.filesMissingTpl, data); err != nil {
+			log.Printf("[http] render files missing: %v", err)
+		}
+	case http.MethodPost:
+		var left []string
+		for _, result := range server.inv.ForgetMissingTorrents(r.Context()) {
+			if result.Removed {
+				log.Printf("[torrents] removed from qBittorrent, files missing (dry run %t): %s", server.inv.Config().Removal.DryRun, result.Torrent.Name)
+				continue
+			}
+			left = append(left, result.Torrent.Name+": "+result.Reason)
+		}
+		server.publishUIChange("torrents")
+		if len(left) > 0 {
+			http.Error(w, "Left alone: "+strings.Join(left, "; "), http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
-	var errs []string
-	for _, t := range filesMissing(server.inv.TorrentSnapshot()) {
-		action := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{t}}
-		form, err := server.formForAction(action)
-		if err == nil {
-			err = server.submitAutoRemoval(form, action, "Files missing: ")
-		}
-		if err != nil {
-			errs = append(errs, t.Name+": "+err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		http.Error(w, strings.Join(errs, "; "), http.StatusConflict)
-		return
-	}
-	http.Redirect(w, r, "/torrents", http.StatusSeeOther)
 }

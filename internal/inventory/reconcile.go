@@ -248,9 +248,18 @@ func physicalSizeBytes(logicalSize int64, sys any) int64 {
 // gone from disk, not merely not inspected. A torrent whose files are all
 // missing takes no space, though its client still lists it.
 func missingTorrentFiles(refs []model.TorrentFileRef, found map[string]bool, roots []storageRoot) []model.File {
+	// A root counts only if the walk found files under it: an empty root
+	// is more likely a share or a disk that isn't mounted (the mount point
+	// is still there) than files that are all gone.
+	foundUnder := map[string]bool{}
+	for path := range found {
+		if root := rootOf(path, roots); root != "" {
+			foundUnder[root] = true
+		}
+	}
 	var reachable []string
 	for _, root := range roots {
-		if info, err := os.Stat(root.Path); err == nil && info.IsDir() {
+		if foundUnder[filepath.Clean(root.Path)] {
 			reachable = append(reachable, filepath.Clean(root.Path))
 		}
 	}
