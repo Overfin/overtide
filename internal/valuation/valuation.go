@@ -3,7 +3,6 @@ package valuation
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/config"
@@ -31,33 +30,6 @@ func serviceAllowsRemoval(configuration config.Config, serviceID string) bool {
 		}
 	}
 	return false
-}
-
-func hasTag(tags, protectedTags []string) bool {
-	for _, mediaTag := range tags {
-		for _, protectedTag := range protectedTags {
-			if strings.EqualFold(mediaTag, protectedTag) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// splitTags parses qBittorrent's comma-joined free-text Tags field into
-// individual, trimmed tag names.
-func splitTags(tags string) []string {
-	if strings.TrimSpace(tags) == "" {
-		return nil
-	}
-	parts := strings.Split(tags, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if trimmed := strings.TrimSpace(part); trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }
 
 // ApplyMedia assigns each title its Retention Value: Overfin's score.
@@ -91,13 +63,14 @@ const notValued = "Not valued by Overfin"
 // applyOverfinValue makes Overfin's scores the Retention Value: a film's
 // score, each season's own, a series' best season's. Overfin weighs what
 // people watch, ask for and like; Overtide weighs that against storage and
-// torrents (Torrent Value, kept apart). Keep tags still protect; anything
-// Overfin didn't score is protected, with the highest value.
+// torrents (Torrent Value, kept apart). What the operator kept is
+// protected; anything Overfin didn't score is protected, with the highest
+// value.
 func applyOverfinValue(mediaItem *model.Media, configuration config.Config) {
-	if hasTag(mediaItem.Tags, configuration.Protection.KeepTags) {
+	if configuration.IsKept(config.KeptMediaKey(string(mediaItem.Type), mediaItem.ServiceID, mediaItem.SourceID)) {
 		mediaItem.Protected = true
-		mediaItem.ProtectionReason = "Keep tag"
-		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Keep tag", Value: strings.Join(mediaItem.Tags, ", ")})
+		mediaItem.ProtectionReason = "Kept"
+		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Kept", Value: "on the Storage page's list"})
 	}
 	scored := func(score float64) model.Reason {
 		return model.Reason{Label: "Overfin value", Value: fmt.Sprintf("%.1f/100", score), Points: score,

@@ -3,6 +3,7 @@ package httpui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,6 +18,8 @@ import (
 type storageData struct {
 	Devices      []deviceView
 	Capabilities []inventory.RootCapability
+	// Kept is the operator's Kept list, newest first.
+	Kept []config.KeptItem
 	// AutoRemovalDisabled hides the cleanup-candidate/plan section entirely
 	// when Removal.AutoMode is Disabled — a disabled setting means
 	// automatic removal (and the whole notion of "here's what we'd
@@ -42,6 +45,9 @@ func (server *Server) storagePage(w http.ResponseWriter, r *http.Request) {
 		Devices:             server.deviceViews(items, ts, planningReliable, nil),
 		Capabilities:        server.inv.StorageCapabilities(),
 		AutoRemovalDisabled: autoMode != config.RemovalAutoConfirm && autoMode != config.RemovalAutoAuto,
+	}
+	for i := len(server.inv.Config().Kept) - 1; i >= 0; i-- {
+		data.Kept = append(data.Kept, server.inv.Config().Kept[i])
 	}
 	if err := renderTemplate(w, server.storageTpl, data); err != nil {
 		log.Printf("[http] render storage: %v", err)
@@ -321,8 +327,8 @@ func (server *Server) cleanActions(actions []cleanup.Action, cfg config.Config) 
 	return errs
 }
 
-// cleanupPlanProtect permanently protects one action's media/torrent from
-// cleanup (see inventory.ProtectMedia/ProtectTorrent) — an immediate,
+// cleanupPlanProtect keeps one action's title or torrent (see
+// inventory.Keep): on the Storage page's Kept list until taken off it — an immediate,
 // independent action, unlike Clean, since it's meant to be usable one row
 // at a time while still reviewing the rest of the list.
 func (server *Server) cleanupPlanProtect(w http.ResponseWriter, r *http.Request) {
@@ -358,15 +364,15 @@ func (server *Server) cleanupPlanProtect(w http.ResponseWriter, r *http.Request)
 	}
 	var err error
 	if target.Kind == cleanup.StandaloneTorrent {
-		err = server.inv.ProtectTorrent(r.Context(), target.Torrents[0].Hash, target.Torrents[0].ServiceID)
+		err = server.inv.Keep(config.KeptTorrentKey(target.Torrents[0].Hash), target.Torrents[0].Name)
 	} else if target.Media.Type == model.Movie || target.Media.Type == model.Series {
-		err = server.inv.ProtectMedia(r.Context(), target.Media.Type, target.Media.SourceID, target.Media.ServiceID)
+		err = server.inv.Keep(config.KeptMediaKey(string(target.Media.Type), target.Media.ServiceID, target.Media.SourceID), keptMediaName(target.Media))
 	} else {
 		http.Error(w, "unsupported action kind", http.StatusBadRequest)
 		return
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -408,4 +414,45 @@ func (server *Server) setDeviceThreshold(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// keptMediaName is how a kept title is listed: its title and year.
+func keptMediaName(m model.Media) string {
+	if m.Year > 0 {
+		return fmt.Sprintf("%s (%d)", m.Title, m.Year)
+	}
+	return m.Title
+}
+
+// keepPost keeps (or, with unkeep=1, takes off the Kept list) the title or
+// torrent named by key, then goes back to the page it came from.
+func (server *Server) keepPost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	key := strings.TrimSpace(r.FormValue("key"))
+	if key == "" {
+		http.Error(w, "key is required", http.StatusBadRequest)
+		return
+	}
+	var err error
+	if r.FormValue("unkeep") == "1" {
+		err = server.inv.Unkeep(key)
+	} else {
+		err = server.inv.Keep(key, strings.TrimSpace(r.FormValue("name")))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	back := r.FormValue("back")
+	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") {
+		back = "/storage"
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }

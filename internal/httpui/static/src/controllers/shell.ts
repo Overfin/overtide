@@ -288,7 +288,7 @@ export class ShellController extends window.Stimulus.Controller {
   // entirely, so a different candidate immediately fills the gap rather
   // than the device's cleanup target going unmet (see cleanup.Build's
   // excluded parameter). Reused by both Skip (no other effect) and
-  // Protect (after the permanent tag write actually succeeds).
+  // Keep (after the title or torrent is on the Kept list).
   reopenCleanupPlanExcluding(button: HTMLElement, key: string): void {
     const path = button.dataset.path;
     if (!path) return;

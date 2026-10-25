@@ -51,7 +51,7 @@ A logical Library item managed today by Radarr or Sonarr. Future adapters may ad
 ### Retention Value
 A Library-media retention score: Overfin's score, unchanged. Higher means a stronger claim to remain. Retention Value is not storage size and should not be treated as a deletion eligibility flag.
 
-Protection is an eligibility fact, not a very large Retention Value. Keep tags, and titles Overfin didn't score, are absolute protection states and are excluded from automatic candidates regardless of storage pressure.
+Protection is an eligibility fact, not a very large Retention Value. What the operator kept (the Kept list), and titles Overfin didn't score, are absolute protection states and are excluded from automatic candidates regardless of storage pressure.
 
 ### Torrent
 A download/share representation managed by a torrent client. Torrent Value is conceptually separate from media Retention Value.
@@ -224,9 +224,7 @@ Possible reclamation sources include:
 - lower-cost media representations/quality changes (future);
 - low-Retention-Value Library media.
 
-Torrent Value and Retention Value are never compared directly — a single `torrent_care_percent` dial (50 by default) scales Torrent Value onto Retention Value's scale before the two are ranked together as one unified, ascending-value list per device. Below 50 makes torrents relatively less worth keeping than media at the same dial position; above 50, more. This is the only place the two domains are ever compared numerically, and it's deliberately one dial rather than exposing how either domain's own value is computed.
-
-Within the media side of that ranking, a device's overage is not simply satisfied by whichever media items score lowest overall: it's first measured in aggregate via the unified ranking above (deciding how much comes from torrents vs. media in total, unchanged), then redistributed across each media action's owning service proportional to that service's current footprint on the device. Series consistently outscoring movies in Retention Value — real differential engagement, not a scoring defect — would otherwise mean a device shared between a Movies and a Series library structurally sheds movies first regardless of each library's actual size on that device. The mechanism generalizes past just movies vs. series: any two media services sharing a device (two Radarr instances, a "Movies" and "Movies 4K" root) get the same proportional treatment.
+Torrent Value and Retention Value are never compared. Lone torrents (superseded, orphaned, unassociated, or proven independent copies) back nothing in the library, so they come first, lowest Torrent Value first; then titles and seasons, lowest Overfin score first, each with its hardlinked torrents. A hardlinked torrent doesn't change its title's value; it only holds the title back when it has an obligation: kept by the operator, a private tracker's seeding time (`private_min_seeding_days`, off by default), or the minimum ratio. Candidates are taken in that order until the device is back under its target.
 
 The long-term optimization question is:
 

@@ -313,28 +313,6 @@ func TestStorageRootsReactivelyPicksUpContentPathEvenWithoutTempPathPreference(t
 	}
 }
 
-// TestAddTagPostsHashAndTag guards the actual request shape sent to
-// qBittorrent's addTags endpoint — used to permanently protect a
-// torrent from cleanup directly from Overtide's own UI.
-func TestAddTagPostsHashAndTag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v2/torrents/addTags" {
-			t.Fatalf("unexpected request: %s", r.URL.Path)
-		}
-		if err := r.ParseForm(); err != nil {
-			t.Fatal(err)
-		}
-		if r.Form.Get("hashes") != "abc123" || r.Form.Get("tags") != "overtide_keep" {
-			t.Fatalf("unexpected form: %#v", r.Form)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-	if err := New("qBittorrent", srv.URL, "", "", "token").AddTag("abc123", "overtide_keep"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestInventoryReadsPrivateFlag: qBittorrent's torrent list says whether a
 // torrent comes from a private tracker as "private".
 func TestInventoryReadsPrivateFlag(t *testing.T) {

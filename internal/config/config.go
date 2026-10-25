@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,13 +46,6 @@ type RemovalConfig struct {
 	// opts a whole service's torrents into automatic removal at all, this
 	// narrows it further to exclude the specific case of no known owner.
 	AutoRemoveUnassociatedTorrents bool `json:"auto_remove_unassociated_torrents"`
-	// TorrentCarePercent scales Torrent Value onto Media Retention Value's
-	// scale for cross-domain ranking (cleanup.rank): 50 compares them
-	// directly (the default), above 50 makes torrents relatively more
-	// worth keeping, below 50 less. This is deliberately the only
-	// user-facing dial in torrent valuation — how the torrent's own value
-	// is computed is entirely hardcoded, not user-configurable.
-	TorrentCarePercent float64 `json:"torrent_care_percent"`
 	// AutoUnmonitor and AutoExcludeFromImportLists control the same two
 	// post-removal follow-ups the manual removal overlay already offers as
 	// checkboxes (unmonitor_movies/unmonitor_episodes, exclude_movies/
@@ -236,10 +230,20 @@ type Config struct {
 		DeviceThresholds map[string]DeviceThreshold `json:"device_thresholds,omitempty"`
 	} `json:"storage"`
 	Protection struct {
-		KeepTags        []string `json:"keep_tags"`
+		// KeepTags and KeepTorrentTags are the keep tags of before the
+		// Kept list: the titles and torrents carrying them are brought into
+		// Kept once, after the first inventory, then these are emptied.
+		KeepTags        []string `json:"keep_tags,omitempty"`
 		MinTorrentRatio float64  `json:"min_torrent_ratio"`
-		KeepTorrentTags []string `json:"keep_torrent_tags"`
+		KeepTorrentTags []string `json:"keep_torrent_tags,omitempty"`
+		// PrivateMinSeedingDays keeps a private tracker's torrent (and the
+		// title it's hardlinked to) until it has seeded this many days; 0 is
+		// off. For trackers that require a seeding time.
+		PrivateMinSeedingDays int `json:"private_min_seeding_days,omitempty"`
 	} `json:"protection"`
+	// Kept is what the operator chose to keep: never planned for removal
+	// until taken off the list, on the Storage page.
+	Kept    []KeptItem    `json:"kept,omitempty"`
 	Removal RemovalConfig `json:"removal"`
 	// Auth holds the single admin account's credentials. An empty Username
 	// means no account has been created yet — the app's first-run setup
@@ -292,59 +296,79 @@ type Connection struct {
 	APIKey string `json:"api_key"`
 }
 
-// AddKeepTagToMedia idempotently adds tag to Protection.KeepTags — used
-// when a media item is protected via the cleanup-plan overlay's shield
-// button, so that protection actually takes effect (KeepTags is what
-// valuation.ApplyMedia checks) rather than only existing as a tag on the
-// Radarr/Sonarr side with no local effect.
-func AddKeepTagToMedia(configuration Config, tag string) Config {
-	if containsTag(configuration.Protection.KeepTags, tag) {
-		return configuration
-	}
-	updated := configuration
-	updated.Protection.KeepTags = append(append([]string(nil), configuration.Protection.KeepTags...), tag)
-	return updated
+// KeptItem is one title or torrent the operator chose to keep (Config.Kept).
+type KeptItem struct {
+	// Key is KeptMediaKey's or KeptTorrentKey's.
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	// From says where it came from when it wasn't kept from Overtide
+	// itself, e.g. "keep tag stewarr_keep".
+	From   string    `json:"from,omitempty"`
+	KeptAt time.Time `json:"kept_at"`
 }
 
-// AddKeepTagToTorrents mirrors AddKeepTagToMedia for
-// Protection.KeepTorrentTags.
-func AddKeepTagToTorrents(configuration Config, tag string) Config {
-	if containsTag(configuration.Protection.KeepTorrentTags, tag) {
-		return configuration
-	}
-	updated := configuration
-	updated.Protection.KeepTorrentTags = append(append([]string(nil), configuration.Protection.KeepTorrentTags...), tag)
-	return updated
+// KeptMediaKey identifies a film or series in Kept: its type, its service
+// and its ID there, which don't change when its files or folder do.
+func KeptMediaKey(mediaType, serviceID string, sourceID int) string {
+	return mediaType + ":" + serviceID + ":" + strconv.Itoa(sourceID)
 }
 
-func containsTag(tags []string, tag string) bool {
-	for _, t := range tags {
-		if strings.EqualFold(t, tag) {
+// KeptTorrentKey identifies a torrent in Kept, by its hash.
+func KeptTorrentKey(hash string) string {
+	return "torrent:" + strings.ToLower(hash)
+}
+
+// IsKept reports whether key is in Kept.
+func (configuration Config) IsKept(key string) bool {
+	for _, item := range configuration.Kept {
+		if item.Key == key {
 			return true
 		}
 	}
 	return false
 }
 
+// Keep adds item to Kept, unless its key is already there.
+func Keep(configuration Config, item KeptItem) Config {
+	if configuration.IsKept(item.Key) {
+		return configuration
+	}
+	updated := configuration
+	updated.Kept = append(append([]KeptItem(nil), configuration.Kept...), item)
+	return updated
+}
+
+// Unkeep takes key off Kept.
+func Unkeep(configuration Config, key string) Config {
+	updated := configuration
+	updated.Kept = nil
+	for _, item := range configuration.Kept {
+		if item.Key != key {
+			updated.Kept = append(updated.Kept, item)
+		}
+	}
+	return updated
+}
+
 // SetRemovalSettings updates the global removal switches together, since
-// the Settings page always submits all three as one form. autoMode and
+// the Settings page always submits them as one form. autoMode and
 // autoRemoveUnassociated are meaningless for an item whose own service
 // hasn't checked "Allow automatic removal" (see Media.RemovalRestricted);
 // dryRun applies to every removal, manual or automatic, not just this one.
-func SetRemovalSettings(configuration Config, autoMode string, autoRemoveUnassociated, dryRun bool, torrentCarePercent float64, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) (Config, error) {
+func SetRemovalSettings(configuration Config, autoMode string, autoRemoveUnassociated, dryRun bool, privateMinSeedingDays int, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) (Config, error) {
 	switch autoMode {
 	case RemovalAutoDisabled, RemovalAutoConfirm, RemovalAutoAuto:
 	default:
 		return configuration, fmt.Errorf("auto_mode must be one of %q, %q, %q", RemovalAutoDisabled, RemovalAutoConfirm, RemovalAutoAuto)
 	}
-	if torrentCarePercent < 0 || torrentCarePercent > 100 {
-		return configuration, fmt.Errorf("torrent_care_percent must be between 0 and 100")
+	if privateMinSeedingDays < 0 || privateMinSeedingDays > 3650 {
+		return configuration, fmt.Errorf("private_min_seeding_days must be between 0 and 3650")
 	}
 	updated := configuration
 	updated.Removal.AutoMode = autoMode
 	updated.Removal.AutoRemoveUnassociatedTorrents = autoRemoveUnassociated
 	updated.Removal.DryRun = dryRun
-	updated.Removal.TorrentCarePercent = torrentCarePercent
+	updated.Protection.PrivateMinSeedingDays = privateMinSeedingDays
 	updated.Removal.AutoUnmonitor = autoUnmonitor
 	updated.Removal.AutoExcludeFromImportLists = autoExcludeFromImportLists
 	updated.Removal.AutoRemoveIncompleteTorrents = autoRemoveIncomplete
@@ -517,9 +541,7 @@ type QBittorrentService struct {
 // defaultConfigJSON is written to path by Load when no config file exists
 // yet (a fresh install). It mirrors config.example.json with the demo
 // services removed: services are meant to be added from the running app's
-// Services page, not hand-edited in before first start. stewarr_keep is
-// among the keep tags so what was protected with Stewarr, on the same
-// Radarr, Sonarr or qBittorrent, stays protected.
+// Services page, not hand-edited in before first start.
 const defaultConfigJSON = `{
   "server": {
     "listen": ":8088",
@@ -530,14 +552,11 @@ const defaultConfigJSON = `{
     "device_thresholds": {}
   },
   "protection": {
-    "keep_tags": ["keep", "overtide_keep", "stewarr_keep"],
-    "min_torrent_ratio": 0,
-    "keep_torrent_tags": ["stewarr_keep"]
+    "min_torrent_ratio": 0
   },
   "removal": {
     "dry_run": true,
-    "auto_mode": "disabled",
-    "torrent_care_percent": 50
+    "auto_mode": "disabled"
   }
 }
 `
@@ -574,12 +593,6 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(fileContents, &configuration); err != nil {
 		return configuration, err
 	}
-	var present struct {
-		Removal struct {
-			TorrentCarePercent *json.RawMessage `json:"torrent_care_percent"`
-		} `json:"removal"`
-	}
-	_ = json.Unmarshal(fileContents, &present)
 	// Jellyfin and Seerr were services before Overtide stopped valuing
 	// titles itself (Overfin does); a config.json from then still lists
 	// them. They're dropped, and the file is saved without them.
@@ -637,12 +650,6 @@ func Load(path string) (Config, error) {
 	}
 	if configuration.RefreshInterval <= 0 {
 		return configuration, fmt.Errorf("server.refresh_interval must be greater than zero")
-	}
-	// TorrentCarePercent's zero value (0) is a legitimate, meaningful
-	// setting ("never prefer torrents over media"), so it needs a presence
-	// check rather than a zero-value default.
-	if present.Removal.TorrentCarePercent == nil {
-		configuration.Removal.TorrentCarePercent = 50
 	}
 	if assignedFreshID || droppedServices {
 		if err := Save(path, configuration); err != nil {

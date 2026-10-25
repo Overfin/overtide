@@ -19,6 +19,7 @@
           <div class=value>{{printf "%.1f" .Media.RetentionValue}}</div>
           <div class=muted style="text-align:right">Overfin value</div>
         </div>
+        <form method="post" action="/storage/keep" class="keep-form"><input type="hidden" name="key" value="{{.KeptKey}}"><input type="hidden" name="name" value="{{.Media.Title}}{{if .Media.Year}} ({{.Media.Year}}){{end}}"><input type="hidden" name="back" value="/library/{{.Media.Type}}/{{.Media.SourceID}}?service_id={{.Media.ServiceID}}">{{if .Kept}}<input type="hidden" name="unkeep" value="1"><button type="submit" class="ghost" title="Kept: never planned for removal">Unkeep</button>{{else}}<button type="submit" class="ghost" title="Never plan it for removal">Keep</button>{{end}}</form>
         <button class=trash title="{{if or (gt .FileCount 0) .Current .Superseded .Unassociated}}Remove{{else}}Nothing to remove{{end}}" {{if or (gt .FileCount 0) .Current .Superseded .Unassociated}}data-removal-url="/removal/media?type={{.Media.Type}}&id={{.Media.SourceID}}&service_id={{.Media.ServiceID}}"{{else}}disabled{{end}}>🗑</button>
       </div>
       <div class=summary>

@@ -573,6 +573,8 @@ func TestProfileTemplateShowsTorrentNamesAndGroups(t *testing.T) {
 		FileCount    int
 		FilesUpdated time.Time
 		FilesErr     error
+		KeptKey      string
+		Kept         bool
 	}{
 		Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}, Total: 1,
 		Current:    []model.Torrent{{Hash: "a", Name: "Current.Release", AssociationStatus: "ASSOCIATED"}},
@@ -627,6 +629,8 @@ func TestProfileTemplateRendersFileTopology(t *testing.T) {
 		FileCount                                   int
 		FilesUpdated                                time.Time
 		FilesErr                                    error
+		KeptKey                                     string
+		Kept                                        bool
 		RemoveMedia                                 inventory.RemovalEstimate
 		RemoveWithCurrent                           inventory.RemovalEstimate
 	}{

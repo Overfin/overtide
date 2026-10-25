@@ -74,9 +74,14 @@ type Torrent struct {
 	TorrentValueReasons []Reason `json:"torrentValueReasons,omitempty"`
 	Protected           bool     `json:"protected,omitempty"`
 	ProtectionReason    string   `json:"protectionReason,omitempty"`
+	// Obligation, when set, says why this torrent's files must stay: kept
+	// by the operator, a private tracker's seeding time, the minimum ratio.
+	// Unlike a torrent merely protected for being too new to judge, an
+	// obligation also holds back the title it's hardlinked to.
+	Obligation string `json:"obligation,omitempty"`
 	// RemovalRestricted is true when this torrent's own service has not
 	// checked "Allow automatic removal" — distinct from Protected (a
-	// KeepTag/ratio/etc. judgment the item earns on its own merits, shown
+	// keep/ratio/etc. judgment the item earns on its own merits, shown
 	// as such throughout the UI). This is a plain administrative
 	// permission: the owning service simply hasn't been opted in, so the
 	// planner (internal/cleanup) must never offer it, or any bundle it's

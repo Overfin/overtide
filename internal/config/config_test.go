@@ -360,50 +360,20 @@ func TestSetCredentialsRejectsEmptyUsernameAndShortPassword(t *testing.T) {
 	}
 }
 
-func TestAddKeepTagToMediaIsIdempotent(t *testing.T) {
-	var c Config
-	c.Protection.KeepTags = []string{"keep"}
-	updated := AddKeepTagToMedia(c, "overtide_keep")
-	if len(updated.Protection.KeepTags) != 2 || updated.Protection.KeepTags[1] != "overtide_keep" {
-		t.Fatalf("expected the tag to be appended, got %#v", updated.Protection.KeepTags)
-	}
-	again := AddKeepTagToMedia(updated, "overtide_keep")
-	if len(again.Protection.KeepTags) != 2 {
-		t.Fatalf("expected no duplicate on a second call, got %#v", again.Protection.KeepTags)
-	}
-	// Case-insensitive: a user's own differently-cased tag already covers it.
-	caseInsensitive := AddKeepTagToMedia(c, "KEEP")
-	if len(caseInsensitive.Protection.KeepTags) != 1 {
-		t.Fatalf("expected a case-insensitive match to skip adding, got %#v", caseInsensitive.Protection.KeepTags)
-	}
-}
-
-func TestAddKeepTagToTorrentsIsIdempotent(t *testing.T) {
-	var c Config
-	updated := AddKeepTagToTorrents(c, "overtide_keep")
-	if len(updated.Protection.KeepTorrentTags) != 1 || updated.Protection.KeepTorrentTags[0] != "overtide_keep" {
-		t.Fatalf("expected the tag to be added, got %#v", updated.Protection.KeepTorrentTags)
-	}
-	again := AddKeepTagToTorrents(updated, "overtide_keep")
-	if len(again.Protection.KeepTorrentTags) != 1 {
-		t.Fatalf("expected no duplicate on a second call, got %#v", again.Protection.KeepTorrentTags)
-	}
-}
-
 func TestSetRemovalSettings(t *testing.T) {
 	var c Config
 	updated, err := SetRemovalSettings(c, RemovalAutoAuto, true, false, 75, true, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Removal.TorrentCarePercent != 75 || !updated.Removal.AutoUnmonitor || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents {
+	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Protection.PrivateMinSeedingDays != 75 || !updated.Removal.AutoUnmonitor || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents {
 		t.Fatalf("expected all seven fields to be set as given, got %#v", updated.Removal)
 	}
 	reverted, err := SetRemovalSettings(updated, RemovalAutoDisabled, false, true, 25, false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Removal.TorrentCarePercent != 25 || reverted.Removal.AutoUnmonitor || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents {
+	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Protection.PrivateMinSeedingDays != 25 || reverted.Removal.AutoUnmonitor || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents {
 		t.Fatalf("expected all seven fields to flip independently, got %#v", reverted.Removal)
 	}
 }
@@ -412,16 +382,6 @@ func TestSetRemovalSettingsRejectsUnknownAutoMode(t *testing.T) {
 	var c Config
 	if _, err := SetRemovalSettings(c, "sometimes", false, false, 50, false, false, false); err == nil {
 		t.Fatal("expected an unrecognized auto_mode to be rejected")
-	}
-}
-
-func TestSetRemovalSettingsRejectsTorrentCarePercentOutOfRange(t *testing.T) {
-	var c Config
-	if _, err := SetRemovalSettings(c, RemovalAutoDisabled, false, false, -1, false, false, false); err == nil {
-		t.Fatal("expected a negative torrent_care_percent to be rejected")
-	}
-	if _, err := SetRemovalSettings(c, RemovalAutoDisabled, false, false, 101, false, false, false); err == nil {
-		t.Fatal("expected a torrent_care_percent above 100 to be rejected")
 	}
 }
 
@@ -794,5 +754,33 @@ func TestLoadDropsJellyfinAndSeerr(t *testing.T) {
 		if strings.Contains(string(saved), gone) {
 			t.Fatalf("expected %q gone from the saved file:\n%s", gone, saved)
 		}
+	}
+}
+
+func TestSetRemovalSettingsRejectsPrivateSeedingDaysOutOfRange(t *testing.T) {
+	var c Config
+	if _, err := SetRemovalSettings(c, RemovalAutoDisabled, false, false, -1, false, false, false); err == nil {
+		t.Fatal("expected negative days to be rejected")
+	}
+}
+
+func TestKeepAndUnkeep(t *testing.T) {
+	var c Config
+	key := KeptMediaKey("movie", "radarr-1", 42)
+	c = Keep(c, KeptItem{Key: key, Name: "Film (2020)"})
+	c = Keep(c, KeptItem{Key: key, Name: "Film (2020)"})
+	if len(c.Kept) != 1 || !c.IsKept(key) {
+		t.Fatalf("expected one kept item: %#v", c.Kept)
+	}
+	if c.IsKept(KeptTorrentKey("ABC")) {
+		t.Fatal("the torrent isn't kept")
+	}
+	c = Keep(c, KeptItem{Key: KeptTorrentKey("ABC")})
+	if !c.IsKept(KeptTorrentKey("abc")) {
+		t.Fatal("torrent keys don't depend on the hash's case")
+	}
+	c = Unkeep(c, key)
+	if c.IsKept(key) || len(c.Kept) != 1 {
+		t.Fatalf("expected the film off the list: %#v", c.Kept)
 	}
 }

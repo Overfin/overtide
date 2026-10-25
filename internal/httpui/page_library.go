@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 )
@@ -546,6 +547,7 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 			files = files[:25]
 		}
 
+		keptKey := config.KeptMediaKey(string(m.Type), m.ServiceID, m.SourceID)
 		data := struct {
 			Media             model.Media
 			Updated           time.Time
@@ -561,7 +563,9 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 			FilesErr          error
 			RemoveMedia       inventory.RemovalEstimate
 			RemoveWithCurrent inventory.RemovalEstimate
-		}{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent}
+			KeptKey           string
+			Kept              bool
+		}{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent, keptKey, server.inv.Config().IsKept(keptKey)}
 		if e := renderTemplate(w, server.profileTpl, data); e != nil {
 			log.Printf("[http] render media profile: %v", e)
 		}

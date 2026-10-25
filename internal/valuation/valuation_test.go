@@ -14,7 +14,7 @@ import (
 func testConfig() config.Config {
 	var c config.Config
 	c.Overfin.URL = "http://overfin.example.org"
-	c.Protection.KeepTags = []string{"keep"}
+	c.Kept = []config.KeptItem{{Key: config.KeptMediaKey("movie", "", 4)}, {Key: config.KeptTorrentKey("kept")}}
 	return c
 }
 
@@ -72,13 +72,14 @@ func TestApplyTorrentValueSetsRemovalRestrictedFromServiceOptIn(t *testing.T) {
 
 func TestApplyMediaSeasonsInheritSeriesWideProtection(t *testing.T) {
 	c := testConfig()
+	c = config.Keep(c, config.KeptItem{Key: config.KeptMediaKey("series", "", 77)})
 	items := []model.Media{{
-		Type: model.Series, Title: "Show", Tags: []string{"keep"},
+		Type: model.Series, Title: "Show", SourceID: 77,
 		Seasons: []model.Season{{Number: 1}, {Number: 2}},
 	}}
 	ApplyMedia(items, c)
 	if !items[0].Protected {
-		t.Fatalf("expected series to be protected via keep tag: %#v", items[0])
+		t.Fatalf("expected the kept series to be protected: %#v", items[0])
 	}
 	for _, season := range items[0].Seasons {
 		if !season.Protected || season.ProtectionReason != items[0].ProtectionReason {
@@ -100,16 +101,44 @@ func TestApplyTorrentValueProtectsBelowMinimumRatio(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValueProtectsKeepTaggedTorrentsRegardlessOfRatio(t *testing.T) {
+func TestApplyTorrentValueKeptTorrentHasAnObligation(t *testing.T) {
 	c := testConfig()
-	c.Protection.KeepTorrentTags = []string{"keep"}
-	items := []model.Torrent{{Name: "tagged", Ratio: 5, Tags: "other, Keep "}, {Name: "untagged", Ratio: 5, Tags: "other"}}
-	ApplyTorrentValue(items, c, sufficientTorrentHistory("|"))
-	if !items[0].Protected || items[0].ProtectionReason != "Keep tag" {
-		t.Fatalf("expected keep-tagged torrent to be protected: %#v", items[0])
+	items := []model.Torrent{{Name: "kept", Hash: "KEPT", Ratio: 5}, {Name: "other", Hash: "other", Ratio: 5}}
+	ApplyTorrentValue(items, c, sufficientTorrentHistory("|KEPT", "|other"))
+	if !items[0].Protected || items[0].Obligation != "Kept" {
+		t.Fatalf("expected the kept torrent to be protected with an obligation: %#v", items[0])
 	}
-	if items[1].Protected {
-		t.Fatalf("expected untagged torrent to remain unprotected: %#v", items[1])
+	if items[1].Protected || items[1].Obligation != "" {
+		t.Fatalf("expected the other torrent to stay unprotected: %#v", items[1])
+	}
+}
+
+func TestApplyTorrentValuePrivateSeedingDays(t *testing.T) {
+	c := testConfig()
+	c.Protection.PrivateMinSeedingDays = 10
+	items := []model.Torrent{
+		{Name: "young private", Hash: "a", Private: true, SeedingTime: 3 * 86400},
+		{Name: "old private", Hash: "b", Private: true, SeedingTime: 30 * 86400},
+		{Name: "young public", Hash: "c", SeedingTime: 3 * 86400},
+	}
+	ApplyTorrentValue(items, c, sufficientTorrentHistory("|a", "|b", "|c"))
+	if items[0].Obligation == "" || items[1].Obligation != "" || items[2].Obligation != "" {
+		t.Fatalf("only the young private torrent has to keep seeding: %q %q %q", items[0].Obligation, items[1].Obligation, items[2].Obligation)
+	}
+	c.Protection.PrivateMinSeedingDays = 0
+	ApplyTorrentValue(items, c, sufficientTorrentHistory("|a", "|b", "|c"))
+	if items[0].Obligation != "" {
+		t.Fatalf("0 days is off: %q", items[0].Obligation)
+	}
+}
+
+// A torrent too new to judge is protected, without an obligation.
+func TestApplyTorrentValueInsufficientHistoryIsNoObligation(t *testing.T) {
+	c := testConfig()
+	items := []model.Torrent{{Name: "new", Hash: "n"}}
+	ApplyTorrentValue(items, c, nil)
+	if !items[0].Protected || items[0].Obligation != "" {
+		t.Fatalf("expected protected without obligation: %#v", items[0])
 	}
 }
 
@@ -122,11 +151,10 @@ func TestApplyTorrentValueMinRatioZeroProtectsNothing(t *testing.T) {
 	}
 }
 
-func TestApplyTorrentValueBothRatioAndTagCanProtectTheSameTorrent(t *testing.T) {
+func TestApplyTorrentValueBothRatioAndKeepCanProtectTheSameTorrent(t *testing.T) {
 	c := testConfig()
 	c.Protection.MinTorrentRatio = 1.0
-	c.Protection.KeepTorrentTags = []string{"keep"}
-	items := []model.Torrent{{Name: "both", Ratio: 0.1, Tags: "keep"}}
+	items := []model.Torrent{{Name: "both", Hash: "kept", Ratio: 0.1}}
 	ApplyTorrentValue(items, c, nil)
 	if !items[0].Protected {
 		t.Fatalf("expected torrent satisfying both protection rules to be protected: %#v", items[0])
@@ -134,7 +162,7 @@ func TestApplyTorrentValueBothRatioAndTagCanProtectTheSameTorrent(t *testing.T) 
 }
 
 // Overfin's scores are the Retention Value, as Overfin gives them: a
-// film's, each season's, a series' best season's. Keep tags protect
+// film's, each season's, a series' best season's. What the operator kept is protected
 // without changing the value, and what Overfin didn't score is protected.
 func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 	c := testConfig()
@@ -143,7 +171,7 @@ func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 		{Type: model.Movie, TMDBID: 1, OverfinScore: &high},
 		{Type: model.Movie, TMDBID: 2, OverfinScore: &low},
 		{Type: model.Movie, TMDBID: 3},
-		{Type: model.Movie, TMDBID: 4, OverfinScore: &low, Tags: []string{"keep"}},
+		{Type: model.Movie, TMDBID: 4, SourceID: 4, OverfinScore: &low},
 		{Type: model.Series, TMDBID: 5, Seasons: []model.Season{{Number: 1}, {Number: 2}, {Number: 3}},
 			OverfinSeasonScores: map[int]float64{1: 20, 2: 55}},
 	}
@@ -158,7 +186,7 @@ func TestOverfinScoresAreTheRetentionValue(t *testing.T) {
 	if !by[3].Protected || by[3].ProtectionReason != notValued {
 		t.Errorf("an unscored film: %+v", by[3])
 	}
-	if !by[4].Protected || by[4].ProtectionReason != "Keep tag" || by[4].RetentionValue != 12.5 {
+	if !by[4].Protected || by[4].ProtectionReason != "Kept" || by[4].RetentionValue != 12.5 {
 		t.Errorf("a kept film keeps Overfin's score: %+v", by[4])
 	}
 	series := by[5]

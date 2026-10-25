@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/config"
@@ -242,93 +243,102 @@ func (service *Service) syncDeviceRegistry() {
 	service.mu.Unlock()
 }
 
-// overtideKeepTag is the fixed tag ProtectMedia/ProtectTorrent write to the
-// owning service (Radarr/Sonarr movie or series tag, qBittorrent torrent
-// tag) — the same mechanism a user manually tagging the item themselves
-// would produce, so it stays visible and manageable directly in that
-// service too, not a shadow state only Overtide knows about.
-const overtideKeepTag = "overtide_keep"
-
-// ProtectMedia permanently protects one media item from cleanup by
-// tagging it directly in its owning Radarr/Sonarr instance, then — the
-// first time this is used — registering overtideKeepTag into
-// Protection.KeepTags so the tag actually has an effect on Overtide's own
-// valuation instead of only existing on the Radarr/Sonarr side with no
-// local consequence.
-func (service *Service) ProtectMedia(ctx context.Context, mediaType model.MediaType, sourceID int, serviceID string) error {
-	switch mediaType {
-	case model.Movie:
-		client, err := service.radarrClient(serviceID)
-		if err != nil {
-			return err
-		}
-		if err := client.WithContext(ctx).AddKeepTag(sourceID, overtideKeepTag); err != nil {
-			return err
-		}
-	case model.Series:
-		client, err := service.sonarrClient(serviceID)
-		if err != nil {
-			return err
-		}
-		if err := client.WithContext(ctx).AddKeepTag(sourceID, overtideKeepTag); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported media type %q for protection", mediaType)
-	}
-	return service.ensureKeepTagRegistered(true)
+// Keep adds a title or torrent to the operator's Kept list, so it's never
+// planned for removal until taken off it. key is config.KeptMediaKey's or
+// config.KeptTorrentKey's; name is what the Storage page lists it as.
+func (service *Service) Keep(key, name string) error {
+	return service.changeKept(func(c config.Config) config.Config {
+		return config.Keep(c, config.KeptItem{Key: key, Name: name, KeptAt: time.Now().UTC()})
+	})
 }
 
-// ProtectTorrent mirrors ProtectMedia for a torrent, tagging it directly
-// in qBittorrent and registering overtideKeepTag into KeepTorrentTags.
-func (service *Service) ProtectTorrent(ctx context.Context, hash, serviceID string) error {
-	client, err := service.qbittorrentClient(serviceID)
-	if err != nil {
-		return err
-	}
-	if err := client.WithContext(ctx).AddTag(hash, overtideKeepTag); err != nil {
-		return err
-	}
-	return service.ensureKeepTagRegistered(false)
+// Unkeep takes key off the Kept list.
+func (service *Service) Unkeep(key string) error {
+	return service.changeKept(func(c config.Config) config.Config { return config.Unkeep(c, key) })
 }
 
-// ensureKeepTagRegistered idempotently adds overtideKeepTag to
-// Protection.KeepTags (forMedia) or KeepTorrentTags (!forMedia), only
-// persisting (and only touching service.cfg) when it wasn't already
-// present — the common case once a single protect action has run once.
-func (service *Service) ensureKeepTagRegistered(forMedia bool) error {
+func (service *Service) changeKept(change func(config.Config) config.Config) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
-
 	if service.configPath == "" {
 		return fmt.Errorf("live config editing is unavailable: no config file path is set")
 	}
-
 	service.mu.RLock()
-	currentCfg := service.cfg
+	updatedCfg := change(service.cfg)
 	service.mu.RUnlock()
-
-	var updatedCfg config.Config
-	var alreadyPresent bool
-	if forMedia {
-		updatedCfg = config.AddKeepTagToMedia(currentCfg, overtideKeepTag)
-		alreadyPresent = len(updatedCfg.Protection.KeepTags) == len(currentCfg.Protection.KeepTags)
-	} else {
-		updatedCfg = config.AddKeepTagToTorrents(currentCfg, overtideKeepTag)
-		alreadyPresent = len(updatedCfg.Protection.KeepTorrentTags) == len(currentCfg.Protection.KeepTorrentTags)
-	}
-	if alreadyPresent {
-		return nil
-	}
-
 	if err := config.Save(service.configPath, updatedCfg); err != nil {
 		return fmt.Errorf("persist config: %w", err)
 	}
-
 	service.mu.Lock()
 	service.cfg = updatedCfg
 	service.mu.Unlock()
+	service.revalue()
 	return nil
+}
+
+// importKeepTags brings what still carries an old keep tag (config
+// Protection.KeepTags and KeepTorrentTags) into the Kept list, once, after
+// an inventory, then empties the tag lists: from then on, keeping is done
+// in Overtide, where it can be seen and undone.
+func (service *Service) importKeepTags() {
+	service.mu.RLock()
+	cfg := service.cfg
+	pending := len(cfg.Protection.KeepTags) > 0 || len(cfg.Protection.KeepTorrentTags) > 0
+	service.mu.RUnlock()
+	if !pending || service.configPath == "" {
+		return
+	}
+	err := service.changeKept(func(c config.Config) config.Config {
+		now := time.Now().UTC()
+		for _, m := range service.items {
+			if tag := firstTag(m.Tags, c.Protection.KeepTags); tag != "" {
+				c = config.Keep(c, config.KeptItem{Key: config.KeptMediaKey(string(m.Type), m.ServiceID, m.SourceID), Name: mediaName(m), From: "keep tag " + tag, KeptAt: now})
+			}
+		}
+		for _, t := range service.torrents {
+			if tag := firstTag(strings.Split(t.Tags, ","), c.Protection.KeepTorrentTags); tag != "" {
+				c = config.Keep(c, config.KeptItem{Key: config.KeptTorrentKey(t.Hash), Name: t.Name, From: "keep tag " + tag, KeptAt: now})
+			}
+		}
+		c.Protection.KeepTags, c.Protection.KeepTorrentTags = nil, nil
+		return c
+	})
+	if err != nil {
+		log.Printf("[inventory] bring keep tags into the Kept list: %v", err)
+	}
+}
+
+func firstTag(tags, wanted []string) string {
+	for _, tag := range tags {
+		for _, w := range wanted {
+			if strings.EqualFold(strings.TrimSpace(tag), w) {
+				return w
+			}
+		}
+	}
+	return ""
+}
+
+func mediaName(m model.Media) string {
+	if m.Year > 0 {
+		return fmt.Sprintf("%s (%d)", m.Title, m.Year)
+	}
+	return m.Title
+}
+
+// revalue applies valuation again to what's in memory, after the operator
+// changed what's kept or a protection setting: it takes effect at once,
+// not at the next inventory refresh.
+func (service *Service) revalue() {
+	history := service.recentTorrentHistory()
+	service.mu.Lock()
+	items, torrents := cloneMedia(service.items), cloneTorrents(service.torrents)
+	valuation.ApplyTorrentValue(torrents, service.cfg, history)
+	projectTorrentRelations(items, torrents)
+	valuation.ApplyMedia(items, service.cfg)
+	service.items, service.torrents = items, torrents
+	service.mu.Unlock()
+	service.publishChange()
 }
 
 // SetRemovalSettings idempotently persists the global auto-removal switches
@@ -337,7 +347,7 @@ func (service *Service) ensureKeepTagRegistered(forMedia bool) error {
 // check or an in-memory side effect beyond swapping the config: these
 // flags only change what the next scheduled evaluation or removal
 // submission does, never anything already published.
-func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociated, dryRun bool, torrentCarePercent float64, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) error {
+func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociated, dryRun bool, privateMinSeedingDays int, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete bool) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
 
@@ -349,7 +359,7 @@ func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociat
 	currentCfg := service.cfg
 	service.mu.RUnlock()
 
-	updatedCfg, err := config.SetRemovalSettings(currentCfg, autoMode, autoRemoveUnassociated, dryRun, torrentCarePercent, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete)
+	updatedCfg, err := config.SetRemovalSettings(currentCfg, autoMode, autoRemoveUnassociated, dryRun, privateMinSeedingDays, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete)
 	if err != nil {
 		return err
 	}
@@ -361,6 +371,7 @@ func (service *Service) SetRemovalSettings(autoMode string, autoRemoveUnassociat
 	service.mu.Lock()
 	service.cfg = updatedCfg
 	service.mu.Unlock()
+	service.revalue() // the private seeding days change what's protected
 	return nil
 }
 

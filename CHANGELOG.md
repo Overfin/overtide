@@ -8,6 +8,9 @@ Overtide starts from Stewarr 0.5.0, with its full history, as the storage side o
 
 ### 0.7.0 (not released yet)
 
+- **The removal planner, simplified.** Torrents with no title behind them go first, lowest Torrent Value first; then titles, lowest Overfin score first, each with its hardlinked torrents. A torrent no longer adds to its title's value, and only an obligation holds a title back (kept, a private tracker's seeding time, the minimum ratio), not a torrent merely too new to judge. "Torrent care" and the share per service are gone.
+- **Keep, instead of keep tags.** A Keep button on a title's page and in the cleanup plan; everything kept is listed on the Storage page, where it's taken off again. Overtide no longer writes tags to Radarr, Sonarr or qBittorrent. Titles and torrents with an old keep tag (`keep`, `overtide_keep`, `stewarr_keep`…) are put on the list once, after the first inventory.
+- **Private trackers:** one setting, "Keep private torrents at least (days)", off by default.
 - **No valuation of its own.** A title's value is Overfin's score, as Overfin gives it; nothing of Overtide's changes it (ratings, popularity, views, favourites, requests, torrent activity, season recency, keep-tag bonuses). Keep tags still protect. What Overfin didn't score is protected, and without Overfin nothing is removed automatically.
 - Private torrents are recognized: Overtide read a field qBittorrent's torrent list doesn't have, so every torrent looked public.
 - Series carry Sonarr's TMDB ID too, and are matched with Overfin's scores by it first, then by TVDB ID: Overfin knows some series by their TMDB ID alone.

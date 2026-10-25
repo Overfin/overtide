@@ -46,13 +46,10 @@ type Action struct {
 	// Torrents has length 1 for StandaloneTorrent, one or more for
 	// HardlinkedBundle, and is nil for StandaloneMedia/StandaloneSeason.
 	Torrents []model.Torrent `json:"torrents,omitempty"`
-	Value    float64         `json:"value"`
-	// ComparableValue is Value after cross-domain scaling (see rank) — the
-	// number actually used to order this action against actions from the
-	// other domain. Equal to Value for every action except a
-	// StandaloneTorrent. Not itself a value judgment a UI should display
-	// as "the" value; Value is what a media/torrent detail page shows.
-	ComparableValue  float64        `json:"-"`
+	// Value is what orders actions of the same kind: a title's (or
+	// season's) Overfin score, or a lone torrent's Torrent Value. Lone
+	// torrents always come before titles, whatever their values.
+	Value            float64        `json:"value"`
 	ReclaimableBytes int64          `json:"reclaimableBytes"`
 	Reasons          []model.Reason `json:"reasons,omitempty"`
 }
@@ -112,13 +109,23 @@ type Plan struct {
 	Error         string   `json:"error,omitempty"`
 }
 
+// torrentsHoldBack reports whether any of a title's hardlinked torrents
+// keeps the title from being removed: its service hasn't allowed removal,
+// or it has an obligation (kept, private seeding time, minimum ratio). A
+// torrent merely too new to judge doesn't: torrents don't weigh on a
+// title's value.
+func torrentsHoldBack(torrents []model.Torrent) bool {
+	for _, t := range torrents {
+		if t.RemovalRestricted || t.Obligation != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // classify splits media and torrents into removal-candidate Actions, one
 // tier per domain, applying every granular eligibility rule (protection,
-// hardlink safety, reclaimability) but not yet ordering or scaling either
-// tier — rank does that, and fairMediaShare re-splits the media tier by
-// owning service afterward. ComparableValue is set here for media (always
-// equal to Value — media is never cross-domain scaled) so callers using
-// classify's output directly never see a zero-value placeholder.
+// hardlink safety, reclaimability) but not yet ordering either tier.
 func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrentTier []Action) {
 	bundledHashes := map[string]bool{}
 
@@ -130,30 +137,16 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 					for _, t := range hardlinked {
 						bundledHashes[strings.ToLower(t.Hash)] = true
 					}
-					anyTorrentRestricted := false
-					for _, t := range hardlinked {
-						if t.Protected || t.RemovalRestricted {
-							anyTorrentRestricted = true
-							break
-						}
-					}
-					if season.Protected || season.RemovalRestricted || anyTorrentRestricted || !season.BundleReclaimableKnown || season.BundleReclaimableBytes <= 0 {
+					if season.Protected || season.RemovalRestricted || torrentsHoldBack(hardlinked) || !season.BundleReclaimableKnown || season.BundleReclaimableBytes <= 0 {
 						continue
 					}
-					value := season.RetentionValue
-					var reasons []model.Reason
-					reasons = append(reasons, season.RetentionValueReasons...)
-					for _, t := range hardlinked {
-						value += t.TorrentValue
-						reasons = append(reasons, t.TorrentValueReasons...)
-					}
-					mediaTier = append(mediaTier, Action{Kind: HardlinkedBundle, Media: m, Season: &season, Torrents: hardlinked, Value: value, ComparableValue: value, ReclaimableBytes: season.BundleReclaimableBytes, Reasons: reasons})
+					mediaTier = append(mediaTier, Action{Kind: HardlinkedBundle, Media: m, Season: &season, Torrents: hardlinked, Value: season.RetentionValue, ReclaimableBytes: season.BundleReclaimableBytes, Reasons: season.RetentionValueReasons})
 					continue
 				}
 				if season.Protected || season.RemovalRestricted || !season.ReclaimableKnown || season.ReclaimableBytes <= 0 {
 					continue
 				}
-				mediaTier = append(mediaTier, Action{Kind: StandaloneSeason, Media: m, Season: &season, Value: season.RetentionValue, ComparableValue: season.RetentionValue, ReclaimableBytes: season.ReclaimableBytes, Reasons: season.RetentionValueReasons})
+				mediaTier = append(mediaTier, Action{Kind: StandaloneSeason, Media: m, Season: &season, Value: season.RetentionValue, ReclaimableBytes: season.ReclaimableBytes, Reasons: season.RetentionValueReasons})
 			}
 			continue
 		}
@@ -162,37 +155,23 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 			for _, t := range hardlinked {
 				bundledHashes[strings.ToLower(t.Hash)] = true
 			}
-			anyTorrentRestricted := false
-			for _, t := range hardlinked {
-				if t.Protected || t.RemovalRestricted {
-					anyTorrentRestricted = true
-					break
-				}
-			}
-			if m.Protected || m.RemovalRestricted || anyTorrentRestricted || !m.BundleReclaimableKnown || m.BundleReclaimableBytes <= 0 {
+			if m.Protected || m.RemovalRestricted || torrentsHoldBack(hardlinked) || !m.BundleReclaimableKnown || m.BundleReclaimableBytes <= 0 {
 				// Never offer the media or any of its hardlinked torrents
 				// alone: doing so would free ~0 bytes while still destroying
-				// real value, which is worse than doing nothing. A protected
-				// hardlinked torrent vetoes the whole bundle for the same
+				// real value, which is worse than doing nothing. A torrent
+				// with an obligation holds the whole bundle back for the same
 				// reason: removing the bundle would still delete files that
 				// torrent needs. A torrent or media item whose own service
-				// hasn't allowed removal vetoes it the same way.
+				// hasn't allowed removal holds it back the same way.
 				continue
 			}
-			value := m.RetentionValue
-			var reasons []model.Reason
-			reasons = append(reasons, m.RetentionValueReasons...)
-			for _, t := range hardlinked {
-				value += t.TorrentValue
-				reasons = append(reasons, t.TorrentValueReasons...)
-			}
-			mediaTier = append(mediaTier, Action{Kind: HardlinkedBundle, Media: m, Torrents: hardlinked, Value: value, ComparableValue: value, ReclaimableBytes: m.BundleReclaimableBytes, Reasons: reasons})
+			mediaTier = append(mediaTier, Action{Kind: HardlinkedBundle, Media: m, Torrents: hardlinked, Value: m.RetentionValue, ReclaimableBytes: m.BundleReclaimableBytes, Reasons: m.RetentionValueReasons})
 			continue
 		}
 		if m.Protected || m.RemovalRestricted || !m.ReclaimableKnown || m.ReclaimableBytes <= 0 {
 			continue
 		}
-		mediaTier = append(mediaTier, Action{Kind: StandaloneMedia, Media: m, Value: m.RetentionValue, ComparableValue: m.RetentionValue, ReclaimableBytes: m.ReclaimableBytes, Reasons: m.RetentionValueReasons})
+		mediaTier = append(mediaTier, Action{Kind: StandaloneMedia, Media: m, Value: m.RetentionValue, ReclaimableBytes: m.ReclaimableBytes, Reasons: m.RetentionValueReasons})
 	}
 
 	for _, t := range torrents {
@@ -242,113 +221,20 @@ func filterExcluded(tier []Action, excluded map[string]bool) []Action {
 	return out
 }
 
-// rank orders a media tier and torrent tier as one unified, ascending-value
-// list: a StandaloneTorrent's Torrent Value is scaled by torrentCarePercent/
-// 50 onto Media Retention Value's scale before comparison (50, the default,
-// compares them directly; above 50 makes torrents relatively more worth
-// keeping, below 50 less) — this is the only place the two domains are ever
-// compared numerically, and it's deliberately a single dial rather than
-// exposing how each domain's own value is computed.
-//
-// Build uses this ordering only to measure how many bytes the torrent side
-// vs. the media side contribute in aggregate to reach NeedBytes — which
-// individual media items actually get selected is then re-decided by
-// fairMediaShare, so torrents are never part of that per-service split.
-// Returns fresh Action copies; never mutates mediaTier or torrentTier.
-func rank(mediaTier, torrentTier []Action, torrentCarePercent float64) []Action {
-	careScale := torrentCarePercent / 50
-	merged := make([]Action, 0, len(torrentTier)+len(mediaTier))
-	for _, action := range torrentTier {
-		action.ComparableValue = action.Value * careScale
-		merged = append(merged, action)
-	}
-	merged = append(merged, mediaTier...)
-	sort.SliceStable(merged, func(i, j int) bool { return merged[i].ComparableValue < merged[j].ComparableValue })
-	return merged
-}
-
-// fairMediaShare redistributes targetBytes — the total the media side needs
-// to contribute, already decided by rank's cross-domain ordering (see
-// Build) — across each media action's owning service (Action.Media.
-// ServiceName), proportional to that service's current footprint on the
-// device (claimedByService), rather than letting whichever items score
-// lowest overall absorb almost all of it. Series consistently outscoring
-// movies in Retention Value (real differential engagement, not a scoring
-// defect — see ROADMAP) would otherwise mean movies structurally absorb
-// nearly all of any shared device's overage.
-//
-// claimedByService with no entry for a service (nil map, or a service
-// simply missing from it) contributes zero footprint for that service; if
-// every candidate's service is unaccounted for this way, there is nothing
-// to proportion by, so this falls back to the old unconstrained
-// lowest-value-first order across every service combined — never silently
-// under-select just because footprint data wasn't wired through.
-//
-// A service's own eligible candidates may fall short of its fair share (it
-// simply doesn't have enough low-enough-value candidates); the remainder is
-// filled from the lowest-value candidates left over across every other
-// service, so the device still reaches its target even when strict
-// fairness alone can't cover it.
-func fairMediaShare(mediaTier []Action, claimedByService map[string]uint64, targetBytes int64) []Action {
-	if targetBytes <= 0 || len(mediaTier) == 0 {
-		return nil
-	}
-	byService := map[string][]Action{}
-	for _, action := range mediaTier {
-		byService[action.Media.ServiceName] = append(byService[action.Media.ServiceName], action)
-	}
-	for service := range byService {
-		actions := byService[service]
-		sort.SliceStable(actions, func(i, j int) bool { return actions[i].Value < actions[j].Value })
-		byService[service] = actions
-	}
-	var totalClaimed uint64
-	for service := range byService {
-		totalClaimed += claimedByService[service]
-	}
-	if totalClaimed == 0 {
-		ordered := append([]Action(nil), mediaTier...)
-		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Value < ordered[j].Value })
-		var selected []Action
-		var selectedBytes int64
-		for _, action := range ordered {
-			if selectedBytes >= targetBytes {
-				break
-			}
-			selected = append(selected, action)
-			selectedBytes += action.ReclaimableBytes
+// order puts lone torrents first, lowest Torrent Value first, since they
+// back nothing in the library, then titles and seasons, lowest Overfin
+// score first, the larger first on a tie. Returns a new slice.
+func order(mediaTier, torrentTier []Action) []Action {
+	torrents := append([]Action(nil), torrentTier...)
+	sort.SliceStable(torrents, func(i, j int) bool { return torrents[i].Value < torrents[j].Value })
+	media := append([]Action(nil), mediaTier...)
+	sort.SliceStable(media, func(i, j int) bool {
+		if media[i].Value != media[j].Value {
+			return media[i].Value < media[j].Value
 		}
-		return selected
-	}
-	var selected []Action
-	var selectedBytes int64
-	leftoverByService := map[string][]Action{}
-	for service, actions := range byService {
-		share := int64(float64(targetBytes) * float64(claimedByService[service]) / float64(totalClaimed))
-		var used int64
-		index := 0
-		for ; index < len(actions) && used < share; index++ {
-			selected = append(selected, actions[index])
-			used += actions[index].ReclaimableBytes
-			selectedBytes += actions[index].ReclaimableBytes
-		}
-		leftoverByService[service] = actions[index:]
-	}
-	if selectedBytes < targetBytes {
-		var leftover []Action
-		for _, actions := range leftoverByService {
-			leftover = append(leftover, actions...)
-		}
-		sort.SliceStable(leftover, func(i, j int) bool { return leftover[i].Value < leftover[j].Value })
-		for _, action := range leftover {
-			if selectedBytes >= targetBytes {
-				break
-			}
-			selected = append(selected, action)
-			selectedBytes += action.ReclaimableBytes
-		}
-	}
-	return selected
+		return media[i].ReclaimableBytes > media[j].ReclaimableBytes
+	})
+	return append(torrents, media...)
 }
 
 // enforceSeasonOrder is a safety net on top of season Retention Value
@@ -400,21 +286,14 @@ func enforceSeasonOrder(actions []Action) {
 // actually has to work with, not 90% of a disk other services already have
 // a share of.
 //
-// claimedByService is each service's current claimed bytes on this device
-// (see inventory.StorageDevice.Claimed) — the footprint fairMediaShare
-// splits media's share of any overage by, so movies and series (or any two
-// media services sharing a device) each shed roughly their own proportion
-// of it rather than whichever type scores lowest overall absorbing nearly
-// all of it. Torrents are never part of that split; see rank/fairMediaShare.
-// excluded is a set of ActionKey values to leave out of selection
+// Candidates are taken in order (see order) until the device is back under
+// its target. excluded is a set of ActionKey values to leave out of selection
 // entirely, as if the candidates they name didn't exist — used for a
 // live "what would replace this" recompute from the cleanup-plan
-// overlay (excluding an item from one run, or one just protected but not
-// yet reflected in Media/Torrents' own Protected field since the tag
-// write hasn't round-tripped through that service's next reconciliation
-// yet) without waiting for anything to actually change on disk. Every
+// overlay (excluding an item from one run, or one just kept but not yet
+// reflected in Media/Torrents' own Protected field) without waiting for anything to actually change on disk. Every
 // other caller passes nil.
-func Build(path string, otherBytes uint64, claimedByService map[string]uint64, targetUsage, criticalUsage, torrentCarePercent float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool) (Plan, error) {
+func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool) (Plan, error) {
 	plan := Plan{Path: path, TargetUsagePercent: targetUsage, CriticalUsagePercent: criticalUsage, Reliable: reliable}
 	var filesystemStats syscall.Statfs_t
 	if err := syscall.Statfs(path, &filesystemStats); err != nil {
@@ -477,30 +356,15 @@ func Build(path string, otherBytes uint64, claimedByService map[string]uint64, t
 		mediaTier = filterExcluded(mediaTier, excluded)
 		torrentTier = filterExcluded(torrentTier, excluded)
 	}
-	// baseline is the old, purely cross-domain-scaled ordering — used only
-	// to measure how many bytes the torrent side vs. the media side
-	// contribute in aggregate to reach NeedBytes, exactly as before. Which
-	// individual torrents get selected here is final; which individual
-	// media items get selected is not — see fairMediaShare below.
-	var torrentSelected []Action
-	var mediaBytesNeeded int64
-	var baselineBytes int64
-	for _, action := range rank(mediaTier, torrentTier, torrentCarePercent) {
-		if baselineBytes >= int64(plan.NeedBytes) {
+	var final []Action
+	var selectedBytes int64
+	for _, action := range order(mediaTier, torrentTier) {
+		if selectedBytes >= int64(plan.NeedBytes) {
 			break
 		}
-		if action.Kind == StandaloneTorrent {
-			torrentSelected = append(torrentSelected, action)
-		} else {
-			mediaBytesNeeded += action.ReclaimableBytes
-		}
-		baselineBytes += action.ReclaimableBytes
+		final = append(final, action)
+		selectedBytes += action.ReclaimableBytes
 	}
-	mediaSelected := fairMediaShare(mediaTier, claimedByService, mediaBytesNeeded)
-	final := make([]Action, 0, len(torrentSelected)+len(mediaSelected))
-	final = append(final, torrentSelected...)
-	final = append(final, mediaSelected...)
-	sort.SliceStable(final, func(i, j int) bool { return final[i].ComparableValue < final[j].ComparableValue })
 	enforceSeasonOrder(final)
 	plan.Actions = final
 	for _, action := range final {

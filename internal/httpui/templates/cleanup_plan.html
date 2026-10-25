@@ -12,7 +12,7 @@
       <div class="modal-scroll">
         {{if .Plan.Actions}}
         <p class="bad"><b>Cleanup active.</b><br>{{.Plan.Message}}<br>{{len .Plan.Actions}} action(s) selected · {{humanU .Plan.SelectedBytes}} planned.</p>
-        <p class="muted">Skip anything you don't want cleaned this time (➖ — a different candidate immediately takes its place so the target is still met), or protect it permanently (🛡️) so it stops being a candidate at all.</p>
+        <p class="muted">Skip anything you don't want cleaned this time (➖ — a different candidate immediately takes its place so the target is still met), or keep it (🛡️): it goes on the Kept list on the Storage page and stops being a candidate until you take it off.</p>
         {{$torrentActions := torrentCleanupActions .Plan.Actions}}
         {{$mediaActions := mediaCleanupActions .Plan.Actions}}
         {{if $torrentActions}}
@@ -27,7 +27,7 @@
               </div>
               <div class="cleanup-row-actions">
                 <button type="button" class="cleanup-exclude" data-cleanup-exclude data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Skip for this run">➖</button>
-                <button type="button" class="cleanup-protect" data-cleanup-protect data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Protect permanently">🛡️</button>
+                <button type="button" class="cleanup-protect" data-cleanup-protect data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Keep">🛡️</button>
               </div>
             </li>
             {{end}}
@@ -46,7 +46,7 @@
               </div>
               <div class="cleanup-row-actions">
                 <button type="button" class="cleanup-exclude" data-cleanup-exclude data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Skip for this run">➖</button>
-                <button type="button" class="cleanup-protect" data-cleanup-protect data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Protect permanently">🛡️</button>
+                <button type="button" class="cleanup-protect" data-cleanup-protect data-path="{{$.RepresentativePath}}" data-key="{{actionKey .}}" title="Keep">🛡️</button>
               </div>
             </li>
             {{end}}

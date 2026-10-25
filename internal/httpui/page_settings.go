@@ -3,6 +3,7 @@ package httpui
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/overfin/overtide/internal/config"
 )
@@ -16,7 +17,7 @@ type settingsPageData struct {
 	AutoMode                       string
 	AutoRemoveUnassociatedTorrents bool
 	DryRun                         bool
-	TorrentCarePercent             float64
+	PrivateMinSeedingDays          int
 	AutoUnmonitor                  bool
 	AutoExcludeFromImportLists     bool
 	AutoRemoveIncompleteTorrents   bool
@@ -32,7 +33,7 @@ func (server *Server) settingsData() settingsPageData {
 		AutoMode:                       autoMode,
 		AutoRemoveUnassociatedTorrents: cfg.Removal.AutoRemoveUnassociatedTorrents,
 		DryRun:                         cfg.Removal.DryRun,
-		TorrentCarePercent:             cfg.Removal.TorrentCarePercent,
+		PrivateMinSeedingDays:          cfg.Protection.PrivateMinSeedingDays,
 		AutoUnmonitor:                  cfg.Removal.AutoUnmonitor,
 		AutoExcludeFromImportLists:     cfg.Removal.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   cfg.Removal.AutoRemoveIncompleteTorrents,
@@ -109,22 +110,18 @@ func (server *Server) setRemovalSettings(w http.ResponseWriter, r *http.Request)
 	autoExcludeFromImportLists := r.FormValue("auto_exclude_from_import_lists") == "on"
 	autoRemoveIncomplete := r.FormValue("auto_remove_incomplete_torrents") == "on"
 	data := server.settingsData()
-	// Unlike the checkboxes above (an absent field unambiguously means
-	// off), an absent or empty torrent_care_percent has no such natural
-	// default — treat it as "leave unchanged" the same way an unrelated
-	// credential field is preserved on the service-edit form, rather than
-	// silently resetting it every time an unrelated removal setting is saved.
-	torrentCarePercent := data.TorrentCarePercent
-	if raw := r.FormValue("torrent_care_percent"); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
+	// An empty field means 0, off.
+	privateMinSeedingDays := 0
+	if raw := strings.TrimSpace(r.FormValue("private_min_seeding_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
 		if err != nil {
-			data.RemovalError = "torrent_care_percent must be a number"
+			data.RemovalError = "Days of seeding for private torrents must be a whole number"
 			_ = renderTemplate(w, server.settingsTpl, data)
 			return
 		}
-		torrentCarePercent = parsed
+		privateMinSeedingDays = parsed
 	}
-	if err := server.inv.SetRemovalSettings(autoMode, autoRemoveUnassociated, dryRun, torrentCarePercent, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete); err != nil {
+	if err := server.inv.SetRemovalSettings(autoMode, autoRemoveUnassociated, dryRun, privateMinSeedingDays, autoUnmonitor, autoExcludeFromImportLists, autoRemoveIncomplete); err != nil {
 		data.RemovalError = err.Error()
 		_ = renderTemplate(w, server.settingsTpl, data)
 		return

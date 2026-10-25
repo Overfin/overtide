@@ -227,6 +227,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/storage/cleanup-plan", server.cleanupPlanForm)
 	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
 	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
+	mux.HandleFunc("/storage/keep", server.keepPost)
 	mux.HandleFunc("/services", server.servicesPage)
 	mux.HandleFunc("/services/add", server.addServiceForm)
 	mux.HandleFunc("/services/test", server.testServiceConnection)
@@ -274,17 +275,6 @@ func (server *Server) planningReliable(r inventory.Reliability) bool {
 	return r.Inventory && r.Valuation && r.FileModel == "reliable" && (server.tasks == nil || !server.tasks.ConsistencyPending())
 }
 
-// claimedByServiceMap converts a device's Claimed segments into the plain
-// map cleanup.Build's fairMediaShare needs — cleanup deliberately doesn't
-// import inventory, so this is the boundary that reshapes the type.
-func claimedByServiceMap(claimed []inventory.ClaimedSegment) map[string]uint64 {
-	out := make(map[string]uint64, len(claimed))
-	for _, segment := range claimed {
-		out[segment.Service] = segment.Bytes
-	}
-	return out
-}
-
 // deviceViews builds one cleanup plan per known storage device, since there
 // is no longer a single global storage path to build one plan against.
 // excluded (see cleanup.Build) is applied to every device uniformly — an
@@ -307,7 +297,7 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 		var p cleanup.Plan
 		var planErr error
 		if enabled {
-			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, claimedByServiceMap(device.Claimed), target, critical, cfg.Removal.TorrentCarePercent, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, excluded)
+			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, excluded)
 		} else {
 			// No point building a plan nothing will ever act on — an explicit
 			// per-device opt-out, same reasoning as the global AutoMode

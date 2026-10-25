@@ -96,6 +96,25 @@
       </section>
       {{end}}
     {{end}}
+    <section class="card" id="kept">
+      <h2>Kept</h2>
+      <p class="muted">Never planned for removal until taken off this list. Keep a title from its page, or from the cleanup plan.</p>
+      {{if .Kept}}
+      <table class="kept-list">
+        <tbody>
+          {{range .Kept}}
+          <tr>
+            <td><b>{{.Name}}</b>{{if .From}}<br><span class="muted">from {{.From}}</span>{{end}}</td>
+            <td class="muted">{{.KeptAt.Local.Format "2006-01-02"}}</td>
+            <td style="text-align:right"><form method="post" action="/storage/keep"><input type="hidden" name="key" value="{{.Key}}"><input type="hidden" name="unkeep" value="1"><input type="hidden" name="back" value="/storage#kept"><button type="submit" class="ghost">Unkeep</button></form></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">Nothing is kept.</p>
+      {{end}}
+    </section>
   </main>
 </body>
 </html>

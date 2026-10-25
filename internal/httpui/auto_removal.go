@@ -56,7 +56,7 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 			continue
 		}
 		target, critical := cfg.ThresholdsFor(device.RepresentativePath)
-		plan, err := cleanup.Build(device.RepresentativePath, device.OtherBytes, claimedByServiceMap(device.Claimed), target, critical, cfg.Removal.TorrentCarePercent, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, nil)
+		plan, err := cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, nil)
 		if err != nil || !plan.Available {
 			continue
 		}

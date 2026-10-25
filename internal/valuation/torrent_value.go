@@ -52,6 +52,22 @@ const (
 	torrentPrivateBonus = 15
 )
 
+// torrentObligation says why a torrent's files must stay, or "" if
+// nothing requires it: kept by the operator, a private tracker's seeding
+// time, the minimum ratio.
+func torrentObligation(torrent model.Torrent, configuration config.Config) string {
+	switch {
+	case configuration.IsKept(config.KeptTorrentKey(torrent.Hash)):
+		return "Kept"
+	case torrent.Private && configuration.Protection.PrivateMinSeedingDays > 0 &&
+		torrent.SeedingTime < int64(configuration.Protection.PrivateMinSeedingDays)*86400:
+		return fmt.Sprintf("Private tracker: seeding %d of %d days", torrent.SeedingTime/86400, configuration.Protection.PrivateMinSeedingDays)
+	case configuration.Protection.MinTorrentRatio > 0 && torrent.Ratio < configuration.Protection.MinTorrentRatio:
+		return "Below minimum ratio"
+	}
+	return ""
+}
+
 // torrentEligibilityMinSamples is half of the samples TorrentContributionWindow
 // would hold at torrentHistorySamplingInterval's cadence — see
 // torrentHistorySufficient.
@@ -72,16 +88,12 @@ func ApplyTorrentValue(torrents []model.Torrent, configuration config.Config, hi
 		torrent.TorrentValueReasons = nil
 		torrent.Protected = false
 		torrent.ProtectionReason = ""
+		torrent.Obligation = ""
 		torrent.RemovalRestricted = !serviceAllowsRemoval(configuration, torrent.ServiceID)
-		if configuration.Protection.MinTorrentRatio > 0 && torrent.Ratio < configuration.Protection.MinTorrentRatio {
+		torrent.Obligation = torrentObligation(*torrent, configuration)
+		if torrent.Obligation != "" {
 			torrent.Protected = true
-			torrent.ProtectionReason = "Below minimum ratio"
-		}
-		if hasTag(splitTags(torrent.Tags), configuration.Protection.KeepTorrentTags) {
-			torrent.Protected = true
-			if torrent.ProtectionReason == "" {
-				torrent.ProtectionReason = "Keep tag"
-			}
+			torrent.ProtectionReason = torrent.Obligation
 		}
 		samples := history[torrent.Client+"|"+torrent.Hash]
 		if !torrentHistorySufficient(samples) {

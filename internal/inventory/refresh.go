@@ -500,6 +500,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 			service.reliability.Message = "Media valuation is reliable."
 		}
 		service.mu.Unlock()
+		service.importKeepTags()
 		return nil
 	}
 
@@ -671,5 +672,6 @@ func (service *Service) Refresh(ctx context.Context) error {
 		service.reliability.Message = "Media valuation is reliable."
 	}
 	service.mu.Unlock()
+	service.importKeepTags()
 	return nil
 }

@@ -59,7 +59,7 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 
 How much a library item deserves to stay when storage gets scarce; higher survives longer. It's Overfin's score, unchanged: what people watch, ask for and like. It's deliberately separate from size: how much space something *takes* and how much it's *worth keeping* are different questions, and Overtide weighs the two only when it picks what to remove.
 
-Protection is separate from value: a keep tag, for instance, takes an item out of automatic removal whatever its value.
+Protection is separate from value: a title or torrent you keep (with **Keep**, on its page or in the cleanup plan) is never planned for removal, whatever its value, until you take it off the Kept list on the Storage page.
 
 ### Torrent Value
 
@@ -92,7 +92,7 @@ Usage is measured against what Overtide can actually work with: space held by so
 
 **Every container that touches your media (Radarr, Sonarr, your torrent client and Overtide) must mount the same host directory at the same path inside.** They can live in different compose files, or on different hosts with shared storage; what matters is each container's own volume line. For example, all of them mount `/mnt/media` (on the host) at `/data` (inside).
 
-**Coming from Stewarr:** Overtide reads the same config folder layout, so a *copy* of Stewarr's `/config` brings its settings and torrent history along. Never point both at the same folder. Items protected with Stewarr's `stewarr_keep` tag stay protected. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`.
+**Coming from Stewarr:** Overtide reads the same config folder layout, so a *copy* of Stewarr's `/config` brings its settings and torrent history along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on Overtide's Kept list after the first inventory, so they stay protected, and the tags are no longer read after that. To run both on one host, give Overtide another port: `OVERTIDE_PORT=8089` in its `.env`.
 
 Hardlink detection, file reconciliation and Unmanaged discovery depend on Overtide being able to `stat()` the exact paths the other services report. If it can't see a path, the Storage page says so, but it can't guess the right mount: that only exists in your compose files.
 
