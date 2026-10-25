@@ -3230,13 +3230,16 @@ Copyright © 2023 Basecamp, LLC
         `[data-home-storage][data-representative-path="${CSS.escape(device.representativePath)}"]`
       );
       if (!card) return;
-      const percent = (part) => (device.usableBytes > 0 ? part / device.usableBytes * 100 : 0).toFixed(3);
+      const percent = (part) => (device.capacityBytes > 0 ? part / device.capacityBytes * 100 : 0).toFixed(3);
       const used = card.querySelector("[data-home-storage-used]");
       const free = card.querySelector("[data-home-storage-free]");
+      const elsewhere = card.querySelector("[data-home-storage-elsewhere]");
       const text = card.querySelector("[data-home-storage-text]");
       if (used) used.style.width = `${percent(device.overtideUsedBytes)}%`;
       if (free) free.style.width = `${percent(device.freeBytes)}%`;
-      if (text) text.textContent = `${humanBytes(device.overtideUsedBytes)} used of ${humanBytes(device.usableBytes)} usable`;
+      if (elsewhere) elsewhere.style.width = `${percent(device.elsewhereBytes)}%`;
+      const elsewhereText = device.elsewhereBytes > 0 ? ` \xB7 ${humanBytes(device.elsewhereBytes)} used elsewhere` : "";
+      if (text) text.textContent = `${humanBytes(device.overtideUsedBytes)} used \xB7 ${humanBytes(device.freeBytes)} free${elsewhereText}, of ${humanBytes(device.capacityBytes)}`;
     }
     refreshFragments(force, userTriggered = false) {
       const fragments = [...document.querySelectorAll("[data-reactive-fragment][id]")];

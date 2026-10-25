@@ -23,10 +23,11 @@
             <div class="muted">{{if .Storage.RootLabels}}{{join .Storage.RootLabels ", "}}{{else}}{{.Storage.RepresentativePath}}{{end}}{{if .Storage.Filesystem}} · {{.Storage.Filesystem}}{{end}}</div>
             {{if .Storage.Available}}
               <div class="storage-bar">
-                <span class="segment used" data-home-storage-used style="width:{{widthPct .Storage.OvertideUsedBytes .Storage.UsableBytes}}%"></span>
-                <span class="segment free" data-home-storage-free style="width:{{widthPct .Storage.FreeBytes .Storage.UsableBytes}}%"></span>
+                <span class="segment used" data-home-storage-used style="width:{{widthPct .Storage.OvertideUsedBytes .Storage.CapacityBytes}}%"></span>
+                <span class="segment free" data-home-storage-free style="width:{{widthPct .Storage.FreeBytes .Storage.CapacityBytes}}%"></span>
+                <span class="segment elsewhere" data-home-storage-elsewhere style="width:{{widthPct .Storage.UnexplainedOtherBytes .Storage.CapacityBytes}}%"></span>
               </div>
-              <div class="muted" data-home-storage-text>{{humanU .Storage.OvertideUsedBytes}} used of {{humanU .Storage.UsableBytes}} usable</div>
+              <div class="muted" data-home-storage-text>{{humanU .Storage.OvertideUsedBytes}} used · {{humanU .Storage.FreeBytes}} free{{if gt .Storage.UnexplainedOtherBytes 0}} · {{humanU .Storage.UnexplainedOtherBytes}} used elsewhere{{end}}, of {{humanU .Storage.CapacityBytes}}</div>
             {{else}}
               <p class="bad">UNAVAILABLE{{if .Storage.Error}}: {{.Storage.Error}}{{end}}</p>
             {{end}}

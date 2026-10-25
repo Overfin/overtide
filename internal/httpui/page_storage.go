@@ -77,6 +77,8 @@ type storageStatsDevice struct {
 	UsableBytes          uint64              `json:"usableBytes"`
 	OvertideUsedBytes    uint64              `json:"overtideUsedBytes"`
 	UsagePercentOfUsable float64             `json:"usagePercentOfUsable"`
+	CapacityBytes        uint64              `json:"capacityBytes"`
+	ElsewhereBytes       uint64              `json:"elsewhereBytes"`
 }
 
 // storageStats serves the raw, cheap byte-level numbers a storage device
@@ -126,6 +128,8 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 			UsableBytes:          usableBytes,
 			OvertideUsedBytes:    overtideUsedBytes,
 			UsagePercentOfUsable: usagePercentOfUsable,
+			CapacityBytes:        device.CapacityBytes(),
+			ElsewhereBytes:       device.UnexplainedOtherBytes(),
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")

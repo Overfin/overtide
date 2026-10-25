@@ -60,24 +60,26 @@
         <div id="storage-live-{{elementID .Storage.RepresentativePath}}" data-reactive-fragment data-live-policy="immediate">
           {{if .Storage.Available}}
             <div class="storage-bar">
-              {{range .Storage.Claimed}}<span class="segment claim" style="width:{{widthPct .Bytes $device.Storage.UsableBytes}}%" title="{{.Service}}: {{humanU .Bytes}}"></span>{{end}}
-              {{if gt .Storage.UnmanagedBytes 0}}<span class="segment unmanaged" style="width:{{widthPct .Storage.UnmanagedBytes .Storage.UsableBytes}}%" title="Unmanaged: {{humanU .Storage.UnmanagedBytes}}"></span>{{end}}
-              <span class="segment free" style="width:{{widthPct .Storage.FreeBytes .Storage.UsableBytes}}%" title="Free: {{humanU .Storage.FreeBytes}}"></span>
+              {{range .Storage.Claimed}}<span class="segment claim" style="width:{{widthPct .Bytes $device.Storage.CapacityBytes}}%" title="{{.Service}}: {{humanU .Bytes}}"></span>{{end}}
+              {{if gt .Storage.UnmanagedBytes 0}}<span class="segment unmanaged" style="width:{{widthPct .Storage.UnmanagedBytes .Storage.CapacityBytes}}%" title="Unmanaged: {{humanU .Storage.UnmanagedBytes}}"></span>{{end}}
+              <span class="segment free" style="width:{{widthPct .Storage.FreeBytes .Storage.CapacityBytes}}%" title="Free: {{humanU .Storage.FreeBytes}}"></span>
+              {{if gt .Storage.UnexplainedOtherBytes 0}}<span class="segment elsewhere" style="width:{{widthPct .Storage.UnexplainedOtherBytes .Storage.CapacityBytes}}%" title="Used elsewhere: {{humanU .Storage.UnexplainedOtherBytes}}"></span>{{end}}
               {{if .Enabled}}
-              <span class="threshold target" style="left:{{printf "%.3f" .Plan.TargetUsagePercent}}%" title="Target: {{printf "%.1f" .Plan.TargetUsagePercent}}%"></span>
+              <span class="threshold target" style="left:{{targetLeft .Plan.TargetUsagePercent .Storage.UsableBytes .Storage.CapacityBytes}}%" title="Target: {{printf "%.1f" .Plan.TargetUsagePercent}}%"></span>
               {{end}}
             </div>
             <ul class="storage-legend">
               {{range .Storage.Claimed}}
               <li class="claim">
-                <div class="claim-label"><span class="swatch"></span>{{.Service}} · {{humanU .Bytes}} · {{widthPct .Bytes $device.Storage.UsableBytes}}%</div>
+                <div class="claim-label"><span class="swatch"></span>{{.Service}} · {{humanU .Bytes}} · {{widthPct .Bytes $device.Storage.CapacityBytes}}%</div>
                 {{with index $device.Storage.ServiceRoots .Service}}
                 <ul class="service-roots">{{range .}}<li><span class="root-icon" aria-hidden="true"></span><span class="mono">{{shortPath .}}</span></li>{{end}}</ul>
                 {{end}}
               </li>
               {{end}}
-              {{if gt .Storage.UnmanagedBytes 0}}<li class="unmanaged"><span class="swatch"></span>Unmanaged · {{humanU .Storage.UnmanagedBytes}} · {{widthPct .Storage.UnmanagedBytes .Storage.UsableBytes}}%</li>{{end}}
-              <li class="free"><span class="swatch"></span>Free · {{humanU .Storage.FreeBytes}} · {{widthPct .Storage.FreeBytes .Storage.UsableBytes}}%</li>
+              {{if gt .Storage.UnmanagedBytes 0}}<li class="unmanaged"><span class="swatch"></span>Unmanaged · {{humanU .Storage.UnmanagedBytes}} · {{widthPct .Storage.UnmanagedBytes .Storage.CapacityBytes}}%</li>{{end}}
+              <li class="free"><span class="swatch"></span>Free · {{humanU .Storage.FreeBytes}} · {{widthPct .Storage.FreeBytes .Storage.CapacityBytes}}%</li>
+              {{if gt .Storage.UnexplainedOtherBytes 0}}<li class="elsewhere"><span class="swatch"></span>Used elsewhere · {{humanU .Storage.UnexplainedOtherBytes}} · {{widthPct .Storage.UnexplainedOtherBytes .Storage.CapacityBytes}}%</li>{{end}}
             </ul>
             {{if $.AutoRemovalDisabled}}
               <p class="muted">Automatic removal is off. Enable it in <a href="/settings">Settings</a> to see suggestions.</p>

@@ -75,6 +75,13 @@ func (d StorageDevice) UnexplainedOtherBytes() uint64 {
 	return d.OtherBytes - d.ReservedBytes
 }
 
+// CapacityBytes is the disk less what its filesystem reserves: Overtide's
+// used bytes, the free bytes and what's used elsewhere add up to it. Unlike
+// UsableBytes, it doesn't move when something else writes to the disk.
+func (d StorageDevice) CapacityBytes() uint64 {
+	return d.TotalBytes - (d.OtherBytes - d.UnexplainedOtherBytes())
+}
+
 // ClaimedSegment is one service's share of a device's used bytes, sorted
 // by service name for deterministic rendering.
 type ClaimedSegment struct {

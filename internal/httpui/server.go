@@ -86,7 +86,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 			return "Never"
 		}
 		return timestamp.Local().Format("2006-01-02")
-	}, "join": strings.Join, "add": func(first, second int) int { return first + second }, "managedKey": managedFileKey, "elementID": elementID, "shortPath": shortPath, "fileOwner": fileOwnerLabel, "peerOwner": filePeerOwnerLabel, "unmanagedRemovalURL": unmanagedRemovalURL, "torrentCleanupActions": torrentCleanupActions, "mediaCleanupActions": mediaCleanupActions, "actionKey": cleanup.ActionKey, "shownKey": shownKey, "torrentActionContext": torrentActionContext, "relatedTorrentMeta": relatedTorrentMeta, "widthPct": func(part, total uint64) string {
+	}, "join": strings.Join, "add": func(first, second int) int { return first + second }, "managedKey": managedFileKey, "elementID": elementID, "shortPath": shortPath, "fileOwner": fileOwnerLabel, "peerOwner": filePeerOwnerLabel, "unmanagedRemovalURL": unmanagedRemovalURL, "torrentCleanupActions": torrentCleanupActions, "mediaCleanupActions": mediaCleanupActions, "actionKey": cleanup.ActionKey, "shownKey": shownKey, "torrentActionContext": torrentActionContext, "relatedTorrentMeta": relatedTorrentMeta, "targetLeft": targetLeft, "widthPct": func(part, total uint64) string {
 		if total == 0 {
 			return "0"
 		}
@@ -305,6 +305,16 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 		views = append(views, deviceView{Storage: device, Plan: p, PlanErr: planErr, Name: cfg.DeviceName(device.RepresentativePath), Enabled: enabled})
 	}
 	return views
+}
+
+// targetLeft places a cleanup target on a bar drawn to the disk's capacity:
+// the target is a share of what Overtide manages (usable), which sits at
+// the bar's left, before what's used elsewhere.
+func targetLeft(targetPercent float64, usable, capacity uint64) string {
+	if capacity == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%.3f", targetPercent*float64(usable)/float64(capacity))
 }
 
 // storageViews is deviceViews without the cleanup plans, for a page that

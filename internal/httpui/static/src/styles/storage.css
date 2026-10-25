@@ -49,6 +49,11 @@
 .storage-bar .segment.free {
   background: transparent;
 }
+/* What other software uses on the disk: last, at the right. */
+.storage-bar .segment.elsewhere {
+  margin-left: auto;
+  background: rgba(var(--text-rgb), 0.25);
+}
 .storage-bar .threshold {
   position: absolute;
   top: 0;
@@ -166,4 +171,7 @@
 .storage-legend li.free .swatch {
   background: transparent;
   border: 1px solid var(--border);
+}
+.storage-legend li.elsewhere .swatch {
+  background: rgba(var(--text-rgb), 0.25);
 }
