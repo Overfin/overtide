@@ -128,22 +128,15 @@ type ListSeries struct {
 }
 
 // FetchCustomList reads a custom list from its address. Sonarr's key isn't
-// sent: the list is somewhere else.
+// sent: the list is somewhere else. A list that answers with a web page
+// (MDBList does, to anything but Sonarr) is asked again at its address
+// plus /json, where MDBList gives the JSON to anyone.
 func FetchCustomList(ctx context.Context, address string) ([]ListSeries, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	series, isPage, err := fetchList(ctx, address)
+	if isPage {
+		series, _, err = fetchList(ctx, strings.TrimRight(address, "/")+"/json")
+	}
 	if err != nil {
-		return nil, err
-	}
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("list %s: %s", address, response.Status)
-	}
-	var series []ListSeries
-	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&series); err != nil {
 		return nil, fmt.Errorf("list %s: %w", address, err)
 	}
 	for i := range series {
@@ -152,6 +145,28 @@ func FetchCustomList(ctx context.Context, address string) ([]ListSeries, error) 
 		}
 	}
 	return series, nil
+}
+
+// fetchList reads one address as a custom list; isPage says it answered
+// with a web page instead.
+func fetchList(ctx context.Context, address string) (series []ListSeries, isPage bool, err error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	request.Header.Set("Accept", "application/json")
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return nil, false, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode/100 != 2 {
+		return nil, false, fmt.Errorf("%s", response.Status)
+	}
+	if strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") {
+		return nil, true, nil
+	}
+	return series, false, json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&series)
 }
 
 // SeriesLookup is a series as Sonarr knows it before it's added.
