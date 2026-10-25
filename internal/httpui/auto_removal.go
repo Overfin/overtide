@@ -177,15 +177,6 @@ func mediaFor(items []model.Media, kind model.MediaType, id int, serviceID strin
 	return model.Media{}, false
 }
 
-// expandActions applies expandGroup to every action.
-func expandActions(actions []cleanup.Action) []cleanup.Action {
-	var out []cleanup.Action
-	for _, action := range actions {
-		out = append(out, expandGroup(action)...)
-	}
-	return out
-}
-
 // expandGroup turns a cross-seed group (a lone-torrent action with several
 // torrents sharing files) into one action per torrent, submitted together:
 // each removal deletes its own links, and the last one frees the data.
