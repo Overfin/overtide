@@ -2,7 +2,6 @@ package sonarr
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,8 +11,8 @@ import (
 	"time"
 )
 
-// What adding series needs from Sonarr: its import lists, a series'
-// details before it's added, adding it, searching for it, and whether that
+// What adding series needs from Sonarr: a series' details before it's
+// added, where it goes, adding it, searching for it, and whether that
 // search started a download.
 
 // StatusError is Sonarr answering with an error status.
@@ -64,111 +63,6 @@ func (client *Client) send(method, path string, body, out any) error {
 	return json.NewDecoder(response.Body).Decode(out)
 }
 
-// ImportList is one of Sonarr's import lists, with what a series it brings
-// is added with.
-type ImportList struct {
-	ID                 int    `json:"id"`
-	Name               string `json:"name"`
-	Implementation     string `json:"implementation"`
-	EnableAutomaticAdd bool   `json:"enableAutomaticAdd"`
-	RootFolderPath     string `json:"rootFolderPath"`
-	QualityProfileID   int    `json:"qualityProfileId"`
-	ShouldMonitor      string `json:"shouldMonitor"`
-	SeriesType         string `json:"seriesType"`
-	SeasonFolder       bool   `json:"seasonFolder"`
-	Fields             []struct {
-		Name  string `json:"name"`
-		Value any    `json:"value"`
-	} `json:"fields"`
-}
-
-// CustomURL is the address of a custom list (Sonarr's "Custom List"), or
-// "" for another kind of list.
-func (list ImportList) CustomURL() string {
-	if list.Implementation != "CustomImport" {
-		return ""
-	}
-	for _, field := range list.Fields {
-		if field.Name == "baseUrl" {
-			address, _ := field.Value.(string)
-			return strings.TrimSpace(address)
-		}
-	}
-	return ""
-}
-
-func (client *Client) ImportLists() ([]ImportList, error) {
-	var lists []ImportList
-	return lists, client.send(http.MethodGet, "/api/v3/importlist", nil, &lists)
-}
-
-// ExcludedTVDBIDs returns the series Sonarr's import lists may not add.
-func (client *Client) ExcludedTVDBIDs() (map[int]bool, error) {
-	var exclusions []struct {
-		TVDBID int `json:"tvdbId"`
-	}
-	if err := client.send(http.MethodGet, "/api/v3/importlistexclusion", nil, &exclusions); err != nil {
-		return nil, err
-	}
-	excluded := map[int]bool{}
-	for _, exclusion := range exclusions {
-		excluded[exclusion.TVDBID] = true
-	}
-	return excluded, nil
-}
-
-// ListSeries is a series a custom list holds.
-type ListSeries struct {
-	// TVDBID: the custom list format says tvdbId; MDBList's tvdbid matches
-	// too, since JSON names are matched regardless of case.
-	TVDBID      int    `json:"tvdbId"`
-	Title       string `json:"title"`
-	Year        int    `json:"year"`
-	ReleaseYear int    `json:"release_year"`
-}
-
-// FetchCustomList reads a custom list from its address. Sonarr's key isn't
-// sent: the list is somewhere else. A list that answers with a web page
-// (MDBList does, to anything but Sonarr) is asked again at its address
-// plus /json, where MDBList gives the JSON to anyone.
-func FetchCustomList(ctx context.Context, address string) ([]ListSeries, error) {
-	series, isPage, err := fetchList(ctx, address)
-	if isPage {
-		series, _, err = fetchList(ctx, strings.TrimRight(address, "/")+"/json")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("list %s: %w", address, err)
-	}
-	for i := range series {
-		if series[i].Year == 0 {
-			series[i].Year = series[i].ReleaseYear
-		}
-	}
-	return series, nil
-}
-
-// fetchList reads one address as a custom list; isPage says it answered
-// with a web page instead.
-func fetchList(ctx context.Context, address string) (series []ListSeries, isPage bool, err error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	request.Header.Set("Accept", "application/json")
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
-	if err != nil {
-		return nil, false, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode/100 != 2 {
-		return nil, false, fmt.Errorf("%s", response.Status)
-	}
-	if strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") {
-		return nil, true, nil
-	}
-	return series, false, json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&series)
-}
-
 // SeriesLookup is a series as Sonarr knows it before it's added.
 type SeriesLookup struct {
 	Title      string     `json:"title"`
@@ -214,31 +108,22 @@ func (client *Client) EnsureTag(label string) (int, error) {
 	return made.ID, client.send(http.MethodPost, "/api/v3/tag", map[string]string{"label": label}, &made)
 }
 
-// AddSeries adds the series, tagged, with the list's root folder, quality
-// profile and monitoring (a list made up for a title without one leaves
-// them to their defaults: every season, standard), without searching: the
-// search is asked for apart, to follow it. It returns the series' ID in
-// Sonarr.
-func (client *Client) AddSeries(lookup SeriesLookup, list ImportList, tagID int) (int, error) {
+// AddSeries adds the series, every season monitored, in season folders,
+// tagged, to the root folder with the quality profile, without searching:
+// the search is asked for apart, to follow it. It returns the series' ID
+// in Sonarr.
+func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityProfileID int, tagID int) (int, error) {
 	body := map[string]any{}
 	for key, value := range lookup.raw {
 		body[key] = value
 	}
-	monitor := list.ShouldMonitor
-	if monitor == "" {
-		monitor = "all"
-	}
-	seriesType := list.SeriesType
-	if seriesType == "" {
-		seriesType = "standard"
-	}
-	body["rootFolderPath"] = list.RootFolderPath
-	body["qualityProfileId"] = list.QualityProfileID
+	body["rootFolderPath"] = rootFolder
+	body["qualityProfileId"] = qualityProfileID
 	body["monitored"] = true
-	body["seasonFolder"] = list.SeasonFolder
-	body["seriesType"] = seriesType
+	body["seasonFolder"] = true
+	body["seriesType"] = "standard"
 	body["tags"] = []int{tagID}
-	body["addOptions"] = map[string]any{"monitor": monitor, "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
+	body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": false, "searchForCutoffUnmetEpisodes": false}
 	var added struct {
 		ID int `json:"id"`
 	}

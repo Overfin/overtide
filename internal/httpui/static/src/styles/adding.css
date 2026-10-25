@@ -22,15 +22,6 @@
   width: auto;
   min-width: 10rem;
 }
-.adding-settings .with-unit {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-weight: 400;
-}
-.adding-settings input[type=number] {
-  width: 5rem;
-}
 .adding-settings .actions {
   align-self: flex-end;
   flex-basis: 100%;
@@ -47,13 +38,6 @@
 .adding-how p {
   margin: 0.5rem 0 0;
   max-width: 60rem;
-}
-.adding-count {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  margin: 0.5rem 0;
 }
 .adding-summary {
   display: inline-block;
@@ -115,8 +99,4 @@ table.compact button {
   .adding-table td[data-label]:not(:empty)::before {
     content: attr(data-label) " ";
   }
-}
-.adding-warn {
-  margin: 1rem 0 0;
-  font-size: 0.85rem;
 }

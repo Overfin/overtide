@@ -189,10 +189,11 @@ type Missing struct {
 	Score float64
 }
 
-// Suggestions are at most max of the titles the libraries lack, in
-// Overfin's order: by score, or, for a list ("trending", "popular"), in
-// TMDB's order. A series comes once, at its first season's place.
-func (client *Client) Suggestions(list string, max int) ([]Missing, error) {
+// Suggestions are at most max of the titles the libraries lack, in the
+// order Overfin says to add them (list=suggestions: its picks by value,
+// with trending and popular titles mixed in by its discovery share). A
+// series comes once, at its first season's place.
+func (client *Client) Suggestions(max int) ([]Missing, error) {
 	if client.base == "" || client.key == "" {
 		return nil, nil
 	}
@@ -200,13 +201,7 @@ func (client *Client) Suggestions(list string, max int) ([]Missing, error) {
 	series := map[int]int{} // TMDB ID → index in out
 	cursor := ""
 	for range maxPages {
-		q := url.Values{"inLibrary": {"false"}, "fields": {"score"}, "limit": {strconv.Itoa(pageSize)}}
-		if list != "" {
-			q.Set("list", list)
-		} else {
-			q.Set("sort", "score")
-			q.Set("order", "desc")
-		}
+		q := url.Values{"list": {"suggestions"}, "fields": {"score"}, "limit": {strconv.Itoa(pageSize)}}
 		if cursor != "" {
 			q.Set("cursor", cursor)
 		}

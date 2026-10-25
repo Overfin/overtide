@@ -1,11 +1,9 @@
 package httpui
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,10 +13,10 @@ import (
 )
 
 // The adding tasks: trying titles (its ID kept from when it also read),
-// and reading the suggestions.
+// and reading Overfin's suggestions.
 const (
-	addingTaskID     = "adding"
-	addingReadTaskID = "adding-read"
+	addingTaskID        = "adding"
+	addingOverfinTaskID = "adding-overfin"
 )
 
 // addingRowsShown is how many titles a group shows before "Show all".
@@ -31,10 +29,7 @@ var addingSources = []struct {
 	Label  string
 }{
 	{adding.FromRequest, "Requests"},
-	{adding.FromOverfin, "Overfin's picks"},
-	{adding.FromDiscovery, "Discovery"},
-	{adding.HandedOver, "Handed over"},
-	{adding.FromList, "Import lists"},
+	{adding.FromOverfin, "Overfin"},
 }
 
 type addingSourceCount struct {
@@ -69,11 +64,8 @@ type addingGroup struct {
 }
 
 type addingPageData struct {
-	Mode string
-	// DiscoveryShare is the part, in percent, of Overfin's suggestions
-	// from TMDB's trending and popular titles.
-	DiscoveryShare int
-	Groups         []addingGroup
+	Mode   string
+	Groups []addingGroup
 	// Sources counts the titles of each source there is.
 	Sources []addingSourceCount
 	Total   int
@@ -85,13 +77,7 @@ type addingPageData struct {
 	// titles tried next.
 	NextRead time.Time
 	NextRun  time.Time
-	// WithoutFiles counts what Radarr and Sonarr have without files that
-	// isn't Overtide's: what "Hand them all over" takes.
-	WithoutFiles int
-	// SelfAdding names the import lists that still add titles on their
-	// own: with adding on, they can bring back what Overtide took out.
-	SelfAdding []string
-	Error      string
+	Error    string
 }
 
 // addingGroups is the page's order: what's moving first, then what waits,
@@ -104,7 +90,7 @@ var addingGroups = []struct {
 	Open      bool
 }{
 	{adding.Downloading, "Downloading", "Overtide added these, and their search started a download.", "Since", true},
-	{adding.Waiting, "Waiting", "In the order they're tried: requests, then Overfin's suggestions, then the import lists.", "Next try", true},
+	{adding.Waiting, "Waiting", "In the order they're tried: requests, then Overfin's suggestions, in Overfin's order.", "Next try", true},
 	{adding.NotReleased, "Not out yet", "Tried once they're out at home (digital or disc).", "Out", false},
 	{adding.Imported, "Imported", "Overtide's, with their files.", "Since", false},
 }
@@ -120,14 +106,14 @@ func addingSourceLabel(source adding.Source) string {
 
 func (server *Server) addingData(query url.Values) addingPageData {
 	cfg := server.inv.Config()
-	data := addingPageData{Mode: cfg.Adding.Mode, DiscoveryShare: cfg.Adding.Discovery(), WithoutFiles: server.adder.WithoutFiles(), Query: strings.TrimSpace(query.Get("q")), Source: query.Get("source")}
+	data := addingPageData{Mode: cfg.Adding.Mode, Query: strings.TrimSpace(query.Get("q")), Source: query.Get("source")}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
 	}
 	if server.tasks != nil {
 		for _, status := range server.tasks.Snapshot() {
 			switch status.ID {
-			case addingReadTaskID:
+			case addingOverfinTaskID:
 				data.NextRead = status.NextRun
 			case addingTaskID:
 				data.NextRun = status.NextRun
@@ -175,9 +161,6 @@ func (server *Server) addingData(query url.Values) addingPageData {
 			if entry.Kind == model.Series {
 				row.Kind = "Series"
 			}
-			if entry.From != "" && entry.Source != adding.HandedOver && entry.Source != adding.FromOverfin {
-				row.Source += " · " + entry.From
-			}
 			if entry.State == adding.Waiting || entry.State == adding.NotReleased {
 				row.When = entry.NextTry
 			}
@@ -197,39 +180,7 @@ func (server *Server) addingData(query url.Values) addingPageData {
 			data.Groups = append(data.Groups, view)
 		}
 	}
-	if data.Mode != config.AddingOff {
-		data.SelfAdding = server.selfAddingLists(cfg)
-	}
 	return data
-}
-
-// selfAddingLists names the Radarr and Sonarr import lists that add titles
-// on their own.
-func (server *Server) selfAddingLists(cfg config.Config) []string {
-	var names []string
-	for _, svc := range cfg.ServicesOfType("radarr") {
-		if client, err := server.inv.RadarrClient(svc.ID); err == nil {
-			if lists, err := client.ImportLists(); err == nil {
-				for _, list := range lists {
-					if list.Enabled && list.EnableAuto {
-						names = append(names, svc.Name+": "+list.Name)
-					}
-				}
-			}
-		}
-	}
-	for _, svc := range cfg.ServicesOfType("sonarr") {
-		if client, err := server.inv.SonarrClient(svc.ID); err == nil {
-			if lists, err := client.ImportLists(); err == nil {
-				for _, list := range lists {
-					if list.EnableAutomaticAdd {
-						names = append(names, svc.Name+": "+list.Name)
-					}
-				}
-			}
-		}
-	}
-	return names
 }
 
 func (server *Server) addingPage(w http.ResponseWriter, r *http.Request) {
@@ -246,8 +197,8 @@ func (server *Server) addingPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addingPost handles the page's three forms: the mode, handing titles
-// over, and running a pass now.
+// addingPost handles the page's two forms: the mode, and running a pass
+// now.
 func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	if server.adder == nil {
 		http.Error(w, "adding is unavailable", http.StatusServiceUnavailable)
@@ -265,24 +216,16 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/adding/mode":
 		err = server.inv.SetAddingMode(r.FormValue("mode"))
-		if raw := r.FormValue("discovery_share"); err == nil && raw != "" {
-			share, convErr := strconv.Atoi(raw)
-			if convErr != nil {
-				err = fmt.Errorf("discovery share must be a whole number from 0 to 100")
-			} else {
-				err = server.inv.SetDiscoveryShare(share)
-			}
-		}
-	case "/adding/hand-over":
-		_, err = server.adder.HandOver()
 	case "/adding/run":
 		if server.tasks == nil {
 			http.Error(w, "task manager unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		// Read first, then try: they queue one after the other.
-		if _, err = server.tasks.RunAsyncApp(addingReadTaskID); err == nil {
-			_, err = server.tasks.RunAsyncApp(addingTaskID)
+		for _, id := range []string{addingOverfinTaskID, addingTaskID} {
+			if _, err = server.tasks.RunAsyncApp(id); err != nil {
+				break
+			}
 		}
 	default:
 		http.NotFound(w, r)

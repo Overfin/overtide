@@ -20,25 +20,16 @@
           </select>
           <span class="muted">Dry run only reads: nothing is added or searched for.</span>
         </label>
-        <label for="adding-discovery">Discovery share
-          <span class="with-unit"><input id="adding-discovery" name="discovery_share" type="number" min="0" max="100" step="1" value="{{.DiscoveryShare}}"> %</span>
-          <span class="muted">Of Overfin's suggestions, the part taken from trending and popular titles. 0 turns it off.</span>
-        </label>
         <div class="actions"><button type="submit">Save</button></div>
       </form>
-      {{if .SelfAdding}}<p class="warn adding-warn">These import lists add titles on their own, so they can bring back what Overtide takes out: {{join .SelfAdding ", "}}. Turn off their automatic adding for Overtide to manage their titles.</p>{{end}}
       <details class="adding-how">
         <summary>How adding works</summary>
-        <p>Every hour, Overtide reads your Radarr and Sonarr import lists and Overfin's suggestions: its picks, the titles your libraries lack, by value, and, by the discovery share, TMDB's trending and popular titles, so people have new things to discover. A discovered title nobody watches loses its value once it's no longer new, and removal takes it out. A title from a list is added with that list's root folder and quality profile; any other with Radarr's or Sonarr's own.</p>
-        <p>Every 15 minutes it tries the titles whose turn it is, one search at a time: it adds the title to Radarr or Sonarr, tagged "overtide", searches for it, and keeps it only if a download started. Otherwise it takes it out again and tries later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release. Nothing is added to a disk over its target.</p>
-        <p>Overtide manages only the titles tagged "overtide": what you add yourself is never touched.</p>
+        <p>Every hour, Overtide asks Overfin what to add: the titles your libraries lack, in the order Overfin gives them (its most valuable, with trending and popular titles mixed in by the discovery share set in Overfin). Requests go before them.</p>
+        <p>Every 15 minutes it tries the titles whose turn it is, one search at a time: it adds the title to Radarr or Sonarr (their root folder and quality profile), tagged "overtide", searches for it, and keeps it only if a download started. Otherwise it takes it out again and tries later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release.</p>
+        <p>A disk's usage target is what Overtide steers toward: it adds first, and removal brings the disk back under the target. Only the critical threshold stops adding, until removal catches up.</p>
+        <p>Overtide manages only the titles tagged "overtide": what you add yourself is never touched. Import lists are yours: Overtide doesn't read them.</p>
       </details>
     </section>
-    {{if .WithoutFiles}}
-    <form method="post" action="/adding/hand-over" class="card adding-count" onsubmit="return confirm('Hand these {{.WithoutFiles}} titles to Overtide? Once adding is on, each is searched for, and taken out of Radarr or Sonarr if nothing is found, to be tried again later.')">
-      <span>Radarr and Sonarr have <b>{{.WithoutFiles}}</b> titles without files that aren't Overtide's.</span> <button type="submit" class="ghost">Hand them all to Overtide</button>
-    </form>
-    {{end}}
     {{if .Total}}
     <div class="card">
       <form class="filters" data-auto-filter method="get" action="/adding">

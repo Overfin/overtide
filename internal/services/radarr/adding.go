@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// What adding films needs from Radarr: its import lists and what they
-// hold, a film's details before it's added, adding it, searching for it,
-// and whether that search started a download.
+// What adding films needs from Radarr: a film's details before it's
+// added, where it goes, adding it, searching for it, and whether that
+// search started a download.
 
 // StatusError is Radarr answering with an error status.
 type StatusError struct {
@@ -61,48 +61,6 @@ func (client *Client) send(method, path string, body, out any) error {
 		return nil
 	}
 	return json.NewDecoder(response.Body).Decode(out)
-}
-
-// ImportList is one of Radarr's import lists, with what a film it brings
-// is added with.
-type ImportList struct {
-	ID                  int    `json:"id"`
-	Name                string `json:"name"`
-	Enabled             bool   `json:"enabled"`
-	EnableAuto          bool   `json:"enableAuto"`
-	RootFolderPath      string `json:"rootFolderPath"`
-	QualityProfileID    int    `json:"qualityProfileId"`
-	MinimumAvailability string `json:"minimumAvailability"`
-}
-
-func (client *Client) ImportLists() ([]ImportList, error) {
-	var lists []ImportList
-	return lists, client.send(http.MethodGet, "/api/v3/importlist", nil, &lists)
-}
-
-// ListMovie is a film one of the import lists holds.
-type ListMovie struct {
-	TMDBID           int    `json:"tmdbId"`
-	Title            string `json:"title"`
-	Year             int    `json:"year"`
-	Lists            []int  `json:"lists"`
-	IsExcluded       bool   `json:"isExcluded"`
-	IsRecommendation bool   `json:"isRecommendation"`
-}
-
-// ListMovies returns what the import lists hold now, as Radarr reads them.
-func (client *Client) ListMovies() ([]ListMovie, error) {
-	var movies []ListMovie
-	if err := client.send(http.MethodGet, "/api/v3/importlist/movie", nil, &movies); err != nil {
-		return nil, err
-	}
-	kept := movies[:0]
-	for _, movie := range movies {
-		if !movie.IsRecommendation {
-			kept = append(kept, movie)
-		}
-	}
-	return kept, nil
 }
 
 // MovieLookup is a film as Radarr knows it before it's added.

@@ -3,14 +3,8 @@ package adding
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/overfin/overtide/internal/config"
-	"github.com/overfin/overtide/internal/inventory"
-	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/store"
 
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
@@ -72,20 +66,20 @@ func TestRetryDelay(t *testing.T) {
 	}
 }
 
-// Requests first, then Overfin's picks, then lists, each in its order.
+// Requests first, then Overfin's suggestions, each in its order.
 func TestSortForTries(t *testing.T) {
 	entries := []Entry{
-		{Key: "list-2", Source: FromList, From: "A", Position: 2},
-		{Key: "overfin", Source: FromOverfin},
-		{Key: "list-1", Source: FromList, From: "A", Position: 1},
-		{Key: "request", Source: FromRequest},
+		{Key: "overfin-2", Source: FromOverfin, Position: 2},
+		{Key: "request-1", Source: FromRequest, Position: 1},
+		{Key: "overfin-1", Source: FromOverfin, Position: 1},
+		{Key: "request-0", Source: FromRequest},
 	}
-	sortForTries(entries, 50)
+	sortForTries(entries)
 	got := ""
 	for _, entry := range entries {
 		got += entry.Key + " "
 	}
-	if got != "request overfin list-1 list-2 " {
+	if got != "request-0 request-1 overfin-1 overfin-2 " {
 		t.Fatal(got)
 	}
 }
@@ -137,52 +131,5 @@ func TestSettle(t *testing.T) {
 	service.settle(&entry, false, nil, func() error { return errors.New("down") })
 	if entry.ArrID != 4 {
 		t.Fatalf("a title that couldn't be taken out lost its ID: %#v", entry)
-	}
-}
-
-// Handing everything over takes what Radarr and Sonarr have without files
-// and that isn't Overtide's, once.
-func TestHandOver(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	media := []model.Media{
-		{Type: model.Movie, SourceID: 1, ServiceID: "r", TMDBID: 11, Title: "Empty"},
-		{Type: model.Movie, SourceID: 2, ServiceID: "r", TMDBID: 12, Title: "Full", SizeBytes: 5},
-		{Type: model.Movie, SourceID: 3, ServiceID: "r", TMDBID: 13, Title: "Ours", Tags: []string{"overtide"}},
-		{Type: model.Series, SourceID: 4, ServiceID: "s", TVDBID: 14, Title: "Empty show"},
-	}
-	if err := database.PublishInventory(1, nil, nil, media); err != nil {
-		t.Fatal(err)
-	}
-	service := New(inventory.New(config.Config{}, database))
-	// The series only waits from a list: it's handed over, not doubled.
-	if err := service.save([]Entry{{Key: seriesKey(14), ServiceID: "s", Kind: model.Series, Source: FromList, State: Waiting}}); err != nil {
-		t.Fatal(err)
-	}
-	if got := service.WithoutFiles(); got != 2 {
-		t.Fatalf("without files: %d", got)
-	}
-	handed, err := service.HandOver()
-	if err != nil || handed != 2 {
-		t.Fatalf("handed %d, %v", handed, err)
-	}
-	entries, _ := service.Entries()
-	if len(entries) != 2 {
-		t.Fatalf("%d entries", len(entries))
-	}
-	for _, entry := range entries {
-		if !entry.Ours || entry.State != Waiting || entry.ArrID == 0 || entry.Source != HandedOver {
-			t.Errorf("%#v", entry)
-		}
-	}
-	// Handed over, they're no longer counted, though not tagged yet.
-	if got := service.WithoutFiles(); got != 0 {
-		t.Errorf("still counted: %d", got)
-	}
-	if _, err := service.HandOver(); err == nil {
-		t.Error("handed the same titles twice")
 	}
 }

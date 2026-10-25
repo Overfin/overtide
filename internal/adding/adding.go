@@ -1,10 +1,10 @@
 // Package adding brings titles into the libraries: it keeps a waiting list
-// of titles to add, fed by Overfin's suggestions and the import lists of
-// Radarr and Sonarr, and tries
+// of titles to add, requests first, then what Overfin suggests, and tries
 // them one by one. A try adds the title, tagged, searches for it, and keeps
 // it only if a download started; otherwise the title leaves Radarr or
-// Sonarr at once and waits for its next try. See the ROADMAP's "Managed
-// mode".
+// Sonarr at once and waits for its next try. Import lists are the
+// operator's business: Overtide never reads them. See the ROADMAP's
+// "Managed mode".
 package adding
 
 import (
@@ -29,7 +29,7 @@ const Tag = "overtide"
 // RunEvery is how often the titles are tried, and RunFor how long one run
 // goes on trying titles, one search at a time: under RunEvery, so runs
 // never overlap. What's left is tried by the next run. ReadEvery is how
-// often Overfin's suggestions and the import lists are read (Read).
+// often Overfin's suggestions are read (ReadOverfin).
 const (
 	RunEvery  = 15 * time.Minute
 	RunFor    = 14 * time.Minute
@@ -38,32 +38,20 @@ const (
 
 const storeKey = "adding.waiting"
 
-// Source is where a title in the waiting list comes from. Requests go
-// first, then Overfin's suggestions (its picks and, by the discovery
-// share, TMDB's trending and popular titles), then the rest (import
-// lists).
+// Source is where a title in the waiting list comes from: requests always
+// go first, then Overfin's suggestions, in Overfin's order.
 type Source string
 
 const (
 	FromRequest Source = "request"
 	FromOverfin Source = "overfin"
-	// FromDiscovery: TMDB's trending and popular titles, through Overfin,
-	// whatever their value.
-	FromDiscovery Source = "discovery"
-	FromList      Source = "list"
-	// HandedOver: in Radarr or Sonarr without files, handed over by the
-	// operator (HandOver).
-	HandedOver Source = "handed over"
 )
 
 func (source Source) rank() int {
-	switch source {
-	case FromRequest:
+	if source == FromRequest {
 		return 0
-	case FromOverfin, FromDiscovery:
-		return 1
 	}
-	return 2
+	return 1
 }
 
 // State is where a title stands.
@@ -90,13 +78,10 @@ type Entry struct {
 	Title      string          `json:"title"`
 	Year       int             `json:"year"`
 	Source     Source          `json:"source"`
-	// From names the list it came from.
-	From   string `json:"from"`
-	ListID int    `json:"listId"`
-	// Position is its place in its list, which orders a source's titles.
+	// Position is its place in its source's order.
 	Position int   `json:"position"`
 	State    State `json:"state"`
-	// Ours is true once Overtide added it, or the operator handed it over.
+	// Ours is true once Overtide added it (or found it tagged as its own).
 	Ours bool `json:"ours,omitempty"`
 	// ArrID is its ID in Radarr or Sonarr while it's there.
 	ArrID     int       `json:"arrId,omitempty"`
@@ -112,7 +97,7 @@ func seriesKey(tvdbID int) string { return fmt.Sprintf("series:%d", tvdbID) }
 // Service keeps the waiting list and tries its titles.
 type Service struct {
 	inv *inventory.Service
-	// mu makes runs, adoptions and reads take turns.
+	// mu makes runs and reads take turns.
 	mu  sync.Mutex
 	now func() time.Time
 }
@@ -129,79 +114,8 @@ func (service *Service) Entries() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	sortForTries(entries, service.inv.Config().Adding.Discovery())
+	sortForTries(entries)
 	return entries, nil
-}
-
-// HandOver hands every title Radarr and Sonarr have without files, and
-// that isn't Overtide's, over to Overtide: from its next try, each is
-// handled as one Overtide added. It returns how many it handed over.
-func (service *Service) HandOver() (int, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	entries, err := service.load()
-	if err != nil {
-		return 0, err
-	}
-	at := map[string]int{}
-	for i, entry := range entries {
-		at[entry.ServiceID+"|"+entry.Key] = i
-	}
-	now := service.now()
-	handed := 0
-	items, _, _ := service.inv.Snapshot()
-	for _, m := range withoutFiles(items, entries) {
-		key := titleKey(m)
-		external := m.TMDBID
-		if m.Type == model.Series {
-			external = m.TVDBID
-		}
-		entry := Entry{Key: key, Kind: m.Type, ServiceID: m.ServiceID, ExternalID: external, Title: m.Title, Year: m.Year, Source: HandedOver, From: "Handed over", State: Waiting, Ours: true, ArrID: m.SourceID, NextTry: now, Result: "Handed over to Overtide", UpdatedAt: now}
-		// One only waiting from a list becomes the handed-over title.
-		if i, there := at[m.ServiceID+"|"+key]; there {
-			entries[i] = entry
-		} else {
-			entries = append(entries, entry)
-		}
-		handed++
-	}
-	if handed == 0 {
-		return 0, fmt.Errorf("no title to hand over")
-	}
-	return handed, service.save(entries)
-}
-
-// WithoutFiles counts the titles Radarr and Sonarr have without files that
-// aren't Overtide's: what HandOver would take.
-func (service *Service) WithoutFiles() int {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	entries, err := service.load()
-	if err != nil {
-		return 0
-	}
-	items, _, _ := service.inv.Snapshot()
-	return len(withoutFiles(items, entries))
-}
-
-// withoutFiles lists the titles without files that aren't Overtide's:
-// neither tagged nor already in the waiting list as its own (a handed-over
-// title carries the tag only from its first live try).
-func withoutFiles(items []model.Media, entries []Entry) []model.Media {
-	ours := map[string]bool{}
-	for _, entry := range entries {
-		if entry.Ours {
-			ours[entry.ServiceID+"|"+entry.Key] = true
-		}
-	}
-	var out []model.Media
-	for _, m := range items {
-		key := titleKey(m)
-		if m.SizeBytes == 0 && !hasTag(m.Tags, Tag) && key != "" && !ours[m.ServiceID+"|"+key] {
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // titleKey is a Radarr film's or Sonarr series' key in the waiting list,
@@ -216,9 +130,9 @@ func titleKey(m model.Media) string {
 	return ""
 }
 
-// Read is the reading task: it brings the import lists' titles and
-// Overfin's suggestions into the waiting list.
-func (service *Service) Read(ctx context.Context) error {
+// ReadOverfin is the Overfin suggestions task: it brings what Overfin
+// suggests adding into the waiting list, in Overfin's order.
+func (service *Service) ReadOverfin(ctx context.Context) error {
 	cfg := service.inv.Config()
 	if cfg.Adding.Mode != config.AddingDryRun && cfg.Adding.Mode != config.AddingOn {
 		return nil
@@ -227,9 +141,6 @@ func (service *Service) Read(ctx context.Context) error {
 	defer service.mu.Unlock()
 	entries, err := service.load()
 	if err != nil {
-		return err
-	}
-	if entries, err = service.readLists(ctx, cfg, entries); err != nil {
 		return err
 	}
 	return service.save(service.readOverfin(ctx, cfg, entries))
@@ -251,7 +162,7 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 	entries = service.match(entries)
 	service.follow(ctx, entries)
-	sortForTries(entries, cfg.Adding.Discovery())
+	sortForTries(entries)
 	stopAt := service.now().Add(RunFor)
 	for i := range entries {
 		if ctx.Err() != nil || service.now().After(stopAt) {
@@ -272,44 +183,22 @@ func (service *Service) Run(ctx context.Context) error {
 	return service.save(entries)
 }
 
-// sortForTries orders the waiting list: by source (requests first), then
-// by place in its list; Overfin's suggestions mixed by the discovery share
-// (interleave).
-func sortForTries(entries []Entry, share int) {
+// sortForTries orders the waiting list: requests first, then Overfin's
+// suggestions, each in its source's order.
+func sortForTries(entries []Entry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Source.rank() != entries[j].Source.rank() {
 			return entries[i].Source.rank() < entries[j].Source.rank()
 		}
-		if entries[i].From != entries[j].From {
-			return entries[i].From < entries[j].From
-		}
 		return entries[i].Position < entries[j].Position
 	})
-	var picks, discovered []Entry
-	start := -1
-	for i, entry := range entries {
-		if entry.Source.rank() != 1 {
-			continue
-		}
-		if start < 0 {
-			start = i
-		}
-		if entry.Source == FromDiscovery {
-			discovered = append(discovered, entry)
-		} else {
-			picks = append(picks, entry)
-		}
-	}
-	if start >= 0 {
-		copy(entries[start:], interleave(picks, discovered, share))
-	}
 }
 
 // match drops from the waiting list the titles already in Radarr or
-// Sonarr that aren't Overtide's: the lists are only a source of titles to
-// add. One there carrying Overtide's tag is Overtide's, followed from then
-// on (follow). Overtide's own titles aren't matched here: the inventory may
-// not have caught up with a title just added.
+// Sonarr that aren't Overtide's: the operator has them already. One there
+// carrying Overtide's tag is Overtide's, followed from then on (follow).
+// Overtide's own titles aren't matched here: the inventory may not have
+// caught up with a title just added.
 func (service *Service) match(entries []Entry) []Entry {
 	items, _, _ := service.inv.Snapshot()
 	present := map[string]model.Media{}

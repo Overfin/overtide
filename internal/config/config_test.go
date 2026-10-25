@@ -784,18 +784,3 @@ func TestKeepAndUnkeep(t *testing.T) {
 		t.Fatalf("expected the film off the list: %#v", c.Kept)
 	}
 }
-
-// The discovery share is 50% until set; 0 is kept, out of range refused.
-func TestDiscoveryShare(t *testing.T) {
-	var c Config
-	if got := c.Adding.Discovery(); got != DefaultDiscoveryShare {
-		t.Fatalf("unset: %d", got)
-	}
-	c, err := SetDiscoveryShare(c, 0)
-	if err != nil || c.Adding.Discovery() != 0 {
-		t.Fatalf("0: %d %v", c.Adding.Discovery(), err)
-	}
-	if _, err := SetDiscoveryShare(c, 101); err == nil {
-		t.Error("101% accepted")
-	}
-}

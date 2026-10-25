@@ -1,7 +1,6 @@
 package sonarr
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -182,22 +181,5 @@ func TestInventoryCarriesSonarrsTMDBID(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].TMDBID != 118085 || items[0].TVDBID != 367715 {
 		t.Fatalf("expected both IDs from Sonarr, got %#v", items)
-	}
-}
-
-// A list answering with a web page is read at its address plus /json.
-func TestFetchCustomListFallsBackToJSONAddress(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/lists/x/json" {
-			_, _ = w.Write([]byte(`[{"tvdbid":7,"title":"Show","release_year":2026}]`))
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<!DOCTYPE html>"))
-	}))
-	defer server.Close()
-	series, err := FetchCustomList(context.Background(), server.URL+"/lists/x")
-	if err != nil || len(series) != 1 || series[0].TVDBID != 7 || series[0].Year != 2026 {
-		t.Fatalf("%#v %v", series, err)
 	}
 }

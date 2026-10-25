@@ -57,13 +57,14 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		service.notReleased(entry, at)
 		return
 	}
-	var list radarr.ImportList
+	var rootFolder string
+	var profileID int
 	if entry.ArrID == 0 {
-		if list, err = movieList(client, entry.ListID); err != nil {
+		if rootFolder, profileID, err = client.Destination(); err != nil {
 			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -82,7 +83,8 @@ func (service *Service) tryMovie(ctx context.Context, cfg config.Config, entry *
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddMovie(lookup, list.RootFolderPath, list.QualityProfileID, list.MinimumAvailability, tagID)
+		// Released: tries wait for the release already (movieReleased).
+		id, err := client.AddMovie(lookup, rootFolder, profileID, "released", tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
@@ -121,13 +123,14 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		service.notReleased(entry, at)
 		return
 	}
-	var list sonarr.ImportList
+	var rootFolder string
+	var profileID int
 	if entry.ArrID == 0 {
-		if list, err = seriesList(client, entry.ListID); err != nil {
+		if rootFolder, profileID, err = client.Destination(); err != nil {
 			service.later(entry, err.Error())
 			return
 		}
-		if stop := service.diskStop(cfg, list.RootFolderPath, dryRun); stop != "" {
+		if stop := service.diskStop(cfg, rootFolder, dryRun); stop != "" {
 			service.later(entry, stop)
 			return
 		}
@@ -146,7 +149,7 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		return
 	}
 	if entry.ArrID == 0 {
-		id, err := client.AddSeries(lookup, list, tagID)
+		id, err := client.AddSeries(lookup, rootFolder, profileID, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
 			return
@@ -162,44 +165,6 @@ func (service *Service) trySeries(ctx context.Context, cfg config.Config, entry 
 		client.CommandStatus,
 		func() (bool, error) { return client.GrabbedSince(entry.ArrID, started) })
 	service.settle(entry, grabbed, err, func() error { return client.DeleteSeries(entry.ArrID) })
-}
-
-// movieList is what a film is added with: its import list's root folder,
-// quality profile and availability; without a list (Overfin's suggestions,
-// a handed-over title taken out) or once it's gone, Radarr's own root
-// folder and profile, and released (tries wait for the release already).
-func movieList(client *radarr.Client, listID int) (radarr.ImportList, error) {
-	if listID != 0 {
-		lists, err := client.ImportLists()
-		if err != nil {
-			return radarr.ImportList{}, fmt.Errorf("couldn't read the import lists: %w", err)
-		}
-		for _, list := range lists {
-			if list.ID == listID {
-				return list, nil
-			}
-		}
-	}
-	root, profile, err := client.Destination()
-	return radarr.ImportList{RootFolderPath: root, QualityProfileID: profile, MinimumAvailability: "released"}, err
-}
-
-// seriesList is movieList for a series: without a list, every season in
-// season folders.
-func seriesList(client *sonarr.Client, listID int) (sonarr.ImportList, error) {
-	if listID != 0 {
-		lists, err := client.ImportLists()
-		if err != nil {
-			return sonarr.ImportList{}, fmt.Errorf("couldn't read the import lists: %w", err)
-		}
-		for _, list := range lists {
-			if list.ID == listID {
-				return list, nil
-			}
-		}
-	}
-	root, profile, err := client.Destination()
-	return sonarr.ImportList{RootFolderPath: root, QualityProfileID: profile, SeasonFolder: true}, err
 }
 
 // searchAndCheck asks for the search, waits for it to finish, then says
@@ -276,8 +241,11 @@ func (service *Service) notReleased(entry *Entry, at time.Time) {
 }
 
 // diskStop says why nothing may be added to the root folder's disk now, or
-// "": its disk is over its target, or isn't known (then only in dry run,
-// which adds nothing, is it let through).
+// "". The usage target is what removal steers toward, not a stop: adding
+// goes on past it and removal makes room after. Only the critical threshold
+// stops adding, until removal catches up, so downloads can't fill the disk.
+// A disk that can't be read stops it too (in dry run, which adds nothing,
+// one not known yet is let through).
 func (service *Service) diskStop(cfg config.Config, rootFolder string, dryRun bool) string {
 	root := filepath.Clean(rootFolder)
 	for _, device := range service.inv.StorageDevices() {
@@ -291,9 +259,9 @@ func (service *Service) diskStop(cfg config.Config, rootFolder string, dryRun bo
 				if !device.Available || usable == 0 {
 					return "Its disk can't be read now"
 				}
-				target, _ := cfg.ThresholdsFor(device.RepresentativePath)
-				if used := float64(device.OvertideUsedBytes()) / float64(usable) * 100; used >= target {
-					return fmt.Sprintf("Its disk is over its target (%.1f%% used, target %.1f%%)", used, target)
+				_, critical := cfg.ThresholdsFor(device.RepresentativePath)
+				if used := float64(device.OvertideUsedBytes()) / float64(usable) * 100; used >= critical {
+					return fmt.Sprintf("Its disk is past its critical threshold (%.1f%% used, critical %.1f%%)", used, critical)
 				}
 				return ""
 			}
