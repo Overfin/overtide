@@ -515,6 +515,8 @@ func (service *Service) Refresh(ctx context.Context) error {
 			}
 		}
 		service.mu.Lock()
+		preserveOverfinFacts(all, service.items)
+		valuation.ApplyMedia(all, service.cfg)
 		service.items = cloneMedia(all)
 		service.torrents = nil
 		service.reliability.Valuation = service.reliability.valuationReady()
@@ -655,7 +657,10 @@ func (service *Service) Refresh(ctx context.Context) error {
 	// Re-merge the newest topology while holding the generation lock. A file
 	// reconciliation may have completed after the earlier snapshot was read;
 	// publishing its stale projection here would otherwise undo that work.
+	// Overfin's scores too: read while this refresh ran, they're newer than
+	// the ones it started with.
 	relationshipsMergeStarted := time.Now()
+	preserveOverfinFacts(all, service.items)
 	applyTorrentFileEstimates(torrentList, service.files, service.torrentFileRefs)
 	applyTorrentMediaHardlinks(torrentList, all, service.files, service.mediaFileRefs, service.torrentFileRefs)
 	applyMediaFileEstimates(all, service.files, service.mediaFileRefs)
