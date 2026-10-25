@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/overfin/overtide/internal/model"
@@ -65,5 +66,21 @@ func TestTorrentWithFilesGone(t *testing.T) {
 	applyTorrentFileEstimates(torrents, files, refs)
 	if !torrents[0].FilesMissing || torrents[0].ReclaimableBytes != 0 || torrents[0].StorageError != "" {
 		t.Fatalf("%+v", torrents[0])
+	}
+}
+
+// Under a reachable root, a torrent file the walk didn't find is recorded
+// as missing; one under a root that isn't reachable isn't judged.
+func TestMissingTorrentFiles(t *testing.T) {
+	root := t.TempDir()
+	refs := []model.TorrentFileRef{
+		{Hash: "a", Path: filepath.Join(root, "gone.mkv")},
+		{Hash: "b", Path: filepath.Join(root, "found.mkv")},
+		{Hash: "c", Path: "/nowhere/elsewhere.mkv"},
+	}
+	found := map[string]bool{filepath.Join(root, "found.mkv"): true}
+	missing := missingTorrentFiles(refs, found, []storageRoot{{Path: root}, {Path: "/nowhere"}})
+	if len(missing) != 1 || missing[0].Path != filepath.Join(root, "gone.mkv") || missing[0].Exists {
+		t.Fatalf("%#v", missing)
 	}
 }

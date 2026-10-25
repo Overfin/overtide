@@ -243,6 +243,37 @@ func physicalSizeBytes(logicalSize int64, sys any) int64 {
 // StorageCapabilities does its own independent live stat check for
 // surfacing the gap in the UI, so this function doesn't need to report
 // anything back about what it skipped.
+// missingTorrentFiles records, as missing, the torrent files the walk
+// should have found but didn't: under a root that was reachable, so they're
+// gone from disk, not merely not inspected. A torrent whose files are all
+// missing takes no space, though its client still lists it.
+func missingTorrentFiles(refs []model.TorrentFileRef, found map[string]bool, roots []storageRoot) []model.File {
+	var reachable []string
+	for _, root := range roots {
+		if info, err := os.Stat(root.Path); err == nil && info.IsDir() {
+			reachable = append(reachable, filepath.Clean(root.Path))
+		}
+	}
+	var missing []model.File
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		path := filepath.Clean(ref.Path)
+		if found[path] || seen[path] {
+			continue
+		}
+		for _, root := range reachable {
+			if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+				if _, err := os.Lstat(path); os.IsNotExist(err) {
+					seen[path] = true
+					missing = append(missing, model.File{Path: path, Exists: false})
+				}
+				break
+			}
+		}
+	}
+	return missing
+}
+
 func walkStorageRoots(roots []storageRoot) ([]model.File, error) {
 	contextRoots := collapseStorageRoots(roots)
 	physicalCandidates := make([]string, 0, len(contextRoots))
@@ -599,8 +630,12 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 			}
 		}
 	}
+	files = append(files, missingTorrentFiles(torrentRefs, byPath, collapseStorageRoots(roots))...)
 	unmanagedFiles := []model.UnmanagedFile{}
 	for _, f := range files {
+		if !f.Exists {
+			continue
+		}
 		if claimed[f.Path] {
 			continue
 		}
