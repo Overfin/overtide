@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"strings"
 	"time"
 
@@ -407,11 +408,16 @@ func buildQBittorrentClients(configuration config.Config) map[string]*qbittorren
 // current fields and activates it under its stable ID (for the
 // multi-instance types) or as the single client (Overfin). Called
 // with service.mu already held for writing.
+//
+// The client maps are never changed in place: readers take a map under
+// the lock and use it after letting go, so each change makes a new map.
 func (service *Service) activateClientLocked(svc config.Service) {
 	switch svc.Type {
 	case "radarr":
+		service.rad = maps.Clone(service.rad)
 		service.rad[svc.ID] = radarr.New(svc.URL, svc.APIKey)
 	case "sonarr":
+		service.son = maps.Clone(service.son)
 		service.son[svc.ID] = sonarr.New(svc.URL, svc.APIKey)
 	case "overfin":
 		// Its scores are the Retention Value: planning waits until they're
@@ -420,6 +426,7 @@ func (service *Service) activateClientLocked(svc config.Service) {
 		service.reliability.Overfin = "stale"
 		service.reliability.Valuation = false
 	case "qbittorrent":
+		service.qb = maps.Clone(service.qb)
 		service.qb[svc.ID] = qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
 	}
 }
@@ -428,14 +435,18 @@ func (service *Service) activateClientLocked(svc config.Service) {
 // multi-instance types, so a removed instance stops matching any future
 // lookup by ID) or resets it to the "unconfigured" shape every
 // reconciliation loop assumes is never nil (Overfin). Called with
-// service.mu already held for writing.
+// service.mu already held for writing. Like activateClientLocked, it makes
+// new maps.
 func (service *Service) deactivateClientLocked(svc config.Service) {
 	switch svc.Type {
 	case "radarr":
+		service.rad = maps.Clone(service.rad)
 		delete(service.rad, svc.ID)
 	case "sonarr":
+		service.son = maps.Clone(service.son)
 		delete(service.son, svc.ID)
 	case "qbittorrent":
+		service.qb = maps.Clone(service.qb)
 		delete(service.qb, svc.ID)
 	case "overfin":
 		// Nothing is valued without Overfin, so everything is protected at
