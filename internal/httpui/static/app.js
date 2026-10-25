@@ -2780,7 +2780,7 @@ Copyright © 2023 Basecamp, LLC
       this.etag = "";
       this.onRevision = (event) => {
         const kind = String(event.detail?.kind || "background");
-        if (kind === "tasks") return;
+        if (kind === "tasks" || kind === "storage") return;
         this.refresh();
       };
       document.addEventListener("overtide:revision", this.onRevision);
@@ -3165,7 +3165,7 @@ Copyright © 2023 Basecamp, LLC
       this.refreshWizardProgress();
       const kind = String(detail.kind || "background");
       const urgent = /mutation|operation|removal|failure/.test(kind);
-      if (kind === "storage" && document.querySelector("[data-storage-summary]")) {
+      if (kind === "storage" && document.querySelector("[data-storage-summary], [data-home-storage]")) {
         this.refreshStorageStats();
         return;
       }
@@ -3211,6 +3211,7 @@ Copyright © 2023 Basecamp, LLC
         const devices = await response.json();
         for (const device of devices) {
           if (!device.available) continue;
+          this.patchHomeStorage(device);
           const summary = document.querySelector(
             `[data-storage-summary][data-representative-path="${CSS.escape(device.representativePath)}"]`
           );
@@ -3222,6 +3223,20 @@ Copyright © 2023 Basecamp, LLC
         }
       } catch (_) {
       }
+    }
+    // Home's Storage card: the bar and its line of text.
+    patchHomeStorage(device) {
+      const card = document.querySelector(
+        `[data-home-storage][data-representative-path="${CSS.escape(device.representativePath)}"]`
+      );
+      if (!card) return;
+      const percent = (part) => (device.usableBytes > 0 ? part / device.usableBytes * 100 : 0).toFixed(3);
+      const used = card.querySelector("[data-home-storage-used]");
+      const free = card.querySelector("[data-home-storage-free]");
+      const text = card.querySelector("[data-home-storage-text]");
+      if (used) used.style.width = `${percent(device.overtideUsedBytes)}%`;
+      if (free) free.style.width = `${percent(device.freeBytes)}%`;
+      if (text) text.textContent = `${humanBytes(device.overtideUsedBytes)} used of ${humanBytes(device.usableBytes)} usable`;
     }
     refreshFragments(force, userTriggered = false) {
       const fragments = [...document.querySelectorAll("[data-reactive-fragment][id]")];

@@ -22,7 +22,8 @@ export class DashboardController extends window.Stimulus.Controller {
     this.etag = "";
     this.onRevision = (event: CustomEvent) => {
       const kind = String(event.detail?.kind || "background");
-      if (kind === "tasks") return;
+      // Free space ticking (storage) changes none of these numbers.
+      if (kind === "tasks" || kind === "storage") return;
       this.refresh();
     };
     document.addEventListener("overtide:revision", this.onRevision as EventListener);

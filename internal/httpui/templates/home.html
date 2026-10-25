@@ -18,15 +18,15 @@
           <p class="muted">No storage devices are known yet; file reconciliation has not completed.</p>
         {{else}}
           {{range .Devices}}
-          <div class="storage-device">
+          <div class="storage-device" data-home-storage data-representative-path="{{.Storage.RepresentativePath}}">
             {{if .Name}}<div>{{.Name}}</div>{{end}}
             <div class="muted">{{if .Storage.RootLabels}}{{join .Storage.RootLabels ", "}}{{else}}{{.Storage.RepresentativePath}}{{end}}{{if .Storage.Filesystem}} · {{.Storage.Filesystem}}{{end}}</div>
             {{if .Storage.Available}}
               <div class="storage-bar">
-                <span class="segment used" style="width:{{widthPct .Storage.OvertideUsedBytes .Storage.UsableBytes}}%"></span>
-                <span class="segment free" style="width:{{widthPct .Storage.FreeBytes .Storage.UsableBytes}}%"></span>
+                <span class="segment used" data-home-storage-used style="width:{{widthPct .Storage.OvertideUsedBytes .Storage.UsableBytes}}%"></span>
+                <span class="segment free" data-home-storage-free style="width:{{widthPct .Storage.FreeBytes .Storage.UsableBytes}}%"></span>
               </div>
-              <div class="muted">{{humanU .Storage.OvertideUsedBytes}} used of {{humanU .Storage.UsableBytes}} usable</div>
+              <div class="muted" data-home-storage-text>{{humanU .Storage.OvertideUsedBytes}} used of {{humanU .Storage.UsableBytes}} usable</div>
             {{else}}
               <p class="bad">UNAVAILABLE{{if .Storage.Error}}: {{.Storage.Error}}{{end}}</p>
             {{end}}

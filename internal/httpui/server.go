@@ -307,6 +307,17 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 	return views
 }
 
+// storageViews is deviceViews without the cleanup plans, for a page that
+// only shows the disks (Home).
+func (server *Server) storageViews() []deviceView {
+	cfg := server.inv.Config()
+	var views []deviceView
+	for _, device := range server.inv.StorageDevices() {
+		views = append(views, deviceView{Storage: device, Name: cfg.DeviceName(device.RepresentativePath), Enabled: cfg.AutomaticRemovalEnabledFor(device.RepresentativePath)})
+	}
+	return views
+}
+
 // deviceView pairs one physical storage device with its own cleanup plan:
 // removing the single global storage path means there is no longer one
 // answer to "is cleanup needed," only a per-device one.

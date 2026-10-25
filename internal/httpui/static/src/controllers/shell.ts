@@ -399,7 +399,7 @@ export class ShellController extends window.Stimulus.Controller {
     // force the (comparatively expensive) removal plan to recompute just
     // because free space ticked; only the cheap byte totals update this
     // often, via a direct fetch/patch rather than a fragment swap.
-    if (kind === "storage" && document.querySelector("[data-storage-summary]")) {
+    if (kind === "storage" && document.querySelector("[data-storage-summary], [data-home-storage]")) {
       this.refreshStorageStats();
       return;
     }
@@ -451,6 +451,7 @@ export class ShellController extends window.Stimulus.Controller {
       const devices: StorageStatsDevice[] = await response.json();
       for (const device of devices) {
         if (!device.available) continue;
+        this.patchHomeStorage(device);
         const summary = document.querySelector<HTMLElement>(
           `[data-storage-summary][data-representative-path="${CSS.escape(device.representativePath)}"]`
         );
@@ -463,6 +464,21 @@ export class ShellController extends window.Stimulus.Controller {
     } catch (_) {
       // The next 5s tick tries again; the last-known text stays in place.
     }
+  }
+
+  // Home's Storage card: the bar and its line of text.
+  patchHomeStorage(device: StorageStatsDevice): void {
+    const card = document.querySelector<HTMLElement>(
+      `[data-home-storage][data-representative-path="${CSS.escape(device.representativePath)}"]`
+    );
+    if (!card) return;
+    const percent = (part: number) => (device.usableBytes > 0 ? (part / device.usableBytes) * 100 : 0).toFixed(3);
+    const used = card.querySelector<HTMLElement>("[data-home-storage-used]");
+    const free = card.querySelector<HTMLElement>("[data-home-storage-free]");
+    const text = card.querySelector<HTMLElement>("[data-home-storage-text]");
+    if (used) used.style.width = `${percent(device.overtideUsedBytes)}%`;
+    if (free) free.style.width = `${percent(device.freeBytes)}%`;
+    if (text) text.textContent = `${humanBytes(device.overtideUsedBytes)} used of ${humanBytes(device.usableBytes)} usable`;
   }
 
   refreshFragments(force: boolean, userTriggered: boolean = false): void {
