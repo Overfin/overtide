@@ -120,23 +120,21 @@ func TestCleanActionsSubmitsEveryGivenAction(t *testing.T) {
 	}
 }
 
-// TestCleanActionsTorrentActionSucceedsWithAutoUnmonitorAndExcludeEnabled
-// guards against a regression where AutoUnmonitor/AutoExcludeFromImportLists
-// set unmonitor_movies/unmonitor_episodes/exclude_movies/exclude_series
-// unconditionally on every action's form, including bare torrent actions —
-// validateRemovalScope hard-forbids all four fields for kind=="torrent", so
-// admission rejected every automatically-submitted torrent removal whenever
-// either setting was on.
-func TestCleanActionsTorrentActionSucceedsWithAutoUnmonitorAndExcludeEnabled(t *testing.T) {
+// TestCleanActionsTorrentActionSucceedsWithExcludeEnabled guards against a
+// regression where AutoExcludeFromImportLists set exclude_movies/
+// exclude_series unconditionally on every action's form, including bare
+// torrent actions — validateRemovalScope hard-forbids those fields for
+// kind=="torrent", so admission rejected every automatically-submitted
+// torrent removal whenever the setting was on.
+func TestCleanActionsTorrentActionSucceedsWithExcludeEnabled(t *testing.T) {
 	server, database := newTestServerWithRemovalTask(t)
 	torrentAction := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Hash: "oldhash", Name: "Old Release", ServiceID: "qbittorrent-1"}}}
 
 	cfg := config.Config{}
-	cfg.Removal.AutoUnmonitor = true
 	cfg.Removal.AutoExcludeFromImportLists = true
 	errs := server.cleanActions([]cleanup.Action{torrentAction}, cfg)
 	if len(errs) != 0 {
-		t.Fatalf("expected a torrent action to be admitted even with AutoUnmonitor/AutoExcludeFromImportLists enabled, got %#v", errs)
+		t.Fatalf("expected a torrent action to be admitted even with AutoExcludeFromImportLists enabled, got %#v", errs)
 	}
 
 	events, err := database.HistoryEvents(10)

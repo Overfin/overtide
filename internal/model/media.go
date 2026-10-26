@@ -347,3 +347,7 @@ func (m Media) CurrentHardlinkedTorrents() []Torrent {
 	}
 	return out
 }
+
+// ManagedTag marks, in Radarr and Sonarr, the titles Overtide manages: all
+// of them once managed mode is on, and any it removes.
+const ManagedTag = "overtide"

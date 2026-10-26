@@ -23,7 +23,7 @@ import (
 )
 
 // Tag marks, in Radarr and Sonarr, the titles Overtide manages.
-const Tag = "overtide"
+const Tag = model.ManagedTag
 
 // RunEvery is how often the titles are tried, and RunFor how long one run
 // goes on trying titles, one search at a time: under RunEvery, so runs

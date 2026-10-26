@@ -18,7 +18,6 @@ type settingsPageData struct {
 	AutoRemoveUnassociatedTorrents bool
 	DryRun                         bool
 	PrivateMinSeedingDays          int
-	AutoUnmonitor                  bool
 	AutoExcludeFromImportLists     bool
 	AutoRemoveIncompleteTorrents   bool
 	CopiesWithTitles               bool
@@ -35,7 +34,6 @@ func (server *Server) settingsData() settingsPageData {
 		AutoRemoveUnassociatedTorrents: cfg.Removal.AutoRemoveUnassociatedTorrents,
 		DryRun:                         cfg.Removal.DryRun,
 		PrivateMinSeedingDays:          cfg.Protection.PrivateMinSeedingDays,
-		AutoUnmonitor:                  cfg.Removal.AutoUnmonitor,
 		AutoExcludeFromImportLists:     cfg.Removal.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   cfg.Removal.AutoRemoveIncompleteTorrents,
 		CopiesWithTitles:               cfg.Removal.CopiesWithTitles,
@@ -109,7 +107,6 @@ func (server *Server) setRemovalSettings(w http.ResponseWriter, r *http.Request)
 		AutoMode:                       r.FormValue("auto_mode"),
 		AutoRemoveUnassociatedTorrents: r.FormValue("auto_remove_unassociated_torrents") == "on",
 		DryRun:                         r.FormValue("dry_run") == "on",
-		AutoUnmonitor:                  r.FormValue("auto_unmonitor") == "on",
 		AutoExcludeFromImportLists:     r.FormValue("auto_exclude_from_import_lists") == "on",
 		AutoRemoveIncompleteTorrents:   r.FormValue("auto_remove_incomplete_torrents") == "on",
 		CopiesWithTitles:               r.FormValue("copies_with_titles") == "with-titles",

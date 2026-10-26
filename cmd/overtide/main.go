@@ -21,13 +21,10 @@ import (
 )
 
 const (
-	databasePath          = "/config/state/inventory.db"
-	logDirectory          = "/config/log"
-	logRetentionDays      = 10
-	fileReconcileInterval = 12 * time.Hour
-	// overfinScoresInterval: Overfin's scores move with what people do,
-	// slowly; half an hour keeps them close without asking too often.
-	overfinScoresInterval     = 30 * time.Minute
+	databasePath              = "/config/state/inventory.db"
+	logDirectory              = "/config/log"
+	logRetentionDays          = 10
+	fileReconcileInterval     = 12 * time.Hour
 	enrichmentRemovalCooldown = 30 * time.Minute
 )
 
@@ -94,7 +91,7 @@ func main() {
 			}
 			return err
 		}), Advisory: inv.RefreshAdvisory, Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
-		tasks.Definition{ID: "overfin", Name: "Overfin scores", Description: "Read each film's and season's value from Overfin, used as Retention Value.", Interval: overfinScoresInterval, Preflight: retryable(inv.ValidateOverfin), Runner: retryable(inv.RefreshOverfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
+		tasks.Definition{ID: "overfin", Name: "Overfin values", Description: "Ask Overfin the value of each film and season the libraries have: at startup, and when a disk is over its target (automatic removal asks).", Preflight: retryable(inv.ValidateOverfin), Runner: retryable(inv.RefreshOverfin), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Interruptible: true, InterruptionDelay: enrichmentRemovalCooldown, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 		tasks.Definition{ID: "files", Name: "File reconciliation", Description: "Scan service storage and reconcile file ownership.", Interval: fileReconcileInterval, Preflight: retryable(inv.ValidateReconciliation), AttachCompatible: fullScanAttachCompatible, Runner: retryable(func(ctx context.Context) error {
 			if tasks.TriggeredOnlyBy(ctx, tasks.TriggerWorkflow) {
 				return inv.ReconcileFilesAfterMutation(ctx)

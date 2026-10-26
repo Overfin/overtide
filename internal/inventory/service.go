@@ -581,6 +581,33 @@ func (service *Service) removeIncompleteTorrentViaQueue(ctx context.Context, has
 	}
 }
 
+// TagManaged tags a film or series model.ManagedTag: removing a title
+// makes it Overtide's, even one added from outside.
+func (service *Service) TagManaged(ctx context.Context, mediaType model.MediaType, svcID string, id int) error {
+	if mediaType == model.Series {
+		client, err := service.sonarrClient(svcID)
+		if err != nil {
+			return err
+		}
+		client = client.WithContext(ctx)
+		tagID, err := client.EnsureTag(model.ManagedTag)
+		if err != nil {
+			return err
+		}
+		return client.TagSeries(id, tagID)
+	}
+	client, err := service.radarrClient(svcID)
+	if err != nil {
+		return err
+	}
+	client = client.WithContext(ctx)
+	tagID, err := client.EnsureTag(model.ManagedTag)
+	if err != nil {
+		return err
+	}
+	return client.TagMovie(id, tagID)
+}
+
 func (service *Service) SetMovieMonitored(ctx context.Context, svcID string, id int, monitored bool) error {
 	client, err := service.radarrClient(svcID)
 	if err != nil {

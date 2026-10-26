@@ -362,18 +362,18 @@ func TestSetCredentialsRejectsEmptyUsernameAndShortPassword(t *testing.T) {
 
 func TestSetRemovalSettings(t *testing.T) {
 	var c Config
-	updated, err := SetRemovalSettings(c, RemovalConfig{AutoMode: RemovalAutoAuto, AutoRemoveUnassociatedTorrents: true, AutoUnmonitor: true, AutoExcludeFromImportLists: true, AutoRemoveIncompleteTorrents: true, CopiesWithTitles: true}, 75)
+	updated, err := SetRemovalSettings(c, RemovalConfig{AutoMode: RemovalAutoAuto, AutoRemoveUnassociatedTorrents: true, AutoExcludeFromImportLists: true, AutoRemoveIncompleteTorrents: true, CopiesWithTitles: true}, 75)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Protection.PrivateMinSeedingDays != 75 || !updated.Removal.AutoUnmonitor || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents || !updated.Removal.CopiesWithTitles {
+	if updated.Removal.AutoMode != RemovalAutoAuto || !updated.Removal.AutoRemoveUnassociatedTorrents || updated.Removal.DryRun || updated.Protection.PrivateMinSeedingDays != 75 || !updated.Removal.AutoExcludeFromImportLists || !updated.Removal.AutoRemoveIncompleteTorrents || !updated.Removal.CopiesWithTitles {
 		t.Fatalf("expected every field to be set as given, got %#v", updated.Removal)
 	}
 	reverted, err := SetRemovalSettings(updated, RemovalConfig{AutoMode: RemovalAutoDisabled, DryRun: true}, 25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Protection.PrivateMinSeedingDays != 25 || reverted.Removal.AutoUnmonitor || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents || reverted.Removal.CopiesWithTitles {
+	if reverted.Removal.AutoMode != RemovalAutoDisabled || reverted.Removal.AutoRemoveUnassociatedTorrents || !reverted.Removal.DryRun || reverted.Protection.PrivateMinSeedingDays != 25 || reverted.Removal.AutoExcludeFromImportLists || reverted.Removal.AutoRemoveIncompleteTorrents || reverted.Removal.CopiesWithTitles {
 		t.Fatalf("expected every field to flip independently, got %#v", reverted.Removal)
 	}
 }

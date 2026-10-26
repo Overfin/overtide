@@ -157,8 +157,7 @@
       {{if or .CanUnmonitorMovies .CanUnmonitorEpisodes .CanExcludeMovies .CanExcludeSeries}}
       <section class="owner-options">
         <h3>After removal</h3>
-        {{if .CanUnmonitorMovies}}<label><input type="checkbox" name="unmonitor_movies" value="1"> Unmonitor affected movies</label><br>{{end}}
-        {{if .CanUnmonitorEpisodes}}<label><input type="checkbox" name="unmonitor_episodes" value="1"> Unmonitor affected episodes</label><br>{{end}}
+        {{if or .CanUnmonitorMovies .CanUnmonitorEpisodes}}<p class="muted">The titles stay in Radarr and Sonarr, unmonitored (a series, its removed episodes), tagged "overtide".</p>{{end}}
         {{if .CanExcludeMovies}}<label><input type="checkbox" name="exclude_movies" value="1"> Add affected movies to import list exclusions</label><br>{{end}}
         {{if .CanExcludeSeries}}<label><input type="checkbox" name="exclude_series" value="1"> Add affected series to import list exclusions</label>{{end}}
       </section>

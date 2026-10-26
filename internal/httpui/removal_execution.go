@@ -509,7 +509,24 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				mutated = mutated || len(rr) > 0
 			}
 		}
-		if r.FormValue("unmonitor_movies") == "1" {
+		// A removed title stays in Radarr or Sonarr, unmonitored (a series,
+		// its removed episodes), and becomes Overtide's: tagged.
+		{
+			seen := map[string]bool{}
+			for _, ref := range removedManaged {
+				key := string(ref.MediaType) + ":" + ref.ServiceID + ":" + strconv.Itoa(ref.MediaID)
+				if ref.MediaID <= 0 || seen[key] {
+					continue
+				}
+				seen[key] = true
+				if e := server.inv.TagManaged(ctx, ref.MediaType, ref.ServiceID, ref.MediaID); e != nil {
+					recordError(fmt.Sprintf("tag %s %d: %v", ref.MediaType, ref.MediaID, e))
+				} else {
+					recordResult(fmt.Sprintf("%s %d tagged %s", ref.MediaType, ref.MediaID, model.ManagedTag))
+				}
+			}
+		}
+		{
 			seen := map[string]bool{}
 			for _, ref := range removedManaged {
 				key := ref.ServiceID + ":" + strconv.Itoa(ref.MediaID)
@@ -525,7 +542,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				}
 			}
 		}
-		if r.FormValue("unmonitor_episodes") == "1" {
+		{
 			seen := map[string]bool{}
 			idsByService := map[string][]int{}
 			for _, ref := range removedManaged {

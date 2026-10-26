@@ -46,11 +46,10 @@ type RemovalConfig struct {
 	// opts a whole service's torrents into automatic removal at all, this
 	// narrows it further to exclude the specific case of no known owner.
 	AutoRemoveUnassociatedTorrents bool `json:"auto_remove_unassociated_torrents"`
-	// AutoUnmonitor and AutoExcludeFromImportLists are, for removals from
-	// the cleanup plan, the two follow-ups the manual removal dialog offers
-	// as checkboxes: unmonitor in Radarr/Sonarr, and exclude from import
-	// lists. Both default to false.
-	AutoUnmonitor              bool `json:"auto_unmonitor"`
+	// AutoExcludeFromImportLists is, for removals from the cleanup plan,
+	// the follow-up the manual removal dialog offers as a checkbox: exclude
+	// from import lists. Defaults to false. (Unmonitoring is no longer a
+	// choice: a removed title is always unmonitored.)
 	AutoExcludeFromImportLists bool `json:"auto_exclude_from_import_lists"`
 	// AutoRemoveIncompleteTorrents gates automatic removal of a torrent that
 	// hasn't finished downloading (AmountLeftBytes > 0). Defaults to false:

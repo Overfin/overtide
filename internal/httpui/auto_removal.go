@@ -47,6 +47,9 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		log.Printf("[auto-removal] skipped this cycle: snapshot unavailable: %v", err)
 		return nil
 	}
+	if server.askOverfinIfNeeded(cfg, items) {
+		return nil // planned at the next cycle, with Overfin's answer
+	}
 	torrents := server.inv.TorrentSnapshot()
 	reliable := server.planningReliable(server.inv.ReliabilitySnapshot())
 	mediaByDevice := server.inv.MediaByDevice(items)
@@ -79,6 +82,49 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// overfinValuesFresh is how old Overfin's values may be when a disk needs
+// room before Overfin is asked again.
+const overfinValuesFresh = 15 * time.Minute
+
+// askOverfinIfNeeded asks Overfin for the titles' values (its task, run
+// now) when a disk with automatic removal is over its target and the
+// values it gave are older than overfinValuesFresh: Overtide asks what to
+// remove when it needs space, not on a schedule. It reports whether it
+// asked.
+func (server *Server) askOverfinIfNeeded(cfg config.Config, items []model.Media) bool {
+	if cfg.Overfin.URL == "" {
+		return false
+	}
+	over := false
+	for _, device := range server.inv.StorageDevices() {
+		usable := device.UsableBytes()
+		if !cfg.AutomaticRemovalEnabledFor(device.RepresentativePath) || usable == 0 {
+			continue
+		}
+		target, _ := cfg.ThresholdsFor(device.RepresentativePath)
+		if float64(device.OvertideUsedBytes())/float64(usable)*100 >= target {
+			over = true
+		}
+	}
+	if !over {
+		return false
+	}
+	var newest time.Time
+	for _, m := range items {
+		if m.OverfinEnrichedAt.After(newest) {
+			newest = m.OverfinEnrichedAt
+		}
+	}
+	if time.Since(newest) < overfinValuesFresh {
+		return false
+	}
+	if _, err := server.tasks.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: "A disk is over its target"}); err != nil {
+		log.Printf("[auto-removal] asking Overfin for values: %v", err)
+		return false
+	}
+	return true
 }
 
 // actionIsUnassociatedTorrent reports whether action is a StandaloneTorrent
@@ -265,10 +311,6 @@ func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause 
 		}
 		// Admission refuses these fields on a bare torrent removal.
 		if action.Kind != cleanup.StandaloneTorrent {
-			if cfg.Removal.AutoUnmonitor {
-				form.Set("unmonitor_movies", "1")
-				form.Set("unmonitor_episodes", "1")
-			}
 			if cfg.Removal.AutoExcludeFromImportLists {
 				form.Set("exclude_movies", "1")
 				form.Set("exclude_series", "1")

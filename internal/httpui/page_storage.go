@@ -268,8 +268,8 @@ func (server *Server) cleanupPlanForm(w http.ResponseWriter, r *http.Request) {
 // judgment during *unattended* execution; a human explicitly reviewing
 // this list and clicking Clean already is that judgment. It does still
 // apply removal.dry_run (read live inside queueCleanup's own
-// admission path) and the AutoUnmonitor/AutoExcludeFromImportLists
-// config toggles, the same as Auto mode.
+// admission path) and the AutoExcludeFromImportLists config toggle, the
+// same as Auto mode.
 func (server *Server) cleanupPlanClean(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
