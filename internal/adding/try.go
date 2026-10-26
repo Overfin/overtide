@@ -212,10 +212,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 		entry.Result = "Monitored for its release on " + at.Format("2006-01-02")
 		return 0
 	}
-	searches := 1
-	if entry.Kind == model.Series {
-		searches = len(entry.Seasons)
-	}
+	searches := entry.searches()
 	grabbed, err := a.search(ctx, entry.ArrID)
 	if err == nil && grabbed {
 		entry.State, entry.Result = Downloading, "Downloading"

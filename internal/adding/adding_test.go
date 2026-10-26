@@ -102,3 +102,13 @@ func TestSearchAndCheck(t *testing.T) {
 		t.Fatal("a failed search went through")
 	}
 }
+
+// A film is one search, a series one per season.
+func TestEntrySearches(t *testing.T) {
+	if n := (Entry{Kind: "movie"}).searches(); n != 1 {
+		t.Errorf("film: %d", n)
+	}
+	if n := (Entry{Kind: "series", Seasons: []int{1, 2, 3, 4}}).searches(); n != 4 {
+		t.Errorf("series: %d", n)
+	}
+}

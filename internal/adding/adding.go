@@ -129,6 +129,15 @@ type Entry struct {
 
 func (entry Entry) id() string { return entry.ServiceID + "|" + entry.Key }
 
+// searches is how many searches a try of the entry asks for: one for a
+// film, one per season for a series.
+func (entry Entry) searches() int {
+	if entry.Kind == model.Series && len(entry.Seasons) > 0 {
+		return len(entry.Seasons)
+	}
+	return 1
+}
+
 // waiting reports whether the entry still waits to be added: what the
 // cap and the lifecycle count.
 func (entry Entry) waiting() bool {
@@ -210,6 +219,11 @@ func (service *Service) Run(ctx context.Context) error {
 		}
 		entry := &entries[i]
 		if !entry.waiting() || entry.NextTry.After(service.now()) {
+			continue
+		}
+		// A series whose seasons would go past the limit waits for the next
+		// run, unless it's the run's first title (it would never fit).
+		if searches > 0 && searches+entry.searches() > SearchesPerRun {
 			continue
 		}
 		searches += service.try(ctx, cfg, entry, mode == config.AddingDryRun)
