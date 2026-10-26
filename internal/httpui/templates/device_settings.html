@@ -16,6 +16,9 @@
           <div class="field-row" data-threshold-field {{if not .AutomaticRemovalEnabled}}hidden{{end}}>
             <label for="device-settings-target">Target %<input id="device-settings-target" name="target_usage_percent" type="number" min="1" max="99" step="1" value="{{printf "%.0f" .TargetUsagePercent}}"></label>
           </div>
+          <label for="device-settings-critical">Critical %<input id="device-settings-critical" name="critical_usage_percent" type="number" min="2" max="99" step="1" value="{{printf "%.0f" .CriticalUsagePercent}}">
+            <span class="muted">Overtide steers toward the target: it adds first, then removal makes room. Past critical, nothing more is added until removal catches up. Must be above the target.</span>
+          </label>
         </div>
         <p data-modal-error hidden class="bad"></p>
         <div class="actions">

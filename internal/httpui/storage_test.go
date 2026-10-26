@@ -551,16 +551,11 @@ func TestDeviceSettingsFormRendersCurrentThresholds(t *testing.T) {
 		t.Fatalf("expected 200, got status=%d body=%q", recorder.Code, recorder.Body.String())
 	}
 	body := recorder.Body.String()
-	for _, want := range []string{"/data/movies", `value="70"`, `value="Media Drive"`} {
+	// Critical is set here too: the only threshold that stops adding.
+	for _, want := range []string{"/data/movies", `value="70"`, `value="85"`, `name="critical_usage_percent"`, `value="Media Drive"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected device-settings overlay to contain %q, got:\n%s", want, body)
 		}
-	}
-	// Critical isn't shown in the UI at all anymore (see
-	// TestSetDeviceThresholdPersistsFromStoragePage for the config-layer
-	// value it still preserves under the hood).
-	if strings.Contains(body, "85") {
-		t.Fatalf("expected no trace of the critical threshold in the rendered overlay, got:\n%s", body)
 	}
 }
 
@@ -637,7 +632,7 @@ func TestSetDeviceThresholdPersistsFromStoragePage(t *testing.T) {
 	// field came back empty and every save failed with "target_usage_percent
 	// must be a number" even though the form was filled in correctly.
 	devicePath := "/data/movies"
-	body, contentType := multipartServiceForm(t, map[string]string{"representative_path": devicePath, "name": "Media Drive", "target_usage_percent": "80"})
+	body, contentType := multipartServiceForm(t, map[string]string{"representative_path": devicePath, "name": "Media Drive", "target_usage_percent": "80", "critical_usage_percent": "92"})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/storage/device-threshold", body)
 	request.Header.Set("Content-Type", contentType)
@@ -650,15 +645,21 @@ func TestSetDeviceThresholdPersistsFromStoragePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Critical isn't on this form anymore — the handler must preserve
-	// whatever was already configured (the default, since this config
-	// started with no device_thresholds entry at all) rather than reset it.
 	target, critical := reloaded.ThresholdsFor(devicePath)
 	if target != 80 {
 		t.Fatalf("expected the submitted target threshold to be persisted for %s, got %v", devicePath, target)
 	}
-	if critical != 95 {
-		t.Fatalf("expected the untouched critical threshold to keep its default for %s, got %v", devicePath, critical)
+	if critical != 92 {
+		t.Fatalf("expected the submitted critical threshold to be persisted for %s, got %v", devicePath, critical)
+	}
+	// Critical must be above the target.
+	body, contentType = multipartServiceForm(t, map[string]string{"representative_path": devicePath, "target_usage_percent": "90", "critical_usage_percent": "90"})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/storage/device-threshold", body)
+	request.Header.Set("Content-Type", contentType)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("critical equal to the target: status=%d", recorder.Code)
 	}
 	if got := reloaded.DeviceName(devicePath); got != "Media Drive" {
 		t.Fatalf("expected the submitted name to be persisted for %s, got %q", devicePath, got)

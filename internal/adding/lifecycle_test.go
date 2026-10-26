@@ -149,7 +149,9 @@ func TestTryMovieMonitors(t *testing.T) {
 	pollEvery = time.Millisecond
 
 	entry := Entry{Key: movieKey(5), Kind: "movie", ServiceID: "r", ExternalID: 5, Source: FromOverfin, State: Waiting}
-	service.try(context.Background(), cfg, &entry, false)
+	if searches := service.try(context.Background(), cfg, &entry, false); searches != 1 {
+		t.Fatalf("%d searches counted", searches)
+	}
 	if got := strings.Join(calls, ", "); got != "add monitored=false, monitored=true, search, monitored=false" {
 		t.Fatalf("calls: %s", got)
 	}

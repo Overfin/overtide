@@ -469,6 +469,9 @@ func SetDeviceThreshold(configuration Config, representativePath, name string, t
 	if critical <= 0 || critical >= 100 {
 		return configuration, fmt.Errorf("critical usage percent must be greater than 0 and less than 100")
 	}
+	if critical <= target {
+		return configuration, fmt.Errorf("critical usage percent must be above the target: past the target Overtide adds and removal makes room; only past critical does adding stop")
+	}
 	updated := configuration
 	updated.Storage.DeviceThresholds = make(map[string]DeviceThreshold, len(configuration.Storage.DeviceThresholds)+1)
 	for path, threshold := range configuration.Storage.DeviceThresholds {

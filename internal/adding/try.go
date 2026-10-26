@@ -134,36 +134,37 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 // come out, without a search, so their RSS catches the release (follow
 // looks for the grab); out, with a search of that title, and if nothing
 // started it's unmonitored again until its next try. In dry run, only the
-// reading is done.
-func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) {
+// reading is done. It returns how many searches it asked for (none in dry
+// run), what SearchesPerRun counts.
+func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) int {
 	now := service.now()
 	if entry.Kind == model.Series && len(entry.Seasons) == 0 {
 		// Saved by an older version: the seasons come with Overfin's next read.
 		service.later(entry, "Waiting for the seasons Overfin suggests")
-		return
+		return 0
 	}
 	a, err := service.arrFor(ctx, entry)
 	if err != nil {
 		service.later(entry, err.Error())
-		return
+		return 0
 	}
 	unknown, released, at, err := a.lookup()
 	switch {
 	case err != nil:
 		service.later(entry, "Couldn't look it up: "+err.Error())
-		return
+		return 0
 	case unknown:
 		service.failed(entry, fmt.Sprintf("%s doesn't know this title (ID %d)", a.name, entry.ExternalID))
-		return
+		return 0
 	case !released && at.Sub(now) > ReleaseWindow:
 		entry.State, entry.NextTry = NotReleased, at.Add(-ReleaseWindow)
 		entry.Result = "Not out yet (" + at.Format("2006-01-02") + "); monitored two days before"
-		return
+		return 0
 	}
 	rootFolder, profileID, err := a.destination()
 	if err != nil {
 		service.later(entry, err.Error())
-		return
+		return 0
 	}
 	disk := service.diskStop
 	if service.disk != nil {
@@ -171,7 +172,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 	}
 	if stop := disk(cfg, rootFolder, dryRun); stop != "" {
 		service.later(entry, stop)
-		return
+		return 0
 	}
 	if dryRun {
 		entry.NextTry = now.Add(dryRunAgain)
@@ -183,48 +184,53 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 			what = "add it to " + a.name + ", " + what
 		}
 		entry.Result = "Dry run: would " + what
-		return
+		return 0
 	}
 	tagID, err := a.ensureTag()
 	if err != nil {
 		service.later(entry, "Couldn't make the tag: "+err.Error())
-		return
+		return 0
 	}
 	if entry.ArrID == 0 {
 		id, err := a.add(rootFolder, profileID, tagID)
 		if err != nil {
 			service.later(entry, "Couldn't add it: "+err.Error())
-			return
+			return 0
 		}
 		entry.ArrID = id
 	} else if err := a.tag(entry.ArrID, tagID); err != nil {
 		service.later(entry, "Couldn't tag it: "+err.Error())
-		return
+		return 0
 	}
 	if err := a.monitor(entry.ArrID, true); err != nil {
 		service.later(entry, "Couldn't monitor it: "+err.Error())
-		return
+		return 0
 	}
 	if !released {
 		entry.State, entry.ReleaseAt, entry.MonitoredAt = NotReleased, at, now
 		entry.NextTry = at.Add(ReleaseGrace)
 		entry.Result = "Monitored for its release on " + at.Format("2006-01-02")
-		return
+		return 0
+	}
+	searches := 1
+	if entry.Kind == model.Series {
+		searches = len(entry.Seasons)
 	}
 	grabbed, err := a.search(ctx, entry.ArrID)
 	if err == nil && grabbed {
 		entry.State, entry.Result = Downloading, "Downloading"
-		return
+		return searches
 	}
 	if unmonitorErr := a.monitor(entry.ArrID, false); unmonitorErr != nil {
 		service.later(entry, "Nothing started, and couldn't unmonitor it: "+unmonitorErr.Error())
-		return
+		return searches
 	}
 	if err != nil {
 		service.later(entry, "Unmonitored: "+err.Error())
-		return
+		return searches
 	}
 	service.failed(entry, "Nothing found")
+	return searches
 }
 
 // searchAndCheck asks for the search, waits for it to finish, then says

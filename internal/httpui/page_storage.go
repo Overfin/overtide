@@ -142,11 +142,12 @@ type deviceSettingsData struct {
 	Filesystem              string
 	Name                    string
 	TargetUsagePercent      float64
+	CriticalUsagePercent    float64
 	AutomaticRemovalEnabled bool
 }
 
 // deviceSettingsForm returns the per-device settings overlay fragment
-// (currently just Target/Critical %, the same fields the old inline form
+// (Target and Critical %, the same fields the old inline form
 // on the Storage page collected) — the wrench icon on each device's card
 // opens this, so any future per-device setting has one obvious place to
 // join instead of the card growing a new inline field every time.
@@ -166,8 +167,8 @@ func (server *Server) deviceSettingsForm(w http.ResponseWriter, r *http.Request)
 	}
 	path := r.URL.Query().Get("path")
 	cfg := server.inv.Config()
-	target, _ := cfg.ThresholdsFor(path)
-	data := deviceSettingsData{RepresentativePath: path, Name: cfg.DeviceName(path), TargetUsagePercent: target, AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path)}
+	target, critical := cfg.ThresholdsFor(path)
+	data := deviceSettingsData{RepresentativePath: path, Name: cfg.DeviceName(path), TargetUsagePercent: target, CriticalUsagePercent: critical, AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path)}
 	for _, device := range server.inv.StorageDevices() {
 		if device.RepresentativePath == path {
 			data.RootLabels = device.RootLabels
@@ -416,11 +417,11 @@ func (server *Server) setDeviceThreshold(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "target_usage_percent must be a number", http.StatusBadRequest)
 		return
 	}
-	// Critical isn't on this form anymore (not shown in the UI at all), but
-	// SetDeviceThreshold still persists a value for it under the hood — keep
-	// whatever was already saved rather than resetting it to a form field
-	// that no longer exists.
-	_, critical := server.inv.Config().ThresholdsFor(path)
+	critical, err := strconv.ParseFloat(r.FormValue("critical_usage_percent"), 64)
+	if err != nil {
+		http.Error(w, "critical_usage_percent must be a number", http.StatusBadRequest)
+		return
+	}
 	enabled := r.FormValue("enable_automatic_removal") == "on"
 	if err := server.inv.SetDeviceThreshold(path, r.FormValue("name"), target, critical, enabled); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

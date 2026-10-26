@@ -53,6 +53,9 @@ const (
 	// ReleaseGrace after the release.
 	ReleaseWindow = 2 * 24 * time.Hour
 	ReleaseGrace  = 14 * 24 * time.Hour
+	// SearchesPerRun paces the indexers: a run stops after that many
+	// searches (a series' seasons each count), so at most 12 an hour.
+	SearchesPerRun = 3
 )
 
 const (
@@ -200,15 +203,16 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 	sortForTries(entries)
 	stopAt := service.now().Add(RunFor)
+	searches := 0
 	for i := range entries {
-		if ctx.Err() != nil || service.now().After(stopAt) {
+		if ctx.Err() != nil || service.now().After(stopAt) || searches >= SearchesPerRun {
 			break
 		}
 		entry := &entries[i]
 		if !entry.waiting() || entry.NextTry.After(service.now()) {
 			continue
 		}
-		service.try(ctx, cfg, entry, mode == config.AddingDryRun)
+		searches += service.try(ctx, cfg, entry, mode == config.AddingDryRun)
 		entry.UpdatedAt = service.now()
 		// Saved after each try: a try changes Radarr or Sonarr, and what
 		// it did must not be lost if the next one stops the run.
