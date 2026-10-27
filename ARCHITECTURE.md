@@ -28,7 +28,7 @@ is valued the same way whether it's on the server or not. Overfin gives
 values and counts per title, never who wanted or watched what. Size, physical
 identity, torrents and resource limits are Overtide's alone. The
 current state, and the steps from it, are in [`ROADMAP.md`](ROADMAP.md),
-"Toward Overfin". Overtide no longer reads Jellyfin, Seerr, TMDB or IMDb:
+"The design" and "Building it". Overtide no longer reads Jellyfin, Seerr, TMDB or IMDb:
 a title's value is Overfin's score, unchanged.
 
 Inventory generations distinguish authoritative base facts from enrichment. Radarr, Sonarr and qBittorrent establish their own mutation ownership. Overfin contributes title scores without joining Overtide's filesystem namespace. Cached or partially enriched generations may be displayed, but they are explicitly valuation-unreliable and cannot produce automatic cleanup candidates. A failed service disables only capabilities depending on it and never expands another service's authority.
@@ -145,9 +145,15 @@ succeeds. Reading Overfin's scores is not a workflow step.
 
 Current tasks:
 
-- Base inventory — Radarr/Sonarr/qBittorrent plus incremental provenance, frequent.
-- Overfin scores — each title's value, every 30 minutes and removal-isolated.
+- Base inventory — Radarr/Sonarr/qBittorrent plus incremental provenance, every `server.refresh_interval` (30 minutes by default).
+- Overfin values — each title's value, at startup and when a disk with automatic removal is over its target and the last answer is older than 15 minutes; removal-isolated.
 - File reconciliation — service/file-identity reconciliation, sparse (currently 12h).
+- Automatic removal — evaluates each device's cleanup plan every 15 minutes, in confirm or automatic mode.
+- Removal operations — confirmed removals, run as exclusive mutation tasks.
+- Overfin suggestions — reads what Overfin suggests adding into the waiting list, hourly.
+- Adding: try titles — tries the titles whose turn it is, every 15 minutes.
+
+The two adding tasks hold an exclusive `adding` claim and do nothing while adding is off.
 
 Future tasks may include full reconciliation, storage capability scans, statistics maintenance and service-specific reconciliation. Schedules should eventually be configurable through the GUI.
 
@@ -201,11 +207,11 @@ A device can also be opted out of automatic removal entirely (independent of
 the per-service `AllowAutomaticRemoval` opt-in), for a device that should
 never be touched regardless of what's on it.
 
-Critical is independent of reclamation Target. It is reserved for a future
-emergency state such as alerting, stopping new downloads or temporarily
-inhibiting acquisition. It never gates ordinary reclamation planning, and is
-not currently shown anywhere in the UI — the underlying config value still
-exists (unused) for when that future state is built.
+Critical is independent of reclamation Target and must be above it; both
+are set in a device's settings on the Storage page. Critical stops adding:
+no title is added to a device past it until removal catches up. It never
+gates ordinary reclamation planning. Alerting and stopping downloads already
+started are future work.
 
 ## Planner direction
 
@@ -216,7 +222,7 @@ Possible reclamation sources include:
 - redundant/duplicated storage;
 - superseded torrent data;
 - unassociated torrent data with former provenance;
-- low-Torrent-Value torrents;
+- long-inactive lone torrents;
 - lower-cost media representations/quality changes (future);
 - low-Retention-Value Library media.
 
@@ -239,8 +245,9 @@ subscribe to the File management layer to contribute value, request,
 catalog, diagnostic or future domain facts. Conversely, a feature may consume
 an adapter only when the adapter satisfies that feature's complete capability
 contract. Overfin never joins the filesystem namespace: it contributes title
-values, approved requests and their counts, and receives request statuses and
-what's leaving soon.
+values and suggestions of what to add. Later it will also contribute
+approved requests and their counts, and receive request statuses and what's
+leaving soon.
 
 Root discovery does not by itself establish ownership. A future adapter that
 declares an exhaustive filesystem root must claim every regular File under it;
@@ -317,7 +324,7 @@ Space consequences are calculated from the physical graph. A physical file is fr
 
 ## Relationship projection
 
-Torrent/media relationships are bidirectional at the Overtide model boundary. Authoritative current import provenance and proven device/inode physical backing independently establish Current `MediaItems`; either source is sufficient and neither may demote the other. Historical `FormerMediaItems` establish Superseded context only in the absence of a current relationship. Torrent health contributes to a media's Retention Value only when the relationship is Current and reconciled device/inode identity proves distinct torrent and media paths are hardlinks. Current copied imports, missing files, and unknown topology contribute nothing.
+Torrent/media relationships are bidirectional at the Overtide model boundary. Authoritative current import provenance and proven device/inode physical backing independently establish Current `MediaItems`; either source is sufficient and neither may demote the other. Historical `FormerMediaItems` establish Superseded context only in the absence of a current relationship. Torrents never change a media's Retention Value: a hardlinked Current torrent only joins its title's removal bundle, and holds it back when it carries an obligation.
 
 
 ## Removal architecture
@@ -332,7 +339,7 @@ Removal execution also emits a complete line-oriented audit to the mandatory app
 
 ## Application logging
 
-The process has one logging stream mirrored to stdout and `/config/log/stewarr-YYYY-MM-DD.log`. Daily rollover uses local time, restarts append, and the latest ten days are retained without splitting an individual day by size. Log initialization is a startup prerequisite. A later write, rollover, retention, or filesystem failure cancels the application context and terminates the process non-zero; Overtide never knowingly continues mutations without persistent logging. Each line declares an origin so concurrent scheduler, inventory, HTTP, and removal work remains attributable.
+The process has one logging stream mirrored to stdout and `/config/log/overtide-YYYY-MM-DD.log`. Daily rollover uses local time, restarts append, and the latest ten days are retained without splitting an individual day by size. Log initialization is a startup prerequisite. A later write, rollover, retention, or filesystem failure cancels the application context and terminates the process non-zero; Overtide never knowingly continues mutations without persistent logging. Each line declares an origin so concurrent scheduler, inventory, HTTP, and removal work remains attributable.
 
 The scheduler emits exactly one terminal summary for each execution. Runners
 may attach sorted key/value diagnostics to their execution context; File
@@ -379,7 +386,7 @@ Names must describe the domain concept they hold. Single-letter and cryptic abbr
 
 A Media-originated plan may expose any subset of its managed files and related qBittorrent actions whose correspondence is proven from authoritative physical identity. The plan may disclose other owners affected by a multi-file Torrent, but those other Media actions are preserved and cannot be selected through the initiating Media. A Torrent-originated plan may expose only managed files whose correspondence to a torrent file is proven from authoritative physical identity or future authoritative provenance. Filename/path similarity is never sufficient evidence for a destructive linked action.
 
-Owner state changes are explicit options layered above managed-file removal. Manual plans leave monitoring unchanged by default and may request unmonitoring of affected Radarr movies or Sonarr episodes. Only successfully removed managed files contribute to those follow-up updates.
+Owner state changes follow managed-file removal. A removed title stays in Radarr or Sonarr, always unmonitored (a Radarr movie, or the affected Sonarr episodes) and tagged `overtide`. Only successfully removed managed files contribute to those follow-up updates.
 
 The same boundary supports optional import-list exclusions. Radarr exclusions
 require the media's authoritative TMDB ID; Sonarr exclusions require its TVDB
