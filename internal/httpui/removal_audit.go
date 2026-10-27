@@ -37,8 +37,6 @@ func auditRemovalPlan(operationID int64, data removalData, form url.Values) {
 		name string
 		set  bool
 	}{
-		{"unmonitor_movies", form.Get("unmonitor_movies") == "1"},
-		{"unmonitor_episodes", form.Get("unmonitor_episodes") == "1"},
 		{"exclude_movies", form.Get("exclude_movies") == "1"},
 		{"exclude_series", form.Get("exclude_series") == "1"},
 	} {

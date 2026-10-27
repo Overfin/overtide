@@ -161,14 +161,14 @@ func validateRemovalScope(form url.Values) error {
 			return err
 		}
 	case "torrent":
-		if err := forbidden("managed_file", "unmanaged_path", "torrent", "path", "unmonitor_movies", "unmonitor_episodes", "exclude_movies", "exclude_series"); err != nil {
+		if err := forbidden("managed_file", "unmanaged_path", "torrent", "path", "exclude_movies", "exclude_series"); err != nil {
 			return err
 		}
 		if form.Get("target") != "1" {
 			return fmt.Errorf("torrent removal requires the torrent target")
 		}
 	case "unmanaged":
-		if err := forbidden("managed_file", "unmanaged_path", "target", "torrent", "unmonitor_movies", "unmonitor_episodes", "exclude_movies", "exclude_series"); err != nil {
+		if err := forbidden("managed_file", "unmanaged_path", "target", "torrent", "exclude_movies", "exclude_series"); err != nil {
 			return err
 		}
 		if len(form["path"]) == 0 {

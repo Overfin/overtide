@@ -394,10 +394,8 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 	startedPayload, _ := json.Marshal(map[string]any{
 		"command": scheduledRemovalCommand{HistoryID: historyID, Form: cloneForm(r.Form)},
 		"plan":    d.Plan, "managedFiles": d.SelectedManaged,
-		"unmonitorMovies":   r.FormValue("unmonitor_movies") == "1",
-		"unmonitorEpisodes": r.FormValue("unmonitor_episodes") == "1",
-		"excludeMovies":     r.FormValue("exclude_movies") == "1",
-		"excludeSeries":     r.FormValue("exclude_series") == "1",
+		"excludeMovies": r.FormValue("exclude_movies") == "1",
+		"excludeSeries": r.FormValue("exclude_series") == "1",
 	})
 	db := server.inv.Store()
 	if db == nil {
@@ -645,11 +643,9 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 	payload, _ := json.Marshal(map[string]any{
 		"command": scheduledRemovalCommand{HistoryID: historyID, Form: cloneForm(r.Form)},
 		"plan":    d.Plan, "managedFiles": d.SelectedManaged,
-		"unmonitorMovies":   r.FormValue("unmonitor_movies") == "1",
-		"unmonitorEpisodes": r.FormValue("unmonitor_episodes") == "1",
-		"excludeMovies":     r.FormValue("exclude_movies") == "1",
-		"excludeSeries":     r.FormValue("exclude_series") == "1",
-		"results":           results, "errors": errs,
+		"excludeMovies": r.FormValue("exclude_movies") == "1",
+		"excludeSeries": r.FormValue("exclude_series") == "1",
+		"results":       results, "errors": errs,
 	})
 	if historyErr := db.UpdateHistoryEvent(store.HistoryEvent{ID: historyID, EventType: "removal", Status: status, DryRun: dry, RequestedKind: string(d.Plan.Kind), RequestedKey: d.Plan.RequestedKey, RequestedLabel: d.Plan.RequestedLabel, ReclaimableBytes: d.Plan.ReclaimableBytes, MediaBytes: mediaBytes, Payload: payload, Error: strings.Join(errs, "; ")}); historyErr != nil {
 		log.Printf("[removal] [operation=%d] critical History finalization failure: %v", historyID, historyErr)
