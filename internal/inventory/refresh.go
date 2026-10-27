@@ -303,6 +303,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	// Stage 1: current application state. Publish this quickly; cached database
 	// state was already available from startup while these requests were running.
 	service.mu.RLock()
+	runCfg := service.cfg
 	radInstances := service.cfg.ServicesOfType("radarr")
 	sonInstances := service.cfg.ServicesOfType("sonarr")
 	radClients := service.rad
@@ -409,8 +410,8 @@ func (service *Service) Refresh(ctx context.Context) error {
 	}
 	// Published below before the relationships are worked out: what's kept,
 	// protected or not allowed to go must already show.
-	valuation.ApplyTorrentProtections(baseTorrents, service.cfg, time.Now())
-	valuation.ApplyMedia(all, service.cfg)
+	valuation.ApplyTorrentProtections(baseTorrents, runCfg, time.Now())
+	valuation.ApplyMedia(all, runCfg)
 
 	service.mu.Lock()
 	if topology != nil && service.fileTopologyVersion != startTopologyVersion {
@@ -485,7 +486,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		rids, sids, provenance, he = service.syncImportHistory(ctx)
 	}()
 
-	valuation.ApplyMedia(all, service.cfg)
+	valuation.ApplyMedia(all, runCfg)
 	service.mu.Lock()
 	service.items = cloneMedia(all)
 	service.updated = time.Now()
@@ -497,7 +498,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		return service.fail(he)
 	}
 
-	if len(service.cfg.ServicesOfType("qbittorrent")) == 0 {
+	if len(runCfg.ServicesOfType("qbittorrent")) == 0 {
 		service.mu.RLock()
 		files, mediaFileRefs, cfg := service.files, service.mediaFileRefs, service.cfg
 		generation := service.generation
@@ -642,7 +643,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	attachSeasons(all, mediaFileRefs, files)
 	applySeasonFileEstimates(all, files, mediaFileRefs)
 	applySeasonBundleEstimates(all, torrentList, files, mediaFileRefs, torrentFileRefs)
-	valuation.ApplyTorrentProtections(torrentList, service.cfg, time.Now())
+	valuation.ApplyTorrentProtections(torrentList, runCfg, time.Now())
 	service.setStageTiming("relationships", relationshipsStarted)
 
 	sort.SliceStable(torrentList, func(i, j int) bool {

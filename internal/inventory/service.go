@@ -264,11 +264,14 @@ func (service *Service) RefreshAdvisory() string {
 }
 
 func (service *Service) ValidateOverfin(ctx context.Context) error {
-	if service.cfg.Overfin.URL == "" {
+	service.mu.RLock()
+	cfg, client := service.cfg, service.overfin
+	service.mu.RUnlock()
+	if cfg.Overfin.URL == "" {
 		return nil
 	}
-	err := service.overfin.WithContext(ctx).Validate()
-	service.setStatus(serviceName(service.cfg, "overfin", "Overfin"), true, err == nil, err)
+	err := client.WithContext(ctx).Validate()
+	service.setStatus(serviceName(cfg, "overfin", "Overfin"), true, err == nil, err)
 	return err
 }
 

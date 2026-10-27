@@ -29,6 +29,7 @@ func (service *Service) ValidateBaseServices(ctx context.Context) error {
 func (service *Service) validateServiceTypes(ctx context.Context, allowed map[string]bool) error {
 	service.mu.RLock()
 	validatedAt := service.validatedBaseAt
+	services := service.cfg.Services
 	service.mu.RUnlock()
 	if !validatedAt.IsZero() && time.Since(validatedAt) < 30*time.Second {
 		return nil
@@ -38,7 +39,7 @@ func (service *Service) validateServiceTypes(ctx context.Context, allowed map[st
 		fn   func() error
 	}
 	checks := []check{}
-	for _, i := range service.cfg.Services {
+	for _, i := range services {
 		i := i
 		if !allowed[i.Type] {
 			continue

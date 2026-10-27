@@ -15,7 +15,8 @@ import (
 // is paused: with Overfin configured, its scores are the Retention Value.
 func (service *Service) RefreshOverfin(ctx context.Context) error {
 	defer service.publishChange()
-	if service.cfg.Overfin.URL == "" {
+	cfg := service.Config()
+	if cfg.Overfin.URL == "" {
 		return nil
 	}
 	service.mu.Lock()
@@ -30,7 +31,7 @@ func (service *Service) RefreshOverfin(ctx context.Context) error {
 	service.reliability.Message = "Overfin scores are being read; automatic removal planning is paused."
 	service.mu.Unlock()
 	if err := client.WithContext(ctx).Apply(base); err != nil {
-		service.setStatus(serviceName(service.cfg, "overfin", "Overfin"), true, false, err)
+		service.setStatus(serviceName(cfg, "overfin", "Overfin"), true, false, err)
 		service.mu.Lock()
 		service.reliability.Overfin = "stale"
 		service.reliability.Valuation = false
