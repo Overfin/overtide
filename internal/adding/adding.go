@@ -1,6 +1,6 @@
 // Package adding brings titles into the libraries: it keeps a waiting list
-// of titles to add, requests first, then what Overfin suggests, and tries
-// them one by one. Overfin gives opinions; Overtide decides. A title goes
+// of titles to add, what Overfin suggests (requests, once Overfin keeps
+// them, will go first), and tries them one by one. Overfin gives opinions; Overtide decides. A title goes
 // in Radarr or Sonarr once, unmonitored and tagged, and is never deleted
 // from them: a try monitors it and searches for it, and if nothing started
 // it's unmonitored again until its next try. Import lists are the

@@ -1,5 +1,6 @@
 // Package overfin reads Overfin's title values: one score per film and per
-// season, from 0 to 100, for what the libraries have. Overfin weighs what
+// season, from 0 to 100, for what the libraries have; and its suggestions,
+// the titles to add, in order. Overfin weighs what
 // people watch, ask for and like; Overtide only weighs that score against
 // storage and torrents. The key needs Overfin's "Values" scope.
 package overfin
