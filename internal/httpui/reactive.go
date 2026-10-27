@@ -326,9 +326,25 @@ func (server *Server) pendingProjection() pendingProjection {
 	if server.inv == nil || server.inv.Store() == nil {
 		return projection
 	}
+	// The latest 200 events carry the notices and what's just finished; every
+	// removal still queued or started is added, however old, so a long queue
+	// never shows a title as present while its removal waits.
 	events, err := server.inv.Store().HistoryEvents(200)
 	if err != nil {
 		return projection
+	}
+	inFlight, err := server.inv.Store().InFlightRemovalHistoryEvents()
+	if err != nil {
+		return projection
+	}
+	seen := make(map[int64]bool, len(events))
+	for _, event := range events {
+		seen[event.ID] = true
+	}
+	for _, event := range inFlight {
+		if !seen[event.ID] {
+			events = append(events, event)
+		}
 	}
 	managedOwners := map[string]string{}
 	managedTotals := map[string]int{}
