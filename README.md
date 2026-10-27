@@ -9,7 +9,7 @@ Overfin knows your titles and your people: what they watch, ask for and like, an
 
 Overfin decides; Overtide manages. Radarr, Sonarr and qBittorrent keep doing their jobs, and Overtide works through them, never behind their backs.
 
-> **Status: early.** Overtide starts in dry run, for adding as for removing: it plans and records what it would do, and changes nothing. See [`ROADMAP.md`](ROADMAP.md) for what's next.
+> **Status: early.** Overtide starts with adding off and removal in dry run: it plans and records what it would remove, and changes nothing. Adding has its own dry run too. See [`ROADMAP.md`](ROADMAP.md) for what's next.
 
 ## Starting it
 
@@ -41,13 +41,15 @@ Overfin values a title the same way whether it's on the server or not, and a tit
 Adding is off until you switch it on, on the **Adding** page (off, dry run, on).
 
 - **One source: Overfin.** Every hour, the **Overfin suggestions** task reads what Overfin says to add, in its order: the titles your libraries lack, the most valuable first, with trending and popular titles mixed in by the discovery share you set in Overfin. People's requests will always go first (coming).
-- **A waiting list.** Every 15 minutes, Overtide tries the titles whose turn it is, one search at a time. A try adds the title to Radarr or Sonarr, tagged `overtide`, with their root folder and quality profile, asks for a search of that one title, and keeps it only if a download started. Otherwise the title leaves Radarr or Sonarr at once and is tried again later: after 1 day, then 2, 4, 8, 16, then every 30. Titles not out yet wait for their release.
-- **Only its own titles.** Overtide manages the titles tagged `overtide`, and only those. Whatever you or anything else adds stays untouched.
+- **A waiting list.** Every 15 minutes, Overtide tries the titles whose turn it is, one search at a time, at most 3 searches a run (each season of a series counts). At most 200 of Overfin's suggestions wait.
+- **Monitor, never delete.** A title goes into Radarr or Sonarr once, unmonitored and tagged `overtide`, with their root folder and quality profile (Overtide adds only where there is one of each). A try monitors it (for a series, the seasons Overfin suggests), asks for a search of that one title, and checks a download started. If not, the title is unmonitored again and tried later: after 1 day, then 2, 4, 8. After 5 tries that found nothing, or 60 days in the list, it leaves the list, and isn't taken from Overfin's suggestions again for 6 months. An imported title stays monitored, so Radarr and Sonarr upgrade it.
+- **Releases.** A title not out yet waits, and two days before its release it's monitored without a search, so Radarr's or Sonarr's RSS catches it. Nothing within 14 days counts as a try that found nothing.
+- **Managed titles.** Switching adding on tags every title Radarr and Sonarr have `overtide`, once: from then on, Overtide manages them all. A title added from outside afterwards is left alone until it's removed to make room; then it's tagged too. The Kept list protects any title.
 - **Import lists are yours.** Overtide doesn't read them or work around them. Keep them in Radarr and Sonarr if you like; when Overtide removes a title, the removal can add it to their exclusions so a list doesn't bring it back.
 
 ## Removing
 
-- **Values come from Overfin, unchanged, when space is needed.** Overtide asks Overfin when a disk is over its target (and at startup). A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
+- **Values come from Overfin, unchanged, when space is needed.** Overtide asks Overfin at startup, and when a disk with automatic removal is over its target and Overfin's last answer is older than 15 minutes. A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
 - **Removed, not forgotten.** Removing a title deletes its files through Radarr or Sonarr; the title stays there, unmonitored (a series, its removed episodes) and tagged `overtide`, so it isn't downloaded again on its own.
 - **It knows what a removal really frees.** Overtide reads your file system and proves which files are hardlinks of which: a title in your library, the torrent it came from, its cross-seeds. Removing a title alone, while a torrent still holds the same file, frees nothing, so Overtide never proposes it that way.
 - **Bundles, removed together.** A title goes with every torrent that shares its files, cross-seeds included. Torrents that back nothing in the library (superseded, orphaned, unassociated) go first, the one inactive the longest first; cross-seeds of one another are removed together, since each alone frees nothing. A torrent added less than seven days ago is never removed on its own.
@@ -55,7 +57,7 @@ Adding is off until you switch it on, on the **Adding** page (off, dry run, on).
 - **You keep what you want.** **Keep** on a title's page or in the cleanup plan puts it on the Kept list, on the Storage page; nothing kept is ever planned for removal until you take it off the list.
 - **Private trackers.** An optional setting keeps private torrents, and the titles they share files with, until they've seeded a number of days. Off by default.
 - **Every removal is a plan first.** It shows exactly what would happen and how much it frees, and it's checked again just before running. Library files are removed through Radarr or Sonarr, torrents through qBittorrent. Overtide deletes a file itself only when no service claims it.
-- **Three modes for automatic removal:** off, confirm (it picks, you approve) and automatic. And dry run, on by default, over everything.
+- **Three modes for automatic removal:** off, confirm (it picks, you approve) and automatic. And dry run, on by default, over every removal, by hand or automatic; adding has its own.
 
 ## Disks
 
@@ -107,6 +109,8 @@ Plain Go, standard library first, like Overfin. SQLite through `database/sql` wi
 go test -race ./...
 go run ./cmd/overtide -config ./config.json
 ```
+
+The database and the daily logs always go under `/config` (`/config/state`, `/config/log`), so that folder must exist and be writable, even when the config file is elsewhere.
 
 The web assets are TypeScript, type-checked with `tsc` and bundled with esbuild's Go API; the bundles are committed, so building Overtide needs no Node. After changing `internal/httpui/static/src`:
 
