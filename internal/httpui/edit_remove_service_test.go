@@ -55,6 +55,9 @@ func TestEditServiceEndToEndOverHTTP(t *testing.T) {
 	if getRecorder.Code != http.StatusOK || !strings.Contains(getRecorder.Body.String(), oldRadarr.URL) {
 		t.Fatalf("expected the edit overlay to render pre-filled with the current URL, got status=%d body=%q", getRecorder.Code, getRecorder.Body.String())
 	}
+	if !strings.Contains(getRecorder.Body.String(), `data-confirm="Remove Movies?`) {
+		t.Fatalf("expected removing the service to ask for confirmation, got body=%q", getRecorder.Body.String())
+	}
 
 	// Moving it to a brand new URL (real browser shape: multipart) keeps the same ID.
 	editBody, editContentType := multipartServiceForm(t, map[string]string{"id": id, "name": "Movies", "url": newRadarr.URL, "api_key": "newkey"})
