@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -165,7 +166,9 @@ func (server *Server) runScheduledRemoval(schedulerContext context.Context, payl
 		if event, historyError := database.HistoryEventByID(command.HistoryID); historyError == nil {
 			event.Status = "failed"
 			event.Error = operationError
-			_ = database.UpdateHistoryEvent(event)
+			if err := database.UpdateHistoryEvent(event); err != nil {
+				log.Printf("[removal] mark operation %d failed in the history: %v", command.HistoryID, err)
+			}
 		}
 		server.publishUIChange("removal-failed")
 		return fmt.Errorf("%s", operationError)

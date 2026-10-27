@@ -455,7 +455,9 @@ func (manager *Manager) stop() {
 	for {
 		manager.mu.Lock()
 		if len(manager.running) == 0 {
-			_ = manager.persistLocked()
+			if err := manager.persistLocked(); err != nil {
+				log.Printf("[scheduler] state: %v", err)
+			}
 			manager.signalChangedLocked()
 			close(manager.done)
 			manager.mu.Unlock()

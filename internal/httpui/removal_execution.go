@@ -196,7 +196,9 @@ func (server *Server) executeRemoval(w http.ResponseWriter, r *http.Request) {
 	_, err = server.tasks.Submit(tasks.Request{TaskID: removalTaskID, Kind: tasks.TriggerEvent, Priority: tasks.PriorityMutation, Durable: true, CoalescingKey: fmt.Sprintf("operation:%d", historyID), Cause: descriptor.Label, Payload: payload})
 	if err != nil {
 		auditRemovalRejected(historyID, r.Form, fmt.Errorf("scheduler rejected removal: %w", err))
-		_ = database.UpdateHistoryEvent(store.HistoryEvent{ID: historyID, EventType: "removal", Status: "failed", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, Payload: queuedPayload, Error: "scheduler rejected removal: " + err.Error()})
+		if historyErr := database.UpdateHistoryEvent(store.HistoryEvent{ID: historyID, EventType: "removal", Status: "failed", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, Payload: queuedPayload, Error: "scheduler rejected removal: " + err.Error()}); historyErr != nil {
+			log.Printf("[removal] mark operation %d failed in the history: %v", historyID, historyErr)
+		}
 		server.publishUIChange("removal-failed")
 		http.Error(w, "Removal could not be scheduled: "+err.Error(), http.StatusServiceUnavailable)
 		return
