@@ -135,7 +135,7 @@ Overtide is built from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, with 
 
 ## AI-assisted development
 
-Overtide's development is assisted by AI (Claude, by Anthropic), as Overfin's is. Commits it contributed to carry a `Co-Authored-By` line.
+Said plainly, as for Overfin: Overtide is written by Claude (Anthropic's AI): its code, its tests and its documentation. The maintainer gives directions (what it should do, how, what to change) and runs it on a real server, but doesn't write the code or review it line by line. Commits Claude wrote carry a `Co-Authored-By: Claude` trailer. What checks the code is what runs before every push (the tests with the race detector, vet, staticcheck, govulncheck), and the dry run, on by default, before anything is removed or added for real.
 
 ## License
 
