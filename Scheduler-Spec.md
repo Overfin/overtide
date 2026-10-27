@@ -313,10 +313,13 @@ special cases.
 
 ### 11.1 Initial maintenance
 
-- Base inventory is requested at startup.
+- Base inventory is requested at startup; once it has published, File
+  reconciliation and Overfin values are requested too.
 - File reconciliation may begin only under its declared generation/resource
   rules.
-- Enrichment tasks use their own schedules and publication claims.
+- Overfin values has no schedule of its own: it runs at startup, and when
+  automatic removal finds a disk over its target with values older than 15
+  minutes. It uses the publication claim like Base inventory.
 
 ### 11.2 Removal
 
@@ -346,7 +349,7 @@ special cases.
 
 ### 11.4 Enrichment cooldown
 
-The Overfin scores task's post-removal cooldown is represented by a delayed trigger or policy,
+The Overfin values task's post-removal cooldown (30 minutes) is represented by a delayed trigger or policy,
 not by removal-specific fields in the scheduler. If interrupted for mutation,
 its still-required trigger is rescheduled after the cooldown.
 
