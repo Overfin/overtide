@@ -464,9 +464,14 @@ func (server *Server) keepPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	back := r.FormValue("back")
-	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") {
-		back = "/storage"
+	http.Redirect(w, r, localPath(r.FormValue("back"), "/storage"), http.StatusSeeOther)
+}
+
+// localPath returns back when it is a path on this site, fallback otherwise.
+// "//host" and "/\host" are refused: browsers read both as another site.
+func localPath(back, fallback string) string {
+	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, "\\") {
+		return fallback
 	}
-	http.Redirect(w, r, back, http.StatusSeeOther)
+	return back
 }
