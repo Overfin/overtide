@@ -45,8 +45,11 @@
     "dry_run": true,
     "auto_mode": "disabled",
     "auto_remove_unassociated_torrents": false,
-    "auto_unmonitor": false,
     "auto_exclude_from_import_lists": false,
-    "auto_remove_incomplete_torrents": false
+    "auto_remove_incomplete_torrents": false,
+    "copies_with_titles": false
+  },
+  "adding": {
+    "mode": "off"
   }
 }
