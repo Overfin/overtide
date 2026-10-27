@@ -54,9 +54,9 @@ type RemovalConfig struct {
 	// AutoRemoveIncompleteTorrents gates automatic removal of a torrent that
 	// hasn't finished downloading (AmountLeftBytes > 0). Defaults to false:
 	// this only controls whether an incomplete torrent can be a candidate
-	// at all — whether it's actually picked still depends on it scoring
-	// low on Torrent Value, which an active download won't, since Recent
-	// activity already reflects it. Manual removal is never gated by this;
+	// at all — whether it's actually picked still depends on its last
+	// activity: lone torrents go least recently active first, and an
+	// active download is recent. Manual removal is never gated by this;
 	// a human looking at the Torrents page can already decide for
 	// themselves. Same shape as AutoRemoveUnassociatedTorrents.
 	AutoRemoveIncompleteTorrents bool `json:"auto_remove_incomplete_torrents"`

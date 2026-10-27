@@ -3,12 +3,14 @@ package inventory
 import (
 	"context"
 	"encoding/json"
-	"github.com/overfin/overtide/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
 )
 
 // realDiskSize returns a file's real physical/block-allocated size on the
@@ -243,4 +245,13 @@ func TestReconcileFilesSucceedsWithNoServicesConfigured(t *testing.T) {
 	if got := service.ReliabilitySnapshot().FileModel; got != "reliable" {
 		t.Fatalf("FileModel=%q, want reliable", got)
 	}
+}
+
+// walkRoots walks paths as storage roots of one test service.
+func walkRoots(paths []string) ([]model.File, error) {
+	roots := make([]storageRoot, 0, len(paths))
+	for _, p := range paths {
+		roots = append(roots, storageRoot{Path: p, Service: config.Service{ID: "test", Name: "Storage"}})
+	}
+	return walkStorageRoots(roots)
 }

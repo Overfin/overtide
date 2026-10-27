@@ -363,14 +363,6 @@ func svcID(c config.Config, typ string) string {
 	return typ
 }
 
-func walkRoots(paths []string) ([]model.File, error) {
-	roots := make([]storageRoot, 0, len(paths))
-	for _, p := range paths {
-		roots = append(roots, storageRoot{Path: p, Service: config.Service{ID: "test", Name: "Storage"}})
-	}
-	return walkStorageRoots(roots)
-}
-
 // ReconcileFiles performs a full authoritative reconciliation. Startup,
 // periodic, and manual executions always use this path.
 func (service *Service) ReconcileFiles(ctx context.Context) error {

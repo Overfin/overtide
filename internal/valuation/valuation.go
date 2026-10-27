@@ -22,8 +22,8 @@ func serviceAllowsRemoval(configuration config.Config, serviceID string) bool {
 
 // ApplyMedia assigns each title its Retention Value: Overfin's score.
 // Overtide doesn't value titles itself; Overfin does (what people watch,
-// ask for and like), and Overtide weighs that against storage and torrents
-// (Torrent Value, kept apart). Without Overfin, nothing is scored, so
+// ask for and like), and Overtide weighs that against storage and torrents.
+// Without Overfin, nothing is scored, so
 // everything is protected. Cleanup ordering is lowest value first, the
 // larger title first on a tie.
 func ApplyMedia(mediaItems []model.Media, configuration config.Config) {
@@ -51,7 +51,7 @@ const notValued = "Not valued by Overfin"
 // applyOverfinValue makes Overfin's scores the Retention Value: a film's
 // score, each season's own, a series' best season's. Overfin weighs what
 // people watch, ask for and like; Overtide weighs that against storage and
-// torrents (Torrent Value, kept apart). What the operator kept is
+// torrents. What the operator kept is
 // protected; anything Overfin didn't score is protected, with the highest
 // value.
 func applyOverfinValue(mediaItem *model.Media, configuration config.Config) {

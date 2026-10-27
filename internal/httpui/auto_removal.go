@@ -151,9 +151,9 @@ func actionIsUnassociatedTorrent(action cleanup.Action) bool {
 // actionIsIncompleteTorrent reports whether action is a StandaloneTorrent
 // candidate that hasn't finished downloading yet. This only controls
 // whether such a torrent can be an automatic-removal candidate at all —
-// whether it's actually selected still depends on it scoring low on
-// Torrent Value, which an actively downloading torrent won't, since its
-// Recent activity already reflects that.
+// whether it's actually selected still depends on its last activity:
+// lone torrents go least recently active first, and an active download
+// is recent.
 func actionIsIncompleteTorrent(action cleanup.Action) bool {
 	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) == 0 {
 		return false

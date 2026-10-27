@@ -394,15 +394,6 @@ func terminalTrigger(state string) bool {
 	return false
 }
 
-func (manager *Manager) Run(ctx context.Context, taskID string) error {
-	receipt, err := manager.Submit(Request{TaskID: taskID, Kind: TriggerManual, Priority: PriorityManual, Durable: true, Cause: "Run now"})
-	if err != nil {
-		return err
-	}
-	_, err = manager.Await(ctx, receipt.TriggerID)
-	return err
-}
-
 func (manager *Manager) RunAsyncApp(taskID string) (Receipt, error) {
 	return manager.Submit(Request{TaskID: taskID, Kind: TriggerManual, Priority: PriorityManual, Durable: true, Cause: "Run now"})
 }
