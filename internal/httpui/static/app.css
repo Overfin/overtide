@@ -881,6 +881,15 @@ th a:hover {
   border-top: 1px solid var(--border);
   flex: 0 0 auto;
 }
+.confirm-overlay {
+  z-index: 1100;
+}
+.modal-dialog.confirm-dialog {
+  width: min(460px, 96vw);
+}
+.confirm-dialog p {
+  margin: 0.9rem 0 0;
+}
 .disabled-tip {
   display: inline-block;
   cursor: not-allowed;
@@ -1081,6 +1090,9 @@ th a:hover {
     height: calc(100vh - 16px);
     max-height: none;
     padding: 16px;
+  }
+  .modal-dialog.confirm-dialog {
+    height: auto;
   }
   .modal-dialog .actions {
     margin-top: 8px;

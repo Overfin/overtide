@@ -1,4 +1,5 @@
 import { announce, dispatchRevision } from "../shared";
+import { confirmDialog } from "../confirm";
 
 interface ModalRoot extends HTMLElement {
   _overtideOpener?: HTMLElement;
@@ -211,8 +212,21 @@ export class ShellController extends window.Stimulus.Controller {
     const thenOverlayURL = form.dataset.backgroundSubmitThenOverlay;
     if (form.matches("[data-background-submit], [data-background-submit-then-overlay]")) {
       event.preventDefault();
-      if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
       const button = form.querySelector<HTMLButtonElement>("button[type=submit]");
+      // data-confirm asks first, in the app's own dialog (see confirm.ts);
+      // data-confirm-title, data-confirm-action (the button's label) and
+      // data-confirm-danger shape it.
+      if (form.dataset.confirm) {
+        const opener = (event as SubmitEvent).submitter || button;
+        const confirmed = await confirmDialog({
+          title: form.dataset.confirmTitle || "Please confirm",
+          message: form.dataset.confirm,
+          confirmLabel: form.dataset.confirmAction || "Confirm",
+          danger: form.dataset.confirmDanger !== undefined,
+          opener,
+        });
+        if (!confirmed || !document.contains(form)) return;
+      }
       if (button) button.disabled = true;
       const errorTarget = form.querySelector<HTMLElement>("[data-modal-error]");
       if (errorTarget) errorTarget.hidden = true;

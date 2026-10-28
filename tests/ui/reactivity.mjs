@@ -14,6 +14,7 @@ const staticRoot = join(repository, "internal/httpui/static");
 let planRequests = 0;
 let executeRequests = 0;
 let eventsRequests = 0;
+let removeServiceRequests = 0;
 
 const model = Buffer.from(JSON.stringify({
   kind: "media",
@@ -35,6 +36,14 @@ const removal = `<div class="modal-overlay" data-controller="removal" data-remov
 
 const index = `<!doctype html><html><head><script defer src="/assets/app.js"></script></head><body data-controller="shell"><button id="open" data-removal-url="/removal/media">Remove</button><div id="modal-root"></div><div id="ui-announcer"></div><div id="updates-available" hidden></div></body></html>`;
 
+// A modal with a data-confirm form inside it, like Edit service → Remove
+// service: the app's own confirmation must stack above the modal, and
+// cancelling it must leave that modal as it was.
+const editService = `<div class="modal-overlay"><main class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-title" tabindex="-1"><div class="top"><div><h2 id="edit-title">Edit service</h2></div></div>
+<div class="modal-scroll"><form data-background-submit data-confirm="Remove Movies? Everything it owns becomes Unmanaged." data-confirm-title="Remove service" data-confirm-action="Remove service" data-confirm-danger method="post" action="/services/remove"><p data-modal-error hidden class="bad"></p><button id="remove-service" type="submit" class="trash">Remove service</button></form></div></main></div>`;
+
+const confirmIndex = `<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"><script defer src="/assets/app.js"></script></head><body data-controller="shell"><button id="open-edit" data-overlay-url="/services/edit">Edit</button><div id="modal-root" class="modal-root"></div><div id="ui-announcer"></div><div id="updates-available" hidden></div></body></html>`;
+
 // A minimal page carrying the "revisions" controller, matching every real
 // page's <body data-controller="shell revisions">, for the SSE
 // reconnect-leak regression test below.
@@ -49,6 +58,22 @@ const server = createServer(async (request, response) => {
   if (request.url === "/sse") {
     response.setHeader("Content-Type", "text/html");
     response.end(sseIndex);
+    return;
+  }
+  if (request.url === "/confirm") {
+    response.setHeader("Content-Type", "text/html");
+    response.end(confirmIndex);
+    return;
+  }
+  if (request.url === "/services/edit") {
+    response.setHeader("Content-Type", "text/html");
+    response.end(editService);
+    return;
+  }
+  if (request.url === "/services/remove" && request.method === "POST") {
+    removeServiceRequests += 1;
+    request.resume();
+    response.writeHead(204).end();
     return;
   }
   if (request.url === "/ui/status") {
@@ -113,6 +138,58 @@ function assert(condition, message) {
 }
 
 try {
+  // The app's own confirmation dialog (confirm.ts), never window.confirm.
+  page.on("dialog", dialog => { throw new Error(`a browser ${dialog.type()} dialog opened: ${dialog.message()}`); });
+  await page.goto(`http://127.0.0.1:${address.port}/confirm`);
+  await page.click("#open-edit");
+  await page.waitForSelector("#edit-title");
+  await page.click("#remove-service");
+  await page.waitForSelector('[role="alertdialog"]');
+  const shown = await page.evaluate(() => {
+    const dialog = document.querySelector('[role="alertdialog"]');
+    const confirmOverlay = dialog.closest(".modal-overlay");
+    const editOverlay = document.querySelector("#modal-root .modal-overlay");
+    const label = document.getElementById(dialog.getAttribute("aria-labelledby"));
+    const buttons = [...dialog.querySelectorAll("button")];
+    return {
+      title: label?.textContent,
+      message: document.getElementById(dialog.getAttribute("aria-describedby"))?.textContent,
+      modal: dialog.getAttribute("aria-modal"),
+      focused: document.activeElement?.textContent,
+      buttons: buttons.map(button => `${button.textContent}${button.classList.contains("danger") ? " (danger)" : ""}`),
+      above: Number(getComputedStyle(confirmOverlay).zIndex) > Number(getComputedStyle(editOverlay).zIndex),
+      outsideRoot: !document.getElementById("modal-root").contains(dialog),
+    };
+  });
+  assert(shown.title === "Remove service", `confirmation title: ${shown.title}`);
+  assert(shown.message === "Remove Movies? Everything it owns becomes Unmanaged.", `confirmation message: ${shown.message}`);
+  assert(shown.modal === "true", "confirmation is not aria-modal");
+  assert(shown.focused === "Cancel", `focus went to ${shown.focused}, not Cancel`);
+  assert(shown.buttons.join(",") === "Cancel,Remove service (danger)", `confirmation buttons: ${shown.buttons}`);
+  assert(shown.above && shown.outsideRoot, "confirmation is not stacked above the modal it was opened from");
+  await page.keyboard.press("Tab");
+  assert(await page.evaluate(() => document.activeElement?.textContent) === "Remove service", "Tab did not move to the confirm button");
+  await page.keyboard.press("Tab");
+  assert(await page.evaluate(() => document.activeElement?.textContent) === "Cancel", "Tab left the confirmation");
+
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[role="alertdialog"]', { state: "detached" });
+  assert(await page.isVisible("#edit-title"), "Escape on the confirmation closed the modal under it");
+  assert(await page.evaluate(() => document.activeElement?.id) === "remove-service", "focus did not return to the button that asked");
+  assert(await page.evaluate(() => document.body.classList.contains("modal-open")), "closing the confirmation unlocked the page under an open modal");
+
+  await page.click("#remove-service");
+  await page.click('[role="alertdialog"] button:text-is("Cancel")');
+  await page.waitForSelector('[role="alertdialog"]', { state: "detached" });
+  assert(await page.isVisible("#edit-title"), "Cancel on the confirmation closed the modal under it");
+  assert(removeServiceRequests === 0, `a cancelled confirmation still posted ${removeServiceRequests} time(s)`);
+
+  await page.click("#remove-service");
+  await page.click('[role="alertdialog"] button.danger');
+  await page.waitForSelector("#edit-title", { state: "detached" });
+  assert(removeServiceRequests === 1, `confirming posted ${removeServiceRequests} time(s), not once`);
+  assert(await page.evaluate(() => !document.body.classList.contains("modal-open")), "page still locked after the modal closed");
+
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.click("#open");
   await page.waitForSelector(".modal-dialog");

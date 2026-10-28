@@ -10,7 +10,7 @@
       <p>These torrents are removed from qBittorrent only. <b>No file is deleted</b>: qBittorrent is told to keep files, and each torrent's files are checked again on disk first. A torrent you kept, one with a seeding obligation, or one whose disk looks empty (not mounted?) is left alone.</p>
       {{if .DryRun}}<p class="dry">Dry run is on: nothing is sent to qBittorrent.</p>{{end}}
       <ul class="missing-list">{{range .Torrents}}<li>{{.Name}} <span class="muted">· {{.AssociationStatus}}</span></li>{{else}}<li class="muted">None now.</li>{{end}}</ul>
-      <form data-background-submit method="post" action="/torrents/missing">
+      <form data-background-submit data-confirm="{{if .DryRun}}Simulate removing {{len .Torrents}} torrent{{if ne (len .Torrents) 1}}s{{end}} from qBittorrent? Dry run is on: nothing is sent to qBittorrent.{{else}}Remove {{len .Torrents}} torrent{{if ne (len .Torrents) 1}}s{{end}} from qBittorrent? Their files are not deleted.{{end}}" data-confirm-title="Remove from qBittorrent" data-confirm-action="{{if .DryRun}}Simulate{{else}}Remove{{end}}"{{if not .DryRun}} data-confirm-danger{{end}} method="post" action="/torrents/missing">
         <p data-modal-error hidden class="bad"></p>
         <div class="actions">
           <button type="button" data-overlay-cancel>Cancel</button>

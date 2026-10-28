@@ -2817,6 +2817,73 @@ Copyright © 2023 Basecamp, LLC
     }
   };
 
+  // internal/httpui/static/src/confirm.ts
+  var open = false;
+  function confirmDialog(options) {
+    if (open) return Promise.resolve(false);
+    open = true;
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay confirm-overlay";
+    const dialog = document.createElement("main");
+    dialog.className = "modal-dialog confirm-dialog";
+    dialog.setAttribute("role", "alertdialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "confirm-dialog-title");
+    dialog.setAttribute("aria-describedby", "confirm-dialog-message");
+    dialog.tabIndex = -1;
+    const top = document.createElement("div");
+    top.className = "top";
+    const title = document.createElement("h2");
+    title.id = "confirm-dialog-title";
+    title.textContent = options.title;
+    top.append(title);
+    const message = document.createElement("p");
+    message.id = "confirm-dialog-message";
+    message.textContent = options.message;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.textContent = options.confirmLabel;
+    if (options.danger) confirm.className = "danger";
+    actions.append(cancel, confirm);
+    dialog.append(top, message, actions);
+    overlay.append(dialog);
+    const hadModalOpen = document.body.classList.contains("modal-open");
+    document.body.classList.add("modal-open");
+    document.body.append(overlay);
+    cancel.focus();
+    return new Promise((resolve) => {
+      const finish = (confirmed) => {
+        overlay.remove();
+        if (!hadModalOpen) document.body.classList.remove("modal-open");
+        open = false;
+        if (options.opener && document.contains(options.opener)) options.opener.focus();
+        resolve(confirmed);
+      };
+      cancel.addEventListener("click", () => finish(false));
+      confirm.addEventListener("click", () => finish(true));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) finish(false);
+      });
+      dialog.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          (document.activeElement === cancel ? confirm : cancel).focus();
+        }
+      });
+    });
+  }
+
   // internal/httpui/static/src/controllers/shell.ts
   function humanBytes(bytes) {
     const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -2987,8 +3054,18 @@ Copyright © 2023 Basecamp, LLC
       const thenOverlayURL = form.dataset.backgroundSubmitThenOverlay;
       if (form.matches("[data-background-submit], [data-background-submit-then-overlay]")) {
         event.preventDefault();
-        if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
         const button = form.querySelector("button[type=submit]");
+        if (form.dataset.confirm) {
+          const opener = event.submitter || button;
+          const confirmed = await confirmDialog({
+            title: form.dataset.confirmTitle || "Please confirm",
+            message: form.dataset.confirm,
+            confirmLabel: form.dataset.confirmAction || "Confirm",
+            danger: form.dataset.confirmDanger !== void 0,
+            opener
+          });
+          if (!confirmed || !document.contains(form)) return;
+        }
         if (button) button.disabled = true;
         const errorTarget = form.querySelector("[data-modal-error]");
         if (errorTarget) errorTarget.hidden = true;

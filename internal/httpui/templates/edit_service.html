@@ -29,7 +29,7 @@
           <button type="submit">Save changes</button>
         </div>
       </form>
-      <form data-background-submit data-confirm="Remove {{.Name}}? Everything it owns becomes Unmanaged." method="post" action="/services/remove">
+      <form data-background-submit data-confirm="Remove {{.Name}}? Everything it owns becomes Unmanaged." data-confirm-title="Remove service" data-confirm-action="Remove service" data-confirm-danger method="post" action="/services/remove">
         <input type="hidden" name="id" value="{{.ID}}">
         <p class="warn">Removing this service lets go of everything it currently owns — those files become Unmanaged.</p>
         <button type="submit" class="trash">Remove service</button>

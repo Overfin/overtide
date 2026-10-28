@@ -55,7 +55,7 @@ func TestEditServiceEndToEndOverHTTP(t *testing.T) {
 	if getRecorder.Code != http.StatusOK || !strings.Contains(getRecorder.Body.String(), oldRadarr.URL) {
 		t.Fatalf("expected the edit overlay to render pre-filled with the current URL, got status=%d body=%q", getRecorder.Code, getRecorder.Body.String())
 	}
-	if !strings.Contains(getRecorder.Body.String(), `data-confirm="Remove Movies?`) {
+	if !strings.Contains(getRecorder.Body.String(), `data-confirm="Remove Movies?`) || !strings.Contains(getRecorder.Body.String(), `data-confirm-danger`) {
 		t.Fatalf("expected removing the service to ask for confirmation, got body=%q", getRecorder.Body.String())
 	}
 

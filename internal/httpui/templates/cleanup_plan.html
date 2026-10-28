@@ -6,7 +6,7 @@
         <div class="muted">{{if .RootLabels}}{{join .RootLabels ", "}}{{else}}{{.RepresentativePath}}{{end}}{{if .Filesystem}} · {{.Filesystem}}{{end}}</div>
       </div>
     </div>
-    <form id="cleanup-plan-form" data-background-submit data-confirm="{{if .DryRun}}Simulate removing the {{len .Plan.Actions}} item(s) listed? Dry run is on: nothing will be removed.{{else}}Remove the {{len .Plan.Actions}} item(s) listed, with their files?{{end}}" method="post" action="/storage/cleanup-plan/clean">
+    <form id="cleanup-plan-form" data-background-submit data-confirm="{{if .DryRun}}Simulate removing the {{len .Plan.Actions}} item(s) listed? Dry run is on: nothing will be removed.{{else}}Remove the {{len .Plan.Actions}} item(s) listed, with their files?{{end}}" data-confirm-title="{{if .DryRun}}Simulate cleanup{{else}}Clean up{{end}}" data-confirm-action="{{if .DryRun}}Simulate{{else}}Clean{{end}}"{{if not .DryRun}} data-confirm-danger{{end}} method="post" action="/storage/cleanup-plan/clean">
       <input type="hidden" name="path" value="{{.RepresentativePath}}">
       {{range .Excluded}}<input type="hidden" name="excluded" value="{{.}}">{{end}}
       <div class="modal-scroll">
