@@ -557,6 +557,9 @@ func (manager *Manager) nextReadyIntentLocked() *pendingIntent {
 		if !readyAt.IsZero() && now.Before(readyAt) {
 			continue
 		}
+		if manager.runningLocked(intent) {
+			continue
+		}
 		ready = append(ready, intent)
 	}
 	sort.Slice(ready, func(first, second int) bool {
@@ -583,6 +586,19 @@ func (manager *Manager) nextReadyIntentLocked() *pendingIntent {
 		}
 	}
 	return nil
+}
+
+// runningLocked tells whether the intent's own task, with the same key, is
+// running: a successor waits for it to finish instead of running beside it.
+func (manager *Manager) runningLocked(intent *pendingIntent) bool {
+	key := intentKey(intent.TaskID, intent.Key)
+	for executionID := range manager.running {
+		execution := manager.state.Executions[executionID]
+		if intentKey(execution.TaskID, execution.CoalescingKey) == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (manager *Manager) requireAttentionLocked(intent *pendingIntent, reason string) {
@@ -872,7 +888,7 @@ func (manager *Manager) nextWakeDelayLocked() time.Duration {
 			candidate = intent.Deadline
 		}
 		if candidate.IsZero() || !candidate.After(now) {
-			if manager.resourceConflictLocked(definition.Resources) == "" {
+			if !manager.runningLocked(intent) && manager.resourceConflictLocked(definition.Resources) == "" {
 				return 0
 			}
 			continue
