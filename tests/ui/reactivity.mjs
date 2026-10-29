@@ -22,8 +22,8 @@ const model = Buffer.from(JSON.stringify({
   dryRun: false,
   torrentStatuses: { abc: "CURRENT" },
   files: [
-    { path: "/library/movie.mkv", owner: "media", ownerKey: "radarr:9", actionName: "managed_file", actionValue: "radarr:9", physicalKey: "1:2", selected: true, exists: true, sizeBytes: 4096, identityKnown: true, device: 1, inode: 2, links: 2 },
-    { path: "/downloads/movie.mkv", owner: "torrent", ownerKey: "abc", actionName: "torrent", actionValue: "abc", physicalKey: "1:2", selected: false, exists: true, sizeBytes: 4096, identityKnown: true, device: 1, inode: 2, links: 2 }
+    { path: "/library/movie.mkv", owner: "media", ownerKey: "radarr:9", actionName: "managed_file", actionValue: "radarr:9", physicalKey: "1:2", selectable: true, selected: true, exists: true, sizeBytes: 4096, identityKnown: true, device: 1, inode: 2, links: 2 },
+    { path: "/downloads/movie.mkv", owner: "torrent", ownerKey: "abc", actionName: "torrent", actionValue: "abc", physicalKey: "1:2", selectable: true, selected: false, exists: true, sizeBytes: 4096, identityKnown: true, device: 1, inode: 2, links: 2 }
   ]
 })).toString("base64");
 
