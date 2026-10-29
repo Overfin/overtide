@@ -579,8 +579,11 @@ body:has(> .appbar) {
   gap: 0.75rem;
   font-weight: 550;
 }
-.field-stack .toggle .muted {
+.field-stack label .muted {
   font-weight: 400;
+}
+.field-stack + button {
+  margin-top: 1rem;
 }
 .toggle input[type=checkbox] {
   appearance: none;
@@ -1350,7 +1353,7 @@ th a:hover {
 }
 .auth-card button[type=submit] {
   width: 100%;
-  margin-top: 4px;
+  margin-top: 20px;
 }
 
 /* internal/httpui/static/src/styles/home.css */

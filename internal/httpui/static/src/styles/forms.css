@@ -67,8 +67,13 @@
   gap: 0.75rem;
   font-weight: 550;
 }
-.field-stack .toggle .muted {
+/* A field's help, under it: plain, as everywhere else. */
+.field-stack label .muted {
   font-weight: 400;
+}
+/* A form's button, apart from its last field. */
+.field-stack + button {
+  margin-top: 1rem;
 }
 /* Switches, as in Overfin's control panel: a setting's checkbox drawn as
    one. Checkboxes that pick items (files, rows) stay checkboxes. */
