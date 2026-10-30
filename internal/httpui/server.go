@@ -226,7 +226,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 
 // Handler is every route behind the sign-in (see authGate).
 func (server *Server) Handler() http.Handler {
-	return server.authGate(server.routes())
+	return noFraming(server.authGate(server.routes()))
 }
 
 // routes is every route, without the sign-in: tests use it directly.

@@ -23,3 +23,16 @@ func sameOriginWrites(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// noFraming keeps Overtide's pages out of other sites' frames, where a page
+// laid over them could have the admin click Remove unawares, and stops
+// browsers guessing a response's type.
+func noFraming(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
