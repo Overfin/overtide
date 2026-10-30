@@ -424,8 +424,9 @@ func errString(e error) string {
 	return e.Error()
 }
 func Run(ctx context.Context, addr string, h http.Handler) error {
-	// A client gets 10 seconds to send its request headers.
-	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	// A client gets 10 seconds to send its request headers, and a
+	// connection left idle closes after 2 minutes, as in Overfin.
+	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
