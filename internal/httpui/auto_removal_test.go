@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -310,5 +311,43 @@ func TestShownActions(t *testing.T) {
 	kept, gone := shownActions([]cleanup.Action{movie, grown, newcomer}, shown)
 	if len(kept) != 1 || kept[0].Media.SourceID != 1 || gone != 1 {
 		t.Fatalf("kept %#v, gone %d", kept, gone)
+	}
+}
+
+// What automatic removal submits of a plan: nothing in Confirm mode; in
+// Auto mode, everything but unassociated and incomplete torrents, unless
+// each is allowed.
+func TestAutoActions(t *testing.T) {
+	media := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{Title: "Film"}}
+	superseded := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Name: "superseded", AssociationStatus: model.TorrentSuperseded}}}
+	unassociated := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Name: "unassociated", AssociationStatus: model.TorrentUnassociated}}}
+	incomplete := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Name: "incomplete", AssociationStatus: model.TorrentSuperseded, AmountLeftBytes: 100}}}
+	plan := []cleanup.Action{media, superseded, unassociated, incomplete}
+	names := func(actions []cleanup.Action) []string {
+		var out []string
+		for _, a := range actions {
+			if a.Kind == cleanup.StandaloneMedia {
+				out = append(out, a.Media.Title)
+			} else {
+				out = append(out, a.Torrents[0].Name)
+			}
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name string
+		cfg  config.RemovalConfig
+		want []string
+	}{
+		{"confirm", config.RemovalConfig{AutoMode: config.RemovalAutoConfirm, AutoRemoveUnassociatedTorrents: true, AutoRemoveIncompleteTorrents: true}, nil},
+		{"disabled", config.RemovalConfig{AutoMode: config.RemovalAutoDisabled}, nil},
+		{"auto", config.RemovalConfig{AutoMode: config.RemovalAutoAuto}, []string{"Film", "superseded"}},
+		{"auto, unassociated allowed", config.RemovalConfig{AutoMode: config.RemovalAutoAuto, AutoRemoveUnassociatedTorrents: true}, []string{"Film", "superseded", "unassociated"}},
+		{"auto, incomplete allowed", config.RemovalConfig{AutoMode: config.RemovalAutoAuto, AutoRemoveIncompleteTorrents: true}, []string{"Film", "superseded", "incomplete"}},
+	} {
+		got := names(autoActions(plan, config.Config{Removal: tc.cfg}))
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

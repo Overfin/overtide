@@ -63,25 +63,36 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		if err != nil || !plan.Available {
 			continue
 		}
-		for _, group := range plan.Actions {
-			if actionIsUnassociatedTorrent(group) && !cfg.Removal.AutoRemoveUnassociatedTorrents {
-				continue
-			}
-			if actionIsIncompleteTorrent(group) && !cfg.Removal.AutoRemoveIncompleteTorrents {
-				continue
-			}
-			if cfg.Removal.AutoMode != config.RemovalAutoAuto {
-				// Confirm mode: this candidate has passed every automatic-
-				// removal filter, but nothing gets submitted — a human
-				// still acts through the normal manual removal flow.
-				continue
-			}
+		for _, group := range autoActions(plan.Actions, cfg) {
 			if err := server.queueCleanup(group, cfg, "Automatic cleanup: "); err != nil {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
 		}
 	}
 	return nil
+}
+
+// autoActions are the plan's actions automatic removal submits: none but
+// in Auto mode, and never an unassociated or incomplete torrent unless the
+// settings allow it.
+func autoActions(actions []cleanup.Action, cfg config.Config) []cleanup.Action {
+	if cfg.Removal.AutoMode != config.RemovalAutoAuto {
+		// Confirm mode: candidates pass every automatic-removal filter, but
+		// nothing gets submitted — a human still acts through the normal
+		// manual removal flow.
+		return nil
+	}
+	var out []cleanup.Action
+	for _, group := range actions {
+		if actionIsUnassociatedTorrent(group) && !cfg.Removal.AutoRemoveUnassociatedTorrents {
+			continue
+		}
+		if actionIsIncompleteTorrent(group) && !cfg.Removal.AutoRemoveIncompleteTorrents {
+			continue
+		}
+		out = append(out, group)
+	}
+	return out
 }
 
 // overfinValuesFresh is how old Overfin's values may be when a disk needs
