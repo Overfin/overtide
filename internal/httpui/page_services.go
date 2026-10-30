@@ -372,7 +372,9 @@ func (server *Server) prowlarrForm(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[http] render prowlarr: %v", err)
 		}
 	case http.MethodPost:
-		if err := r.ParseForm(); err != nil {
+		// The window sends multipart form data, as the service windows do.
+		r.Body = http.MaxBytesReader(w, r.Body, maximumAddServiceFormBytes)
+		if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}

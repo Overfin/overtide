@@ -1,6 +1,8 @@
 package httpui
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -49,5 +51,27 @@ func TestServicesShowTrackers(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("no %q in:\n%s", want, body)
 		}
+	}
+}
+
+// The Prowlarr window sends multipart form data: its fields arrive.
+func TestProwlarrFormReadsMultipart(t *testing.T) {
+	handler, _ := newAuthTestServer(t)
+	cookie := sessionCookieFrom(postForm(t, handler, "/setup", url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}, "confirm": {"correct-horse-battery"}}, nil))
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	form.WriteField("address", "http://127.0.0.1:1")
+	form.WriteField("api_key", "key")
+	form.WriteField("proxy_url", "http://overtide:8089")
+	form.Close()
+	request := httptest.NewRequest(http.MethodPost, "/services/prowlarr", &body)
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	// Nothing answers at that address: the fields arrived when the error
+	// is Prowlarr not answering, not missing fields.
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "no answer from Prowlarr") {
+		t.Fatalf("%d %s", response.Code, response.Body)
 	}
 }
