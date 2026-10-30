@@ -10,6 +10,7 @@
   {{chrome "home"}}
   <main id="home-dashboard" data-controller="dashboard" data-live-policy="dashboard">
     <h1 class="page-title">Home</h1>
+    <p class="page-desc">Your storage, library and torrents at a glance.</p>
     {{if .LastErr}}<p class="bad">{{.LastErr}}</p>{{end}}
     <div class="grid">
       <section class="card" id="storage-devices" data-reactive-fragment data-live-policy="immediate">

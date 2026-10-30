@@ -112,6 +112,15 @@ body:has(> .appbar) {
   font-size: 1.6rem;
   letter-spacing: -0.01em;
 }
+/* A page's line under its title: what it's for, as the panel's pages. */
+.page-desc {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+.page-title:has(+ .page-desc),
+.card-head:has(.page-title):has(+ .page-desc) {
+  margin-bottom: 0.35rem;
+}
 
 /* Cards, as Overfin's. */
 .card {

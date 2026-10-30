@@ -9,6 +9,7 @@
   <body data-controller="shell revisions">
     {{chrome "adding"}}
     <h1 class="page-title">Adding {{if eq .Mode "dry_run"}}<span class="dry">DRY RUN</span>{{end}}</h1>
+    <p class="page-desc">Titles Overfin suggests, added and searched for a few at a time.</p>
     {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
     <section class="card">
       <form method="post" action="/adding/mode" class="adding-settings">

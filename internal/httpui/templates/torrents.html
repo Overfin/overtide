@@ -9,6 +9,7 @@
   <body data-controller="shell revisions">
     {{chrome "torrents"}}
     <h1 class=page-title>Torrents</h1>
+    <p class="page-desc">What qBittorrent holds, and which of it is still current.</p>
     {{if .Refreshing}}<span class=warn>Refreshing…</span>{{end}}{{if .LastErr}}<span class=bad>{{.LastErr}}</span>{{end}}
     {{if .HasTorrentClient}}
     <div id="torrent-summary" class="inventory-summary muted" data-reactive-fragment data-live-policy="immediate">

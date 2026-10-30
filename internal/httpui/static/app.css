@@ -368,6 +368,14 @@ body:has(> .appbar) {
   font-size: 1.6rem;
   letter-spacing: -0.01em;
 }
+.page-desc {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+.page-title:has(+ .page-desc),
+.card-head:has(.page-title):has(+ .page-desc) {
+  margin-bottom: 0.35rem;
+}
 .card {
   background: var(--panel);
   border: 1px solid var(--border);

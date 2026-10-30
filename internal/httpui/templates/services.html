@@ -10,6 +10,7 @@
   {{chrome "services"}}
   <main id="services-content" data-reactive-fragment data-live-policy="immediate">
     <div class="card-head"><h1 class="page-title">Services</h1><button type="button" class="primary" data-overlay-url="/services/add">Add service</button></div>
+    <p class="page-desc">The apps Overtide works with, and whether it can reach them.</p>
     {{if not .Services}}
       <p class="muted">No services are configured yet.</p>
     {{else}}

@@ -9,6 +9,7 @@
   <body data-controller="shell revisions">
     {{chrome "library"}}
     <h1 class=page-title>Library</h1>
+    <p class="page-desc">The films and series your services manage, with their files.</p>
     {{if .Refreshing}}<span class=warn>Refresh in progress…</span>{{end}}{{if .LastErr}}<span class=bad>{{.LastErr}}</span>{{end}}
     {{if .HasMediaLibrary}}
     <div class=card>
