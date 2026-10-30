@@ -24,6 +24,11 @@ account. Then, under **Services**, add Radarr, Sonarr, your torrent client,
 and Overfin (its control panel address, and a key made there under **Apps**
 with **Values** ticked).
 
+Give each service the address it answers on itself. Overtide follows a
+redirect only on the same host and port (or from http to https), so its keys
+never reach another server: a service behind a sign-in page needs its direct
+address.
+
 Overtide starts in dry run: it plans, and records what it would remove, but
 removes nothing until you turn dry run off in **Settings**.
 Adding is off until you switch it on, on the **Adding** page, which has a
