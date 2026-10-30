@@ -33,47 +33,56 @@ type loginLimiter struct {
 type loginAttemptState struct {
 	failures    int
 	lockedUntil time.Time
+	last        time.Time
 }
+
+// loginLimiterSize is how many addresses the limiter holds before it
+// forgets those that stopped trying loginForgetAfter ago.
+const (
+	loginLimiterSize = 1000
+	loginForgetAfter = time.Hour
+)
 
 func newLoginLimiter() *loginLimiter {
 	return &loginLimiter{state: map[string]*loginAttemptState{}}
 }
 
-// locked reports whether key is currently locked out, and for how much
-// longer.
-func (limiter *loginLimiter) locked(key string) (time.Duration, bool) {
+// attempt counts one try from key before its password is checked, and
+// reports whether it may go ahead, or for how much longer key is locked
+// out. Counting before checking holds the limit against tries sent all
+// at once; recordSuccess clears it. Past a small threshold, each try
+// starts an escalating lockout (15s per try past it, capped at 5 minutes)
+// rather than an unlimited-attempt password oracle.
+func (limiter *loginLimiter) attempt(key string) (time.Duration, bool) {
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
+	now := time.Now()
 	state := limiter.state[key]
 	if state == nil {
-		return 0, false
-	}
-	if remaining := time.Until(state.lockedUntil); remaining > 0 {
-		return remaining, true
-	}
-	return 0, false
-}
-
-// recordFailure counts one failed attempt and, past a small threshold,
-// starts an escalating lockout (15s per failure past the threshold, capped
-// at 5 minutes) rather than an unlimited-attempt password oracle.
-func (limiter *loginLimiter) recordFailure(key string) {
-	limiter.mu.Lock()
-	defer limiter.mu.Unlock()
-	state := limiter.state[key]
-	if state == nil {
+		if len(limiter.state) >= loginLimiterSize {
+			for k, old := range limiter.state {
+				if now.Sub(old.last) > loginForgetAfter && !now.Before(old.lockedUntil) {
+					delete(limiter.state, k)
+				}
+			}
+		}
 		state = &loginAttemptState{}
 		limiter.state[key] = state
 	}
+	if remaining := state.lockedUntil.Sub(now); remaining > 0 {
+		return remaining, false
+	}
 	state.failures++
+	state.last = now
 	const freeAttempts = 4
 	if state.failures > freeAttempts {
 		backoff := time.Duration(state.failures-freeAttempts) * 15 * time.Second
 		if backoff > 5*time.Minute {
 			backoff = 5 * time.Minute
 		}
-		state.lockedUntil = time.Now().Add(backoff)
+		state.lockedUntil = now.Add(backoff)
 	}
+	return 0, true
 }
 
 // recordSuccess clears key's failure history after a correct login.
@@ -259,7 +268,7 @@ func (server *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	key := clientLoginKey(r)
-	if remaining, locked := server.loginLimiter.locked(key); locked {
+	if remaining, ok := server.loginLimiter.attempt(key); !ok {
 		_ = renderTemplate(w, server.loginTpl, loginPageData{Username: username, Error: fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1)})
 		return
 	}
@@ -271,7 +280,6 @@ func (server *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	usernameCorrect := strings.EqualFold(username, cfg.Auth.Username)
 	passwordCorrect := cfg.VerifyPassword(password)
 	if !usernameCorrect || !passwordCorrect {
-		server.loginLimiter.recordFailure(key)
 		_ = renderTemplate(w, server.loginTpl, loginPageData{Username: username, Error: "Incorrect username or password."})
 		return
 	}
