@@ -37,7 +37,7 @@
         <thead><tr><th>Tracker, last 24 hours</th><th>Searches</th><th>RSS</th><th>Grabs</th><th>Held back</th><th>Budget</th></tr></thead>
         <tbody>
           {{range .Trackers}}
-          <tr><td><b>{{.Name}}</b>{{if not .RestingUntil.IsZero}} <span class="warn">resting until {{.RestingUntil.Local.Format "15:04"}}</span>{{end}}</td><td>{{.Searches}}</td><td>{{.RSS}}</td><td>{{.Grabs}}</td><td>{{.Refused}}{{if .Limited}} <span class="muted">({{.Limited}} refused by the tracker)</span>{{end}}</td><td class="muted">{{if .Limit}}{{.Limit}} {{if eq .LimitUnit.Hours 1.0}}an hour{{else}}a day{{end}}{{else}}none set{{end}}</td></tr>
+          <tr><td><b>{{.Name}}</b>{{if not .RestingUntil.IsZero}} <span class="warn">resting until {{.RestingUntil.Local.Format "15:04"}}</span>{{end}}</td><td>{{.Searches}}</td><td>{{.RSS}}</td><td>{{.Grabs}}</td><td>{{.Refused}}{{if .Limited}} <span class="muted">({{.Limited}} refused by the tracker)</span>{{end}}{{if .Failed}} <span class="muted">({{.Failed}} failed)</span>{{end}}</td><td class="muted">{{if .Limit}}{{.Limit}} {{if eq .LimitUnit.Hours 1.0}}an hour{{else}}a day{{end}}{{else}}none set{{end}}</td></tr>
           {{end}}
         </tbody>
       </table>

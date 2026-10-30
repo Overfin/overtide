@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ const (
 	Grab    = "grab"
 	Refused = "refused" // a search answered "nothing found" by Overtide
 	Limited = "limited" // a 429 from Prowlarr or the tracker
+	Failed  = "failed"  // a search that got an error, or no answer
 )
 
 type event struct {
@@ -110,6 +112,11 @@ func (gate *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if rest == "api" {
 		kind = kindOf(r.URL.Query())
 	}
+	if id == 0 {
+		// Prowlarr tests an app it saves with a placeholder indexer, ID 0:
+		// passed on, not a tracker.
+		kind = ""
+	}
 	if kind == Search && !gate.allow(id) {
 		gate.record(id, Refused)
 		w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
@@ -123,11 +130,20 @@ func (gate *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	response, err := gate.upstream.Do(request)
 	if err != nil {
+		if kind == Search {
+			gate.record(id, Failed)
+		}
 		http.Error(w, "Prowlarr unreachable: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer response.Body.Close()
-	if kind != "" {
+	switch {
+	case kind == "":
+	case response.StatusCode == http.StatusTooManyRequests:
+		// Counted by rest, as Limited.
+	case kind == Search && response.StatusCode >= 400:
+		gate.record(id, Failed)
+	default:
 		gate.record(id, kind)
 	}
 	if response.StatusCode == http.StatusTooManyRequests {
@@ -234,6 +250,45 @@ func (gate *Gate) record(id int, kind string) {
 	gate.events[id] = append(kept, event{now, kind})
 }
 
+// Unavailable reports whether the searches made since then missed some
+// trackers: one was held back, refused or failed, or none answered at
+// all. A search that found nothing means nothing only when it isn't so.
+// why says which trackers, for the operator.
+func (gate *Gate) Unavailable(since time.Time) (bool, string) {
+	gate.readLimits()
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	answered := 0
+	var missed []string
+	for id, events := range gate.events {
+		for _, e := range events {
+			if e.at.Before(since) {
+				continue
+			}
+			switch e.kind {
+			case Search:
+				answered++
+			case Refused, Limited, Failed:
+				name := gate.limits[id].Name
+				if name == "" {
+					name = "tracker " + strconv.Itoa(id)
+				}
+				if !slices.Contains(missed, name) {
+					missed = append(missed, name)
+				}
+			}
+		}
+	}
+	sort.Strings(missed)
+	switch {
+	case len(missed) > 0:
+		return true, strings.Join(missed, ", ") + " unavailable"
+	case answered == 0:
+		return true, "no tracker answered"
+	}
+	return false, ""
+}
+
 // Stat is what a tracker was asked over the last 24 hours.
 type Stat struct {
 	ID       int
@@ -243,6 +298,7 @@ type Stat struct {
 	Grabs    int
 	Refused  int
 	Limited  int
+	Failed   int
 	// Limit is its query budget per LimitUnit (0: none known).
 	Limit     int
 	LimitUnit time.Duration
@@ -252,6 +308,7 @@ type Stat struct {
 
 // Stats returns, per tracker, what it was asked over the last 24 hours.
 func (gate *Gate) Stats() []Stat {
+	gate.readLimits() // the trackers' names, before any search
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
 	now := gate.now()
@@ -284,6 +341,8 @@ func (gate *Gate) Stats() []Stat {
 				stat.Refused++
 			case Limited:
 				stat.Limited++
+			case Failed:
+				stat.Failed++
 			}
 		}
 		if stat.Name == "" {
