@@ -583,6 +583,15 @@ func (service *Service) load() ([]Entry, error) {
 	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
 		return nil, fmt.Errorf("read the waiting list: %w", err)
 	}
+	for i := range entries {
+		// Sources of before Overfin was the only one (TMDB's trending and
+		// popular through Overfin, import lists): Overfin's now, so its next
+		// reading gives their seasons, or takes them out of the list.
+		switch entries[i].Source {
+		case "discovery", "list":
+			entries[i].Source = FromOverfin
+		}
+	}
 	return entries, nil
 }
 
