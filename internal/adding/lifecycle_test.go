@@ -113,7 +113,7 @@ func TestTryMovieMonitors(t *testing.T) {
 		case r.URL.Path == "/api/v3/qualityprofile":
 			w.Write([]byte(`[{"id":7}]`))
 		case r.URL.Path == "/api/v3/tag" && r.Method == http.MethodGet:
-			w.Write([]byte(`[{"id":3,"label":"overtide"}]`))
+			w.Write([]byte(`[{"id":3,"label":"overtide-added"}]`))
 		case r.URL.Path == "/api/v3/movie" && r.Method == http.MethodPost:
 			var body map[string]any
 			json.NewDecoder(r.Body).Decode(&body)

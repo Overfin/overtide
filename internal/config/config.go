@@ -258,6 +258,8 @@ type Config struct {
 type AddingConfig struct {
 	// Mode is AddingOff (also what empty means), AddingDryRun or AddingOn.
 	Mode string `json:"mode"`
+	// Manage is ManageOwn (also what empty means) or ManageAll.
+	Manage string `json:"manage,omitempty"`
 }
 
 const (
@@ -265,6 +267,29 @@ const (
 	AddingDryRun = "dry_run"
 	AddingOn     = "on"
 )
+
+// What Overtide manages in Radarr and Sonarr: the titles it adds (and
+// those it removes, once it does), or every title.
+const (
+	ManageOwn = "own"
+	ManageAll = "all"
+)
+
+// ManagesAll reports whether Overtide manages every title in Radarr and
+// Sonarr.
+func (adding AddingConfig) ManagesAll() bool { return adding.Manage == ManageAll }
+
+// SetAddingManage sets what Overtide manages.
+func SetAddingManage(configuration Config, manage string) (Config, error) {
+	switch manage {
+	case ManageOwn, ManageAll:
+	default:
+		return configuration, fmt.Errorf("what Overtide manages must be %q or %q", ManageOwn, ManageAll)
+	}
+	updated := configuration
+	updated.Adding.Manage = manage
+	return updated, nil
+}
 
 // SetAddingMode sets how titles are brought in.
 func SetAddingMode(configuration Config, mode string) (Config, error) {

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +21,17 @@ import (
 	"github.com/overfin/overtide/internal/model"
 )
 
-// Tag marks, in Radarr and Sonarr, the titles Overtide manages.
-const Tag = model.ManagedTag
+// tagFor is the tag a title gets when Overtide adds it, by where it came
+// from; "" for a title already there (it has its tag from being taken).
+func tagFor(source Source) string {
+	switch source {
+	case FromRequest:
+		return model.TagRequested
+	case FromOverfin:
+		return model.TagAdded
+	}
+	return ""
+}
 
 // RunEvery is how often the titles are tried, and RunFor how long one run
 // goes on trying titles, one search at a time: under RunEvery, so runs
@@ -62,24 +70,30 @@ const (
 	storeKey     = "adding.waiting"
 	historyKey   = "adding.history"
 	withFilesKey = "adding.with_files"
-	// managedKey records when managed mode first tagged every title.
-	managedKey = "adding.managed_at"
+	// tagsKey records that the legacy tag was replaced by the tags that
+	// say where a title came from.
+	tagsKey = "adding.tags_v2"
 )
 
 // Source is where a title in the waiting list comes from: requests always
-// go first, then Overfin's suggestions, in Overfin's order.
+// go first, then the titles "Manage all" found waiting in Radarr, then
+// Overfin's suggestions, in Overfin's order.
 type Source string
 
 const (
 	FromRequest Source = "request"
+	FromLibrary Source = "library"
 	FromOverfin Source = "overfin"
 )
 
 func (source Source) rank() int {
-	if source == FromRequest {
+	switch source {
+	case FromRequest:
 		return 0
+	case FromLibrary:
+		return 1
 	}
-	return 1
+	return 2
 }
 
 // State is where a title stands.
@@ -189,28 +203,35 @@ func titleKey(m model.Media) string {
 	return ""
 }
 
-// Run is the trying task: when managed mode is first on, it tags every
-// title; then it follows what's moving, applies the lifecycle, and tries
-// the titles whose turn it is.
+// Run is the trying task: the first time it's on, it replaces the legacy
+// tag; with "Manage all", it takes every title (takeAll); then it follows
+// what's moving, applies the lifecycle, tries the titles whose turn it is,
+// and with what's left of the run's searches, the wanted episodes.
 func (service *Service) Run(ctx context.Context) error {
 	cfg := service.inv.Config()
 	mode := cfg.Adding.Mode
 	if mode != config.AddingDryRun && mode != config.AddingOn {
 		return nil
 	}
+	dryRun := mode == config.AddingDryRun
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	if mode == config.AddingOn {
-		if err := service.manageAll(ctx, cfg); err != nil {
-			return err
-		}
-	}
 	entries, err := service.load()
 	if err != nil {
 		return err
 	}
+	if !dryRun {
+		if err := service.retag(ctx, cfg, entries); err != nil {
+			return err
+		}
+	}
+	if cfg.Adding.ManagesAll() {
+		if entries, err = service.takeAll(ctx, cfg, entries, dryRun); err != nil {
+			return err
+		}
+	}
 	entries = service.match(entries)
-	service.follow(ctx, entries, mode == config.AddingDryRun)
+	service.follow(ctx, entries, dryRun)
 	if entries, err = service.expire(entries); err != nil {
 		return err
 	}
@@ -230,7 +251,7 @@ func (service *Service) Run(ctx context.Context) error {
 		if searches > 0 && searches+entry.searches() > SearchesPerRun {
 			continue
 		}
-		searches += service.try(ctx, cfg, entry, mode == config.AddingDryRun)
+		searches += service.try(ctx, cfg, entry, dryRun)
 		entry.UpdatedAt = service.now()
 		// Saved after each try: a try changes Radarr or Sonarr, and what
 		// it did must not be lost if the next one stops the run.
@@ -238,55 +259,27 @@ func (service *Service) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	return service.save(entries)
-}
-
-// manageAll tags every title Radarr and Sonarr have, the first time
-// managed mode is on: from then on, Overtide manages them all.
-func (service *Service) manageAll(ctx context.Context, cfg config.Config) error {
-	if done, err := service.inv.Store().Meta(managedKey); err != nil || done != "" {
+	if err := service.save(entries); err != nil {
 		return err
 	}
-	for _, svc := range cfg.ServicesOfType("radarr") {
-		client, err := service.inv.RadarrClient(svc.ID)
-		if err != nil {
-			return err
-		}
-		client = client.WithContext(ctx)
-		tagID, err := client.EnsureTag(Tag)
-		if err != nil {
-			return fmt.Errorf("tag Radarr's films: %w", err)
-		}
-		if _, err := client.TagAll(tagID); err != nil {
-			return fmt.Errorf("tag Radarr's films: %w", err)
-		}
+	if cfg.Adding.ManagesAll() && searches < SearchesPerRun && !service.now().After(stopAt) {
+		return service.searchEpisodes(ctx, cfg, SearchesPerRun-searches, dryRun)
 	}
-	for _, svc := range cfg.ServicesOfType("sonarr") {
-		client, err := service.inv.SonarrClient(svc.ID)
-		if err != nil {
-			return err
-		}
-		client = client.WithContext(ctx)
-		tagID, err := client.EnsureTag(Tag)
-		if err != nil {
-			return fmt.Errorf("tag Sonarr's series: %w", err)
-		}
-		if _, err := client.TagAll(tagID); err != nil {
-			return fmt.Errorf("tag Sonarr's series: %w", err)
-		}
-	}
-	return service.inv.Store().SetMeta(managedKey, service.now().UTC().Format(time.RFC3339))
+	return nil
 }
 
-// managed reports whether a title in Radarr or Sonarr is Overtide's: it
-// carries the tag, or managed mode hasn't tagged everything yet (then all
-// will be, so a dry run counts them as Overtide's too).
+// managed reports whether a title in Radarr or Sonarr is Overtide's: one
+// of its tags, or every title with "Manage all".
 func (service *Service) managed(m model.Media) bool {
-	if hasTag(m.Tags, Tag) {
+	if service.inv.Config().Adding.ManagesAll() {
 		return true
 	}
-	done, err := service.inv.Store().Meta(managedKey)
-	return err == nil && done == ""
+	for _, tag := range m.Tags {
+		if model.IsManagedTag(tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // expire takes out the suggestions at the end of their lifecycle: MaxTries
@@ -360,6 +353,8 @@ func (service *Service) match(entries []Entry) []Entry {
 		}
 		m, there := present[entry.id()]
 		switch {
+		case !there && entry.Source == FromLibrary:
+			continue // taken from Radarr, and gone from it since
 		case !there:
 			entry.ArrID = 0
 		case !service.managed(m):
@@ -449,15 +444,6 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 		}
 		entry.UpdatedAt = service.now()
 	}
-}
-
-func hasTag(tags []string, wanted string) bool {
-	for _, tag := range tags {
-		if strings.EqualFold(tag, wanted) {
-			return true
-		}
-	}
-	return false
 }
 
 // retryDelay is the wait after the tries-th try found nothing: a day,

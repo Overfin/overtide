@@ -260,6 +260,17 @@ func (service *Service) Unkeep(key string) error {
 }
 
 // SetAddingMode saves how titles are brought in (see config.AddingConfig).
+// SetAddingManage sets what Overtide manages in Radarr and Sonarr.
+func (service *Service) SetAddingManage(manage string) error {
+	if _, err := config.SetAddingManage(config.Config{}, manage); err != nil {
+		return err
+	}
+	return service.changeConfig(func(c config.Config) config.Config {
+		updated, _ := config.SetAddingManage(c, manage)
+		return updated
+	})
+}
+
 func (service *Service) SetAddingMode(mode string) error {
 	if _, err := config.SetAddingMode(config.Config{}, mode); err != nil {
 		return err

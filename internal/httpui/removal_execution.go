@@ -522,7 +522,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				if e := server.inv.TagManaged(ctx, ref.MediaType, ref.ServiceID, ref.MediaID); e != nil {
 					recordError(fmt.Sprintf("tag %s %d: %v", ref.MediaType, ref.MediaID, e))
 				} else {
-					recordResult(fmt.Sprintf("%s %d tagged %s", ref.MediaType, ref.MediaID, model.ManagedTag))
+					recordResult(fmt.Sprintf("%s %d tagged as Overtide's", ref.MediaType, ref.MediaID))
 				}
 			}
 		}

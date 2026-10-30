@@ -36,7 +36,7 @@ type arr struct {
 	// add puts the title in, unmonitored and tagged; tag tags it.
 	add       func(rootFolder string, profileID, tagID int) (int, error)
 	tag       func(id, tagID int) error
-	ensureTag func() (int, error)
+	ensureTag func(label string) (int, error)
 	monitor   func(id int, on bool) error
 	// search asks for the search and says whether a download started.
 	search   func(ctx context.Context, id int) (bool, error)
@@ -72,7 +72,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 				return client.AddSeries(lookup, root, profile, tag)
 			},
 			tag:       client.TagSeries,
-			ensureTag: func() (int, error) { return client.EnsureTag(Tag) },
+			ensureTag: client.EnsureTag,
 			monitor: func(id int, on bool) error {
 				return client.SetSeasonsMonitored(id, seasons, on)
 			},
@@ -116,7 +116,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 			return client.AddMovie(lookup, root, profile, tag)
 		},
 		tag:       client.TagMovie,
-		ensureTag: func() (int, error) { return client.EnsureTag(Tag) },
+		ensureTag: client.EnsureTag,
 		monitor:   client.SetMonitored,
 		search: func(ctx context.Context, id int) (bool, error) {
 			started := service.now()
@@ -190,21 +190,23 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 		entry.Result = "Dry run: would " + what
 		return 0
 	}
-	tagID, err := a.ensureTag()
-	if err != nil {
-		service.later(entry, "Couldn't make the tag: "+err.Error())
-		return 0
-	}
-	if entry.ArrID == 0 {
-		id, err := a.add(rootFolder, profileID, tagID)
+	if label := tagFor(entry.Source); label != "" {
+		tagID, err := a.ensureTag(label)
 		if err != nil {
-			service.later(entry, "Couldn't add it: "+err.Error())
+			service.later(entry, "Couldn't make the tag: "+err.Error())
 			return 0
 		}
-		entry.ArrID = id
-	} else if err := a.tag(entry.ArrID, tagID); err != nil {
-		service.later(entry, "Couldn't tag it: "+err.Error())
-		return 0
+		if entry.ArrID == 0 {
+			id, err := a.add(rootFolder, profileID, tagID)
+			if err != nil {
+				service.later(entry, "Couldn't add it: "+err.Error())
+				return 0
+			}
+			entry.ArrID = id
+		} else if err := a.tag(entry.ArrID, tagID); err != nil {
+			service.later(entry, "Couldn't tag it: "+err.Error())
+			return 0
+		}
 	}
 	if err := a.monitor(entry.ArrID, true); err != nil {
 		service.later(entry, "Couldn't monitor it: "+err.Error())

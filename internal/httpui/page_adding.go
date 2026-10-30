@@ -29,6 +29,7 @@ var addingSources = []struct {
 	Label  string
 }{
 	{adding.FromRequest, "Requests"},
+	{adding.FromLibrary, "Library"},
 	{adding.FromOverfin, "Overfin"},
 }
 
@@ -64,8 +65,12 @@ type addingGroup struct {
 }
 
 type addingPageData struct {
-	Mode   string
-	Groups []addingGroup
+	Mode string
+	// Manage is config.ManageOwn or config.ManageAll; Summary is what the
+	// last "Manage all" pass did, or would do.
+	Manage  string
+	Summary adding.ManageSummary
+	Groups  []addingGroup
 	// Sources counts the titles of each source there is.
 	Sources []addingSourceCount
 	Total   int
@@ -106,9 +111,17 @@ func addingSourceLabel(source adding.Source) string {
 
 func (server *Server) addingData(query url.Values) addingPageData {
 	cfg := server.inv.Config()
-	data := addingPageData{Mode: cfg.Adding.Mode, Query: strings.TrimSpace(query.Get("q")), Source: query.Get("source")}
+	data := addingPageData{Mode: cfg.Adding.Mode, Manage: cfg.Adding.Manage, Query: strings.TrimSpace(query.Get("q")), Source: query.Get("source")}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
+	}
+	if data.Manage == "" {
+		data.Manage = config.ManageOwn
+	}
+	if data.Manage == config.ManageAll {
+		if summary, err := server.adder.Summary(); err == nil {
+			data.Summary = summary
+		}
 	}
 	if server.tasks != nil {
 		for _, status := range server.tasks.Snapshot() {
@@ -216,6 +229,9 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/adding/mode":
 		err = server.inv.SetAddingMode(r.FormValue("mode"))
+		if manage := r.FormValue("manage"); err == nil && manage != "" {
+			err = server.inv.SetAddingManage(manage)
+		}
 	case "/adding/run":
 		if server.tasks == nil {
 			http.Error(w, "task manager unavailable", http.StatusServiceUnavailable)
