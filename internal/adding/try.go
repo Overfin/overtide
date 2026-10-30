@@ -219,6 +219,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 		return 0
 	}
 	searches := entry.searches()
+	started := time.Now()
 	grabbed, err := a.search(ctx, entry.ArrID)
 	if err == nil && grabbed {
 		service.downloading(entry, a, false)
@@ -230,6 +231,10 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 	}
 	if err != nil {
 		service.later(entry, "Unmonitored: "+err.Error())
+		return searches
+	}
+	if down, why := service.unavailable(started); down {
+		service.later(entry, "Not searched in full ("+why+"); tried again later")
 		return searches
 	}
 	service.failed(entry, "Nothing found")

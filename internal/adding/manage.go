@@ -622,7 +622,7 @@ func (service *Service) searchEpisodes(ctx context.Context, cfg config.Config, b
 			continue
 		}
 		for _, id := range due {
-			if budget <= 0 || ctx.Err() != nil {
+			if budget <= 0 || ctx.Err() != nil || service.trackersDown != "" {
 				break
 			}
 			want := state.Wanted[id]
@@ -635,6 +635,7 @@ func (service *Service) searchEpisodes(ctx context.Context, cfg config.Config, b
 				continue
 			}
 			budget--
+			started := time.Now()
 			grabbed, err := searchAndCheck(ctx,
 				func() (int, error) { return client.SearchEpisodes([]int{id}) },
 				client.CommandStatus,
@@ -642,13 +643,19 @@ func (service *Service) searchEpisodes(ctx context.Context, cfg config.Config, b
 					queued, err := client.QueuedEpisodes()
 					return queued[id], err
 				})
-			if err == nil && grabbed {
+			switch down, _ := service.unavailable(started); {
+			case err == nil && grabbed:
 				want.Grabbed = true
-			} else {
+			case down:
+				want.NextTry = now.Add(laterOnError)
+			default:
 				want.Tries++
 				want.NextTry = now.Add(retryDelay(want.Tries))
 			}
 			state.Wanted[id] = want
+			if service.trackersDown != "" {
+				break
+			}
 		}
 	}
 	return service.saveEpisodeStates(states)

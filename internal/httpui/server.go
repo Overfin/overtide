@@ -213,6 +213,13 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 		inventoryService.TrackerLimits)
 	if inventoryService != nil {
 		server.adder = adding.New(inventoryService)
+		server.adder.Trackers = func(since time.Time) (bool, string) {
+			// Known only when the searches go through Overtide.
+			if !inventoryService.Config().Prowlarr.Route {
+				return false, ""
+			}
+			return server.gate.Unavailable(since)
+		}
 	}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {

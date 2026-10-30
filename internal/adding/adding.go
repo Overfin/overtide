@@ -173,6 +173,26 @@ type Service struct {
 	// preview is the wanted episodes a dry run of takeAll found, which it
 	// doesn't save: what replaceSeasons counts in dry run.
 	preview map[string]*sonarrState
+	// Trackers, when set, says whether the searches made since then missed
+	// some trackers (trackers.Gate.Unavailable): a search that found
+	// nothing then doesn't count as a try.
+	Trackers func(since time.Time) (bool, string)
+	// trackersDown is why this run's searches stopped: the trackers were
+	// unavailable.
+	trackersDown string
+}
+
+// unavailable reports whether the searches since start missed trackers;
+// it notes why, which stops the run's searches.
+func (service *Service) unavailable(start time.Time) (bool, string) {
+	if service.Trackers == nil {
+		return false, ""
+	}
+	down, why := service.Trackers(start)
+	if down {
+		service.trackersDown = why
+	}
+	return down, why
 }
 
 func New(inv *inventory.Service) *Service {
@@ -239,8 +259,9 @@ func (service *Service) Run(ctx context.Context) error {
 	stopAt := service.now().Add(RunFor)
 	budget := cfg.Adding.SearchesPerRun()
 	searches := 0
+	service.trackersDown = ""
 	for i := range entries {
-		if ctx.Err() != nil || service.now().After(stopAt) || searches >= budget {
+		if ctx.Err() != nil || service.now().After(stopAt) || searches >= budget || service.trackersDown != "" {
 			break
 		}
 		entry := &entries[i]
@@ -263,7 +284,7 @@ func (service *Service) Run(ctx context.Context) error {
 	if err := service.save(entries); err != nil {
 		return err
 	}
-	if !cfg.Adding.ManagesAll() {
+	if !cfg.Adding.ManagesAll() || service.trackersDown != "" {
 		return nil
 	}
 	used, err := service.replaceSeasons(ctx, cfg, budget-searches, dryRun)
@@ -271,7 +292,7 @@ func (service *Service) Run(ctx context.Context) error {
 		return err
 	}
 	searches += used
-	if searches < budget && !service.now().After(stopAt) {
+	if searches < budget && !service.now().After(stopAt) && service.trackersDown == "" {
 		return service.searchEpisodes(ctx, cfg, budget-searches, dryRun)
 	}
 	return nil

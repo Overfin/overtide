@@ -137,10 +137,11 @@ func (service *Service) replaceSeasons(ctx context.Context, cfg config.Config, b
 			}
 			state.Seasons[key] = pack
 			waiting++
-			if dryRun || pack.NextTry.After(now) || budget-used <= 0 || ctx.Err() != nil {
+			if dryRun || pack.NextTry.After(now) || budget-used <= 0 || ctx.Err() != nil || service.trackersDown != "" {
 				continue
 			}
 			used++
+			started := time.Now()
 			releases, err := client.SeasonReleases(pack.SeriesID, pack.Season)
 			var chosen *sonarr.Release
 			for i := range releases {
@@ -150,6 +151,10 @@ func (service *Service) replaceSeasons(ctx context.Context, cfg config.Config, b
 				}
 			}
 			if err != nil || chosen == nil {
+				if down, _ := service.unavailable(started); down {
+					pack.NextTry = now.Add(laterOnError) // not a try: the trackers weren't all there
+					continue
+				}
 				pack.Tries++
 				pack.NextTry = now.Add(retryDelay(pack.Tries))
 				continue
