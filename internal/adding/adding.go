@@ -262,7 +262,15 @@ func (service *Service) Run(ctx context.Context) error {
 	if err := service.save(entries); err != nil {
 		return err
 	}
-	if cfg.Adding.ManagesAll() && searches < SearchesPerRun && !service.now().After(stopAt) {
+	if !cfg.Adding.ManagesAll() {
+		return nil
+	}
+	used, err := service.replaceSeasons(ctx, cfg, SearchesPerRun-searches, dryRun)
+	if err != nil {
+		return err
+	}
+	searches += used
+	if searches < SearchesPerRun && !service.now().After(stopAt) {
 		return service.searchEpisodes(ctx, cfg, SearchesPerRun-searches, dryRun)
 	}
 	return nil

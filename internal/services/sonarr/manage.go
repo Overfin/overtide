@@ -78,6 +78,7 @@ type Episode struct {
 	SeasonNumber  int       `json:"seasonNumber"`
 	EpisodeNumber int       `json:"episodeNumber"`
 	HasFile       bool      `json:"hasFile"`
+	EpisodeFileID int       `json:"episodeFileId"`
 	Monitored     bool      `json:"monitored"`
 	AirDateUTC    time.Time `json:"airDateUtc"`
 }

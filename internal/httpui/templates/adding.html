@@ -32,7 +32,7 @@
       </form>
       {{if and (eq .Manage "all") (not .Summary.At.IsZero)}}
       <p class="adding-manage-summary{{if .Summary.DryRun}} dry-result{{end}}">
-        {{if .Summary.DryRun}}Dry run, {{.Summary.At.Local.Format "Jan 2 15:04"}}, what Overtide would do:{{else}}Last pass, {{.Summary.At.Local.Format "Jan 2 15:04"}}:{{end}} {{.Summary.Tagged}} titles tagged, {{.Summary.Unmonitored}} films unmonitored, {{.Summary.SeriesTaken}} series taken, {{.Summary.FilmsQueued}} films without their file put in line. {{.Summary.EpisodesWanted}} missing episodes wanted, {{.Summary.Following}} series followed for new episodes, {{.Summary.Monitored}} airing episodes monitored.
+        {{if .Summary.DryRun}}Dry run, {{.Summary.At.Local.Format "Jan 2 15:04"}}, what Overtide would do:{{else}}Last pass, {{.Summary.At.Local.Format "Jan 2 15:04"}}:{{end}} {{.Summary.Tagged}} titles tagged, {{.Summary.Unmonitored}} films unmonitored, {{.Summary.SeriesTaken}} series taken, {{.Summary.FilmsQueued}} films without their file put in line. {{.Summary.EpisodesWanted}} missing episodes wanted, {{.Summary.Seasons}} seasons to replace with a whole-season pack, {{.Summary.Following}} series followed for new episodes, {{.Summary.Monitored}} airing episodes monitored.
         {{if .Summary.Error}}<span class="bad">{{.Summary.Error}}</span>{{end}}
       </p>
       {{end}}

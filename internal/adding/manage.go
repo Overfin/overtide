@@ -44,15 +44,18 @@ type ManageSummary struct {
 	// EpisodesWanted: missing episodes Overtide searches for; Following:
 	// series whose new episodes it fetches; Monitored: episodes airing now,
 	// monitored for Sonarr's RSS.
-	EpisodesWanted int    `json:"episodesWanted"`
-	Following      int    `json:"following"`
-	Monitored      int    `json:"monitored"`
-	Error          string `json:"error,omitempty"`
+	EpisodesWanted int `json:"episodesWanted"`
+	// Seasons: seasons waiting for, or getting, a whole-season pack.
+	Seasons   int    `json:"seasons"`
+	Following int    `json:"following"`
+	Monitored int    `json:"monitored"`
+	Error     string `json:"error,omitempty"`
 }
 
 // episodeWant is a missing episode Overtide searches for.
 type episodeWant struct {
 	SeriesID int       `json:"seriesId"`
+	Season   int       `json:"season"`
 	Tries    int       `json:"tries,omitempty"`
 	NextTry  time.Time `json:"nextTry,omitempty"`
 	// Grabbed: its search started a download, followed until imported.
@@ -67,6 +70,9 @@ type sonarrState struct {
 	// Wanted: missing episodes that were monitored when Overtide took
 	// their series, or that aired without coming through the RSS.
 	Wanted map[int]episodeWant `json:"wanted"`
+	// Seasons: seasons replaced, or to be, by a whole-season pack, by
+	// seasonKey.
+	Seasons map[string]*seasonPack `json:"seasons,omitempty"`
 }
 
 func (service *Service) episodeStates() (map[string]*sonarrState, error) {
@@ -100,6 +106,9 @@ func stateFor(states map[string]*sonarrState, serviceID string) *sonarrState {
 	}
 	if state.Wanted == nil {
 		state.Wanted = map[int]episodeWant{}
+	}
+	if state.Seasons == nil {
+		state.Seasons = map[string]*seasonPack{}
 	}
 	return state
 }
@@ -402,7 +411,7 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 					recent := e.AirDateUTC.After(now.Add(-ReleaseGrace))
 					if taking[e.SeriesID] && !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now) && !(recent && state.Follow[e.SeriesID]) {
 						if _, there := state.Wanted[e.ID]; !there {
-							state.Wanted[e.ID] = episodeWant{SeriesID: e.SeriesID}
+							state.Wanted[e.ID] = episodeWant{SeriesID: e.SeriesID, Season: e.SeasonNumber}
 						}
 					}
 				}
@@ -504,7 +513,7 @@ func (service *Service) airingWindow(client *sonarr.Client, state *sonarrState, 
 		}
 		if !e.HasFile && !queued[e.ID] && !e.AirDateUTC.IsZero() && e.AirDateUTC.Before(now.Add(-ReleaseGrace)) {
 			if _, there := state.Wanted[e.ID]; !there {
-				state.Wanted[e.ID] = episodeWant{SeriesID: e.SeriesID}
+				state.Wanted[e.ID] = episodeWant{SeriesID: e.SeriesID, Season: e.SeasonNumber}
 			}
 		}
 	}
@@ -551,6 +560,7 @@ func (service *Service) searchEpisodes(ctx context.Context, cfg config.Config, b
 		if state == nil || len(state.Wanted) == 0 {
 			continue
 		}
+		state = stateFor(states, svc.ID)
 		client, err := service.inv.SonarrClient(svc.ID)
 		if err != nil {
 			return err
@@ -585,6 +595,9 @@ func (service *Service) searchEpisodes(ctx context.Context, cfg config.Config, b
 		}
 		var due []int
 		for id, want := range state.Wanted {
+			if state.Seasons[seasonKey(want.SeriesID, want.Season)].pending() {
+				continue // its season comes whole
+			}
 			if !want.Grabbed && !want.NextTry.After(now) {
 				due = append(due, id)
 			}

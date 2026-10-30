@@ -29,12 +29,19 @@ type fakeArrs struct {
 	queued  map[int]bool
 	grabOn  map[int]bool // an episode search for these starts a download
 	changes []string
+	// Whole seasons: releases per season, the queue's downloads, the
+	// files manual import sees, episode files, and the imports asked.
+	releases map[int][]map[string]any
+	queue    []map[string]any
+	importAt []map[string]any
+	files    map[int]map[string]any
+	imported [][]string
 }
 
 func newFakeArrs(now time.Time) *fakeArrs {
 	return &fakeArrs{now: now, tags: map[string]map[int]string{"radarr": {}, "sonarr": {}},
 		films: map[int]map[string]any{}, series: map[int]map[string]any{}, eps: map[int]map[string]any{},
-		queued: map[int]bool{}, grabOn: map[int]bool{}}
+		queued: map[int]bool{}, grabOn: map[int]bool{}, releases: map[int][]map[string]any{}, files: map[int]map[string]any{}}
 }
 
 func (f *fakeArrs) tagID(app, label string) int {
@@ -167,10 +174,30 @@ func (f *fakeArrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		write(out)
+	case path == "/api/v3/queue/details" && r.URL.Query().Get("seriesId") != "":
+		write(f.queue)
+	case path == "/api/v3/release" && r.Method == http.MethodGet:
+		season, _ := strconv.Atoi(r.URL.Query().Get("seasonNumber"))
+		write(f.releases[season])
+	case path == "/api/v3/release":
+		f.changes = append(f.changes, fmt.Sprintf("grab %v", body["guid"]))
+	case path == "/api/v3/manualimport":
+		write(f.importAt)
+	case path == "/api/v3/episodefile":
+		write(list(f.files))
 	case path == "/api/v3/queue/details":
 		var out []map[string]any
 		for id := range f.queued {
 			out = append(out, map[string]any{"episodeId": id})
+		}
+		write(out)
+	case path == "/api/v3/episode":
+		series, _ := strconv.Atoi(r.URL.Query().Get("seriesId"))
+		var out []map[string]any
+		for _, e := range list(f.eps) {
+			if e["seriesId"] == series {
+				out = append(out, e)
+			}
 		}
 		write(out)
 	case path == "/api/v3/episode/monitor":
@@ -184,6 +211,14 @@ func (f *fakeArrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(f.eps[id])
+	case path == "/api/v3/command" && r.Method == http.MethodPost && body["name"] == "ManualImport":
+		var paths []string
+		for _, raw := range body["files"].([]any) {
+			paths = append(paths, raw.(map[string]any)["path"].(string))
+		}
+		slices.Sort(paths)
+		f.imported = append(f.imported, paths)
+		write(map[string]any{"id": 2})
 	case path == "/api/v3/command" && r.Method == http.MethodPost:
 		for _, id := range ints(body["episodeIds"]) {
 			f.changes = append(f.changes, fmt.Sprintf("search episode %d", id))
@@ -443,5 +478,121 @@ func TestTakeAllLeavesIgnoredAlone(t *testing.T) {
 	states, _ := service.episodeStates()
 	if len(states["s"].Follow) != 0 || len(states["s"].Wanted) != 0 {
 		t.Errorf("still followed or wanted: %+v", states["s"])
+	}
+}
+
+// A season whose episodes all aired SeasonWait ago is replaced by a whole
+// pack: the first complete one Sonarr refused only for the files already
+// there. Its single episodes wait meanwhile. Once downloaded, the pack's
+// files Sonarr didn't take are imported in place of the older ones.
+func TestReplaceSeasons(t *testing.T) {
+	now := *day("2026-10-30")
+	fake := newFakeArrs(now)
+	ep := func(id, season int, aired time.Time, fileID int) {
+		fake.eps[id] = map[string]any{"id": id, "seriesId": 5, "seasonNumber": season, "episodeNumber": id, "airDateUtc": iso(aired), "hasFile": fileID != 0, "episodeFileId": fileID, "monitored": false}
+		if fileID != 0 {
+			fake.files[fileID] = map[string]any{"id": fileID, "seasonNumber": season, "dateAdded": iso(now.AddDate(-1, 0, 0))}
+		}
+	}
+	ep(1, 1, now.AddDate(0, 0, -30), 11)
+	ep(2, 1, now.AddDate(0, 0, -30), 0)
+	ep(3, 1, now.AddDate(0, 0, -29), 13)
+	ep(4, 2, now.AddDate(0, 0, -3), 0) // its season isn't out long enough
+	full := func(guid string, rejections ...string) map[string]any {
+		return map[string]any{"guid": guid, "indexerId": 1, "title": guid, "fullSeason": true, "seasonNumber": 1, "rejections": rejections, "downloadAllowed": true}
+	}
+	fake.releases[1] = []map[string]any{
+		{"guid": "single", "indexerId": 1, "title": "single", "fullSeason": false, "seasonNumber": 1, "downloadAllowed": true},
+		full("unwanted", "Quality is not wanted in profile"),
+		full("pack", "Existing file on disk is of equal or higher preference: WEBDL-1080p"),
+		full("later"),
+	}
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	wanted := map[int]episodeWant{2: {SeriesID: 5, Season: 1}, 4: {SeriesID: 5, Season: 2}}
+	if err := service.saveEpisodeStates(map[string]*sonarrState{"s": {Follow: map[int]bool{}, Wanted: wanted}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dry run: nothing asked of the indexers.
+	if used, err := service.replaceSeasons(context.Background(), cfg, 3, true); err != nil || used != 0 {
+		t.Fatalf("dry run: %d searches, %v", used, err)
+	}
+	if changes := fake.mutations(); len(changes) != 0 {
+		t.Fatalf("dry run changed: %v", changes)
+	}
+
+	used, err := service.replaceSeasons(context.Background(), cfg, 3, false)
+	if err != nil || used != 1 {
+		t.Fatalf("%d searches, %v", used, err)
+	}
+	if !slices.Contains(fake.mutations(), "sonarr POST /api/v3/release") || !slices.Contains(fake.mutations(), "grab pack") {
+		t.Fatalf("grabbed: %v", fake.mutations())
+	}
+	if err := service.searchEpisodes(context.Background(), cfg, 3, false); err != nil {
+		t.Fatal(err)
+	}
+	var searched []string
+	for _, change := range fake.mutations() {
+		if strings.HasPrefix(change, "search") {
+			searched = append(searched, change)
+		}
+	}
+	if !slices.Equal(searched, []string{"search episode 4"}) {
+		t.Fatalf("searched one by one: %v", searched)
+	}
+
+	// Downloaded; Sonarr took episode 2 (it had no file) and blocked the rest.
+	fake.mu.Lock()
+	fake.queue = []map[string]any{{"downloadId": "D1", "title": "pack", "seriesId": 5, "seasonNumber": 1, "status": "completed", "trackedDownloadState": "importBlocked"}}
+	fake.files[12] = map[string]any{"id": 12, "seasonNumber": 1, "dateAdded": iso(now.Add(time.Hour))}
+	fake.eps[2]["episodeFileId"], fake.eps[2]["hasFile"] = 12, true
+	item := func(path string, episode int) map[string]any {
+		return map[string]any{"path": path, "seasonNumber": 1, "episodes": []map[string]any{{"id": episode}}, "quality": map[string]any{}, "languages": []any{}, "downloadId": "D1"}
+	}
+	fake.importAt = []map[string]any{item("/dl/e1.mkv", 1), item("/dl/e2.mkv", 2), item("/dl/e3.mkv", 3)}
+	fake.mu.Unlock()
+	service.now = func() time.Time { return now.Add(2 * time.Hour) }
+	if _, err := service.replaceSeasons(context.Background(), cfg, 3, false); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	imported := slices.Clone(fake.imported)
+	fake.mu.Unlock()
+	if len(imported) != 1 || !slices.Equal(imported[0], []string{"/dl/e1.mkv", "/dl/e3.mkv"}) {
+		t.Fatalf("imported: %v", imported)
+	}
+	states, _ := service.episodeStates()
+	if pack := states["s"].Seasons[seasonKey(5, 1)]; pack == nil || !pack.Done {
+		t.Fatalf("season 1: %+v", pack)
+	}
+	if _, there := states["s"].Wanted[2]; there {
+		t.Fatalf("episode 2 still wanted")
+	}
+	if _, there := states["s"].Wanted[4]; !there {
+		t.Fatalf("episode 4 no longer wanted")
+	}
+}
+
+// A pack that leaves the queue without its files counts as not found, and
+// is tried again later; nothing was replaced.
+func TestReplaceSeasonsPackThatDidntCome(t *testing.T) {
+	now := *day("2026-10-30")
+	fake := newFakeArrs(now)
+	fake.eps[1] = map[string]any{"id": 1, "seriesId": 5, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": iso(now.AddDate(0, 0, -30)), "hasFile": false, "episodeFileId": 0, "monitored": false}
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	pack := &seasonPack{SeriesID: 5, Season: 1, Release: "pack", GrabbedAt: now.Add(-2 * importWait)}
+	if err := service.saveEpisodeStates(map[string]*sonarrState{"s": {Wanted: map[int]episodeWant{1: {SeriesID: 5, Season: 1}}, Seasons: map[string]*seasonPack{seasonKey(5, 1): pack}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.replaceSeasons(context.Background(), cfg, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	states, _ := service.episodeStates()
+	got := states["s"].Seasons[seasonKey(5, 1)]
+	if got.Done || got.Tries != 1 || !got.GrabbedAt.IsZero() || !got.NextTry.After(now) {
+		t.Fatalf("after the pack didn't come: %+v", got)
+	}
+	if len(fake.imported) != 0 {
+		t.Fatalf("imported: %v", fake.imported)
 	}
 }
