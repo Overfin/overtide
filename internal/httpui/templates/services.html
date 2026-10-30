@@ -29,20 +29,6 @@
       {{end}}
     </div>
     {{end}}
-    <div class="card service prowlarr">
-      <div class="service-title"><span>Prowlarr</span> <b class="{{if .Prowlarr.Route}}good{{else}}muted{{end}}">{{if .Prowlarr.Route}}Searches through Overtide{{else if .Prowlarr.APIKey}}Connected{{else}}Not connected{{end}}</b><a class="card-link" data-overlay-url="/services/prowlarr">Edit</a></div>
-      <div class="muted">Optional: Radarr's and Sonarr's searches go through Overtide, paced tracker by tracker.</div>
-      {{if .Trackers}}
-      <table class="compact">
-        <thead><tr><th>Tracker, last 24 hours</th><th>Searches</th><th>RSS</th><th>Grabs</th><th>Held back</th><th>Budget</th></tr></thead>
-        <tbody>
-          {{range .Trackers}}
-          <tr><td><b>{{.Name}}</b>{{if not .RestingUntil.IsZero}} <span class="warn">resting until {{.RestingUntil.Local.Format "15:04"}}</span>{{end}}</td><td>{{.Searches}}</td><td>{{.RSS}}</td><td>{{.Grabs}}</td><td>{{.Refused}}{{if .Limited}} <span class="muted">({{.Limited}} refused by the tracker)</span>{{end}}{{if .Failed}} <span class="muted">({{.Failed}} failed)</span>{{end}}</td><td class="muted">{{if .Limit}}{{.Limit}} {{if eq .LimitUnit.Hours 1.0}}an hour{{else}}a day{{end}}{{else}}none set{{end}}</td></tr>
-          {{end}}
-        </tbody>
-      </table>
-      {{end}}
-    </div>
   </main>
 </body>
 </html>

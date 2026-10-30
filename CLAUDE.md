@@ -1,10 +1,11 @@
 # Overtide
 
-Overtide is the storage side of Overfin: it reads each title's value, and
-what to add, from Overfin (its apps API, `/apps/v1/titles`), weighs them
-against what only it knows (files, hardlinks, torrents, disk space), and
-decides what the server adds and keeps; requests and resource limits come
-next.
+Overtide is the storage side of Overfin: it reads each title's value from
+Overfin (its apps API, `/apps/v1/titles`), weighs it against what only it
+knows (files, hardlinks, torrents, disk space), and decides what the server
+keeps and removes. Adding is Overswell's, a separate app, which asks
+Overtide whether a folder has room (`GET /api/v1/room`, with Overtide's API
+key).
 Built from Stewarr 0.5.0, which stays a project of its own. MIT, public,
 part of the Overfin project: it works the way Overfin's server does.
 
@@ -42,7 +43,6 @@ part of the Overfin project: it works the way Overfin's server does.
 - `cmd/overtide`: entry point
 - `internal/httpui`: the web UI, server-rendered (templates, htmx, Stimulus)
 - `internal/inventory`: what the services report, reconciled
-- `internal/adding`: the waiting list and the tries (Adding)
 - `internal/cleanup`: the removal planner (cleanup plans)
 - `internal/valuation`: Retention Value (Overfin's scores, unchanged) and
   torrent protections

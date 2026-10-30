@@ -30,7 +30,7 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	}
 	var groups []taskGroup
 	var core []tasks.Status
-	for _, id := range []string{"inventory", "files", removalTaskID, autoRemovalTaskID, addingTaskID} {
+	for _, id := range []string{"inventory", "files", removalTaskID, autoRemovalTaskID} {
 		if status, ok := byID[id]; ok {
 			core = append(core, status)
 		}
@@ -40,7 +40,7 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	}
 	if cfg.Overfin.URL != "" {
 		var overfin []tasks.Status
-		for _, id := range []string{"overfin", addingOverfinTaskID} {
+		for _, id := range []string{"overfin"} {
 			if status, ok := byID[id]; ok {
 				overfin = append(overfin, status)
 			}

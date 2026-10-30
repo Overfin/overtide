@@ -13,14 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/cleanup"
-	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/product"
 	"github.com/overfin/overtide/internal/tasks"
-	"github.com/overfin/overtide/internal/trackers"
 )
 
 // elementID turns an arbitrary stable key (a device's representative path)
@@ -46,8 +43,6 @@ type Server struct {
 	serviceProgressTpl *template.Template
 	libraryTpl         *template.Template
 	historyTpl         *template.Template
-	addingTpl          *template.Template
-	adder              *adding.Service
 	profileTpl         *template.Template
 	torrentTpl         *template.Template
 	torrentDetailTpl   *template.Template
@@ -59,16 +54,13 @@ type Server struct {
 	setupTpl           *template.Template
 	loginTpl           *template.Template
 	settingsTpl        *template.Template
-	prowlarrTpl        *template.Template
-	// gate is the proxy between Radarr or Sonarr and Prowlarr.
-	gate          *trackers.Gate
-	staticHandler http.Handler
-	revisions     *revisionHub
-	startOnce     sync.Once
-	admissionMu   sync.Mutex
-	homeMu        sync.Mutex
-	homeRevision  uint64
-	homeCache     homeData
+	staticHandler      http.Handler
+	revisions          *revisionHub
+	startOnce          sync.Once
+	admissionMu        sync.Mutex
+	homeMu             sync.Mutex
+	homeRevision       uint64
+	homeCache          homeData
 	// sseMaxLifetime bounds how long any single /ui/events connection is
 	// kept open before the server ends it and lets the client's built-in
 	// EventSource auto-reconnect start a fresh one — see uiEvents. Zero
@@ -121,10 +113,6 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
-	prowlarrTemplate, err := parseUITemplate("prowlarr.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
 	editServiceTemplate, err := parseUITemplate("edit_service.html", templateFunctions)
 	if err != nil {
 		return nil, err
@@ -150,10 +138,6 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 		return nil, err
 	}
 	historyTemplate, err := parseUITemplate("history.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	addingTemplate, err := parseUITemplate("adding.html", templateFunctions)
 	if err != nil {
 		return nil, err
 	}
@@ -201,39 +185,10 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, addingTpl: addingTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter(), prowlarrTpl: prowlarrTemplate}
-	server.gate = trackers.NewGate(
-		func() string { return inventoryService.Config().Prowlarr.URL },
-		func() string {
-			if address := inventoryService.Config().Prowlarr.ProxyURL; address != "" {
-				return address + config.ProxyPath
-			}
-			return ""
-		},
-		inventoryService.TrackerLimits)
-	if inventoryService != nil {
-		server.adder = adding.New(inventoryService)
-		server.adder.Trackers = func(since time.Time) (bool, string) {
-			// Known only when the searches go through Overtide.
-			if !inventoryService.Config().Prowlarr.Route {
-				return false, ""
-			}
-			return server.gate.Unavailable(since)
-		}
-	}
+	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
-		}
-		if server.adder != nil {
-			// One at a time: both change the waiting list.
-			claim := []tasks.ResourceClaim{{Resource: "adding", Mode: tasks.ClaimExclusive}}
-			if err := taskManager.Register(tasks.Definition{ID: addingOverfinTaskID, Name: "Overfin suggestions", Description: "Read what Overfin suggests adding, in its order, into the Adding waiting list.", Interval: adding.ReadEvery, Runner: server.adder.ReadOverfin, Resources: claim}); err != nil {
-				return nil, err
-			}
-			if err := taskManager.Register(tasks.Definition{ID: addingTaskID, Name: "Adding: try titles", Description: "Try the titles whose turn it is: add, search, keep only if a download started.", Interval: adding.RunEvery, Runner: server.adder.Run, Resources: claim}); err != nil {
-				return nil, err
-			}
 		}
 		if err := taskManager.Register(tasks.Definition{ID: autoRemovalTaskID, Name: "Automatic removal", Description: "Evaluate cross-domain cleanup plans and submit removals for opted-in services.", Interval: autoRemovalEvalInterval, Runner: server.runAutoRemovalEvaluation}); err != nil {
 			return nil, err
@@ -253,10 +208,9 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 func (server *Server) Handler() http.Handler {
 	gated := server.authGate(server.routes())
 	return noFraming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Radarr and Sonarr reach Prowlarr through here: Prowlarr checks
-		// their API key, Overtide's sign-in doesn't apply.
-		if strings.HasPrefix(r.URL.Path, config.ProxyPath+"/") && server.gate != nil {
-			server.gate.ServeHTTP(w, r)
+		// Other apps ask with Overtide's API key, not a session.
+		if r.URL.Path == roomPath {
+			server.room(w, r)
 			return
 		}
 		gated.ServeHTTP(w, r)
@@ -278,14 +232,12 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
 	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
 	mux.HandleFunc("/storage/keep", server.keepPost)
-	mux.HandleFunc("/library/ignore", server.ignorePost)
 	mux.HandleFunc("/torrents/missing", server.filesMissingDialog)
 	mux.HandleFunc("/services", server.servicesPage)
 	mux.HandleFunc("/services/add", server.addServiceForm)
 	mux.HandleFunc("/services/test", server.testServiceConnection)
 	mux.HandleFunc("/services/create", server.addService)
 	mux.HandleFunc("/services/edit", server.editServiceForm)
-	mux.HandleFunc("/services/prowlarr", server.prowlarrForm)
 	mux.HandleFunc("/services/remove", server.removeService)
 	mux.HandleFunc("/services/consistency-progress", server.serviceConsistencyProgressForm)
 	mux.HandleFunc("/services/consistency-status", server.serviceConsistencyStatus)
@@ -296,8 +248,6 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("/torrents/", server.torrentDetail)
 	mux.HandleFunc("/unmanaged", server.unmanagedDownloads)
 	mux.HandleFunc("/history", server.history)
-	mux.HandleFunc("/adding", server.addingPage)
-	mux.HandleFunc("/adding/", server.addingPost)
 	mux.HandleFunc("/tasks", server.tasksPage)
 	mux.HandleFunc("/tasks/run", server.runTask)
 	mux.HandleFunc("/removal/media", server.removalMedia)

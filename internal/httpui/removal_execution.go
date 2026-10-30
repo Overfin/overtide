@@ -510,22 +510,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 			}
 		}
 		// A removed title stays in Radarr or Sonarr, unmonitored (a series,
-		// its removed episodes), and becomes Overtide's: tagged.
-		{
-			seen := map[string]bool{}
-			for _, ref := range removedManaged {
-				key := string(ref.MediaType) + ":" + ref.ServiceID + ":" + strconv.Itoa(ref.MediaID)
-				if ref.MediaID <= 0 || seen[key] {
-					continue
-				}
-				seen[key] = true
-				if e := server.inv.TagManaged(ctx, ref.MediaType, ref.ServiceID, ref.MediaID); e != nil {
-					recordError(fmt.Sprintf("tag %s %d: %v", ref.MediaType, ref.MediaID, e))
-				} else {
-					recordResult(fmt.Sprintf("%s %d tagged as Overtide's", ref.MediaType, ref.MediaID))
-				}
-			}
-		}
+		// its removed episodes), so it isn't downloaded again on its own.
 		{
 			seen := map[string]bool{}
 			for _, ref := range removedManaged {

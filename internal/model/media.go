@@ -348,48 +348,13 @@ func (m Media) CurrentHardlinkedTorrents() []Torrent {
 	return out
 }
 
-// Overtide's tags in Radarr and Sonarr: each marks a title Overtide
-// manages, and says where it came from.
-const (
-	// TagAdded: Overtide added it, from Overfin's suggestions.
-	TagAdded = "overtide-added"
-	// TagRequested: Overtide added it, requested in Overfin.
-	TagRequested = "overtide-requested"
-	// TagFound: it was there before Overtide took it: when "Manage all"
-	// was switched on, or when Overtide removed it.
-	TagFound = "overtide-found"
-	// TagNew: added from outside (a list, a request, by hand) while
-	// "Manage all" was on.
-	TagNew = "overtide-new"
-	// LegacyTag marked every title Overtide managed, before the tags
-	// above; it's replaced by them.
-	LegacyTag = "overtide"
-)
-
-// Tags the operator sets, in Radarr or Sonarr or from Overtide: TagKeep,
-// never planned for removal; TagIgnore, never taken, tagged, unmonitored
-// or searched by Overtide (it can still be removed).
-const (
-	TagKeep   = "overtide-keep"
-	TagIgnore = "overtide-ignore"
-)
+// TagKeep is set by the operator, in Radarr or Sonarr or from Overtide's
+// Keep: a title never planned for removal.
+const TagKeep = "overtide-keep"
 
 // HasTag reports whether labels holds tag.
 func HasTag(labels []string, tag string) bool {
 	for _, label := range labels {
-		if strings.EqualFold(label, tag) {
-			return true
-		}
-	}
-	return false
-}
-
-// ManagedTags are Overtide's tags, the legacy one included.
-var ManagedTags = []string{TagAdded, TagRequested, TagFound, TagNew, LegacyTag}
-
-// IsManagedTag reports whether label is one of Overtide's tags.
-func IsManagedTag(label string) bool {
-	for _, tag := range ManagedTags {
 		if strings.EqualFold(label, tag) {
 			return true
 		}

@@ -4,12 +4,12 @@
 
 Overfin knows your titles and your people: what they watch, ask for and like, and what's worth having that you don't have yet. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. Together they keep a library that evolves toward the people using it:
 
-- **Adding.** Every hour, Overtide asks Overfin what to add, and adds it through Radarr and Sonarr.
 - **Removing.** When a disk goes over its target, Overtide removes the titles Overfin values least, with every torrent that shares their files.
+- **Adding** is [Overswell](https://github.com/overfin/overswell)'s job: it asks Overfin what to add, and adds it through Radarr and Sonarr. Before adding, it asks Overtide whether the folder's disk has room.
 
 Overfin decides; Overtide manages. Radarr, Sonarr and qBittorrent keep doing their jobs, and Overtide works through them, never behind their backs.
 
-> **Status: early.** Overtide starts with adding off and removal in dry run: it plans and records what it would remove, and changes nothing. Adding has its own dry run too. See [`ROADMAP.md`](ROADMAP.md) for what's next.
+> **Status: early.** Overtide starts with removal in dry run: it plans and records what it would remove, and changes nothing. See [`ROADMAP.md`](ROADMAP.md) for what's next.
 
 ## Starting it
 
@@ -31,43 +31,33 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 | | Overfin | Overtide |
 |---|---|---|
 | Knows | titles, people's wishes and viewing | disks, files, hardlinks, torrents |
-| Decides | each title's value, and what's worth adding | when to add, when to make room, and how |
-| Gives the other | what to add, in order; each title's value | (planned) what's leaving soon, and requests' status |
+| Decides | each title's value | when to make room, and how |
+| Gives the other | each title's value | (planned) what's leaving soon |
 
 Overfin values a title the same way whether it's on the server or not, and a title's size never counts: files and space are entirely Overtide's concern. Overfin never tells Overtide who watched or wanted what.
 
-## Adding
+## Room for Overswell
 
-Adding is off until you switch it on, on the **Adding** page (off, dry run, on).
-
-- **One source: Overfin.** Every hour, the **Overfin suggestions** task reads what Overfin says to add, in its order: the titles your libraries lack, the most valuable first, with trending and popular titles mixed in by the discovery share you set in Overfin. People's requests will always go first (coming).
-- **A waiting list.** Every 15 minutes, Overtide tries the titles whose turn it is, one search at a time, at most the searches set on the Adding page (3 by default; each season of a series counts). Every search goes to all of Radarr's or Sonarr's trackers, so set it for the most limited one. At most 200 of Overfin's suggestions wait.
-- **Monitor, never delete.** A title goes into Radarr or Sonarr once, unmonitored and tagged `overtide-added` (`overtide-requested` for a request), with their root folder and quality profile (Overtide adds only where there is one of each). A try monitors it (for a series, the seasons Overfin suggests), asks for a search of that one title, and checks a download started. If not, the title is unmonitored again and tried later: after 1 day, then 2, 4, 8. After 5 tries that found nothing, or 60 days in the list, it leaves the list, and isn't taken from Overfin's suggestions again for 6 months. Once its download is confirmed, the title is unmonitored, so Radarr and Sonarr don't upgrade it on their own: Overtide decides what comes in. It's imported all the same; a download that stops before its import puts the title back in line.
-- **Releases.** A title not out yet waits, and two days before its release it's monitored without a search, so Radarr's or Sonarr's RSS catches it. Nothing within 14 days counts as a try that found nothing.
-- **What Overtide manages.** "Only what it adds" (the default): its own additions, and the titles it removes, once it does; everything else is left to Radarr and Sonarr. "Everything in Radarr and Sonarr": every title is tagged, and Radarr and Sonarr no longer fetch or upgrade anything on their own. Overtide fetches what they would have, at its own pace: monitored films without their file go in line; monitored missing episodes are searched one at a time; the series whose new seasons were followed get each new episode monitored from two days before it airs until it's downloaded, so Sonarr's RSS grabs it. What was unmonitored stays unwanted. Switching back leaves titles unmonitored.
-- **Whole seasons.** With "Everything", 7 days after a season's last episode aired, a season with missing episodes is replaced by a whole-season pack, so its episodes come from one release: the first complete pack Sonarr refused only for the files already there. Once it's downloaded, Sonarr's manual import brings in what Sonarr didn't take, in place of the older files (into its recycle bin, if it has one). Nothing is replaced before the pack is there.
-- **Tags.** Each title Overtide manages carries where it came from: `overtide-added`, `overtide-requested`, `overtide-found` (there before Overtide took it), `overtide-new` (added from outside with "Everything"). Two tags are yours to set, in Radarr or Sonarr or from Overtide: `overtide-keep`, never planned for removal; `overtide-ignore` (**Leave alone** on a title's page), never taken, tagged, unmonitored or searched by Overtide, though it can still be removed. Radarr and Sonarr don't record how a title was added: to tell your lists or other request apps apart, give them tags of their own there.
-- **Trackers, paced one by one (optional).** With Prowlarr, Overtide can have Prowlarr give its apps (Radarr, Sonarr) Overtide's address in place of its own, under Services → Prowlarr: their searches, RSS polls and grabs then go through Overtide on their way to Prowlarr. A tracker that used its budget (Prowlarr's query limit, or a rest after it refused) answers "nothing found" to searches until it has budget again, while the others keep answering; RSS polls and grabs always go through. The Services page shows what each tracker was asked over the last 24 hours. Turned off, the apps get their own address back. Overtide must be running for them to search: if you remove it without turning this off, put Prowlarr's address back in Prowlarr's Settings → Apps.
-- **Import lists are yours.** Overtide doesn't read them or work around them. Keep them in Radarr and Sonarr if you like; when Overtide removes a title, the removal can add it to their exclusions so a list doesn't bring it back.
+Overswell, which adds titles, asks Overtide before adding one whether the folder it goes to has room: `GET /api/v1/room?folder=<path>`, with Overtide's API key (Settings) in `X-Api-Key`. The answer is `ok`, `critical` (the disk is past its critical threshold: nothing is added until removal catches up) or `unknown` (a disk Overtide can't read now, or doesn't know).
 
 ## Removing
 
 - **Values come from Overfin, unchanged, when space is needed.** Overtide asks Overfin at startup, and when a disk with automatic removal is over its target and Overfin's last answer is older than 15 minutes. A film's value is Overfin's score for it, a season's is its own, a series' is its best season's. A title Overfin hasn't scored is never removed automatically, and without Overfin, nothing is.
-- **Removed, not forgotten.** Removing a title deletes its files through Radarr or Sonarr; the title stays there, unmonitored (a series, its removed episodes) and tagged `overtide-found` if it had none of Overtide's tags, so it isn't downloaded again on its own.
+- **Removed, not forgotten.** Removing a title deletes its files through Radarr or Sonarr; the title stays there, unmonitored (a series, its removed episodes), so it isn't downloaded again on its own.
 - **It knows what a removal really frees.** Overtide reads your file system and proves which files are hardlinks of which: a title in your library, the torrent it came from, its cross-seeds. Removing a title alone, while a torrent still holds the same file, frees nothing, so Overtide never proposes it that way.
 - **Bundles, removed together.** A title goes with every torrent that shares its files, cross-seeds included. Torrents that back nothing in the library (superseded, orphaned, unassociated) go first, the one inactive the longest first; cross-seeds of one another are removed together, since each alone frees nothing. A torrent added less than seven days ago is never removed on its own.
 - **Copies instead of hardlinks.** If your library holds copies of your torrents' files, each torrent is a spare copy: removing it frees its whole size and the library loses nothing, so by default copies go before any title. In Settings, "Ordered with their title" places each copy by its title's value instead, so you keep seeding what people value.
 - **You keep what you want.** **Keep** on a title's page or in the cleanup plan tags it `overtide-keep` in Radarr or Sonarr (you can set the tag there yourself too); a torrent goes on the Kept list. The Storage page lists both; nothing kept is ever planned for removal until you take it off.
 - **Private trackers.** An optional setting keeps private torrents, and the titles they share files with, until they've seeded a number of days. Off by default.
 - **Every removal is a plan first.** It shows exactly what would happen and how much it frees, and it's checked again just before running. Library files are removed through Radarr or Sonarr, torrents through qBittorrent. Overtide deletes a file itself only when no service claims it.
-- **Three modes for automatic removal:** off, confirm (it picks, you approve) and automatic. And dry run, on by default, over every removal, by hand or automatic; adding has its own.
+- **Three modes for automatic removal:** off, confirm (it picks, you approve) and automatic. And dry run, on by default, over every removal, by hand or automatic.
 
 ## Disks
 
 Overtide finds your disks from the folders your services report, and gives each two thresholds:
 
-- **Target** (90% by default): the usage Overtide steers toward. It isn't a wall: Overtide adds first, and removal brings the disk back under its target. So your space stays used, and titles keep rolling.
-- **Critical** (95% by default): the one hard stop. Past it, nothing more is added until removal catches up, so a run of downloads can't fill the disk.
+- **Target** (90% by default): the usage Overtide steers toward. It isn't a wall: Overswell adds first, and removal brings the disk back under its target. So your space stays used, and titles keep rolling.
+- **Critical** (95% by default): the one hard stop. Past it, Overswell adds nothing more until removal catches up, so a run of downloads can't fill the disk.
 
 Space used by things outside Overtide's view is set aside, not counted against it.
 
@@ -77,7 +67,6 @@ Space used by things outside Overtide's view is set aside, not counted against i
 - **Library**: your films and series, searchable, with Overfin's value.
 - **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds.
 - **Unmanaged files**: files on disk no service claims, removed by hand only; and torrents qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
-- **Adding**: the waiting list, what's downloading, what's waiting for its release, and what came in.
 - **Storage**: each disk with its target and its cleanup plan, and the Kept list.
 - **Services**, **Tasks** (the background work, with **Run now**), **History** (every removal, simulated or real), **Settings**.
 

@@ -243,95 +243,17 @@ type Config struct {
 	// until taken off the list, on the Storage page.
 	Kept    []KeptItem    `json:"kept,omitempty"`
 	Removal RemovalConfig `json:"removal"`
-	Adding  AddingConfig  `json:"adding"`
-	// Prowlarr is the optional connection to Prowlarr, for the searches
-	// to go through Overtide.
-	Prowlarr ProwlarrConfig `json:"prowlarr,omitempty"`
 	// Auth holds the single admin account's credentials. An empty Username
 	// means no account has been created yet — the app's first-run setup
 	// screen is the only route reachable until SetCredentials is called.
 	// There is deliberately no separate "reset" flow: erasing this field
 	// from config.json (and restarting) puts the app back into first-run
 	// setup, the same pattern used across the *arr ecosystem.
-	Auth            Auth          `json:"auth"`
+	Auth Auth `json:"auth"`
+	// APIKey is what other apps (Overswell) give to ask Overtide
+	// something: made at the first start, shown in Settings.
+	APIKey          string        `json:"api_key,omitempty"`
 	RefreshInterval time.Duration `json:"-"`
-}
-
-// AddingConfig is how Overtide brings titles in.
-type AddingConfig struct {
-	// Mode is AddingOff (also what empty means), AddingDryRun or AddingOn.
-	Mode string `json:"mode"`
-	// Manage is ManageOwn (also what empty means) or ManageAll.
-	Manage string `json:"manage,omitempty"`
-	// Searches is how many searches a run (every 15 minutes) may ask
-	// for; 0 means DefaultSearches.
-	Searches int `json:"searches,omitempty"`
-}
-
-// DefaultSearches and MaxSearches bound AddingConfig.Searches: a cautious
-// pace by default, for the trackers' limits.
-const (
-	DefaultSearches = 3
-	MaxSearches     = 60
-)
-
-// SearchesPerRun is how many searches a run may ask for.
-func (adding AddingConfig) SearchesPerRun() int {
-	if adding.Searches <= 0 {
-		return DefaultSearches
-	}
-	return min(adding.Searches, MaxSearches)
-}
-
-// SetAddingSearches sets how many searches a run may ask for.
-func SetAddingSearches(configuration Config, searches int) (Config, error) {
-	if searches < 1 || searches > MaxSearches {
-		return configuration, fmt.Errorf("searches every 15 minutes must be between 1 and %d", MaxSearches)
-	}
-	updated := configuration
-	updated.Adding.Searches = searches
-	return updated, nil
-}
-
-const (
-	AddingOff    = "off"
-	AddingDryRun = "dry_run"
-	AddingOn     = "on"
-)
-
-// What Overtide manages in Radarr and Sonarr: the titles it adds (and
-// those it removes, once it does), or every title.
-const (
-	ManageOwn = "own"
-	ManageAll = "all"
-)
-
-// ManagesAll reports whether Overtide manages every title in Radarr and
-// Sonarr.
-func (adding AddingConfig) ManagesAll() bool { return adding.Manage == ManageAll }
-
-// SetAddingManage sets what Overtide manages.
-func SetAddingManage(configuration Config, manage string) (Config, error) {
-	switch manage {
-	case ManageOwn, ManageAll:
-	default:
-		return configuration, fmt.Errorf("what Overtide manages must be %q or %q", ManageOwn, ManageAll)
-	}
-	updated := configuration
-	updated.Adding.Manage = manage
-	return updated, nil
-}
-
-// SetAddingMode sets how titles are brought in.
-func SetAddingMode(configuration Config, mode string) (Config, error) {
-	switch mode {
-	case AddingOff, AddingDryRun, AddingOn:
-	default:
-		return configuration, fmt.Errorf("adding mode must be one of %q, %q, %q", AddingOff, AddingDryRun, AddingOn)
-	}
-	updated := configuration
-	updated.Adding.Mode = mode
-	return updated, nil
 }
 
 type Auth struct {
@@ -726,6 +648,12 @@ func Load(path string) (Config, error) {
 	if configuration.RefreshInterval <= 0 {
 		return configuration, fmt.Errorf("server.refresh_interval must be greater than zero")
 	}
+	if configuration.APIKey == "" {
+		if configuration.APIKey, err = NewAPIKey(); err != nil {
+			return configuration, err
+		}
+		assignedFreshID = true
+	}
 	if assignedFreshID || droppedServices {
 		if err := Save(path, configuration); err != nil {
 			return configuration, fmt.Errorf("persist updated services: %w", err)
@@ -876,22 +804,11 @@ func RemoveService(configuration Config, id string) (Config, error) {
 	return updated, nil
 }
 
-// ProxyPath is where Overtide's proxy to Prowlarr answers.
-const ProxyPath = "/prowlarr"
-
-// ProwlarrConfig is the optional connection to Prowlarr. With Route on,
-// Prowlarr's apps (Radarr, Sonarr) reach their trackers through Overtide's
-// proxy at ProxyURL, which paces them tracker by tracker.
-type ProwlarrConfig struct {
-	// URL is Prowlarr's address; empty, it's read from Radarr's or
-	// Sonarr's indexers.
-	URL    string `json:"url,omitempty"`
-	APIKey string `json:"api_key,omitempty"`
-	// ProxyURL is Overtide's address as Radarr and Sonarr reach it, such
-	// as http://192.168.1.10:8089; its proxy is under /prowlarr.
-	ProxyURL string `json:"proxy_url,omitempty"`
-	Route    bool   `json:"route,omitempty"`
-	// Replaced is each Prowlarr app's own "Prowlarr Server" address before
-	// Overtide replaced it, by app ID: put back when Route goes off.
-	Replaced map[string]string `json:"replaced,omitempty"`
+// NewAPIKey makes a random API key.
+func NewAPIKey() (string, error) {
+	key := make([]byte, 24)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("make an API key: %w", err)
+	}
+	return hex.EncodeToString(key), nil
 }

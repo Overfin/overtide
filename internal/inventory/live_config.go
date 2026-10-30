@@ -378,39 +378,6 @@ func (service *Service) migrateKept() {
 	}
 }
 
-// SetAddingMode saves how titles are brought in (see config.AddingConfig).
-// SetAddingSearches sets how many searches a run may ask for.
-func (service *Service) SetAddingSearches(searches int) error {
-	if _, err := config.SetAddingSearches(config.Config{}, searches); err != nil {
-		return err
-	}
-	return service.changeConfig(func(c config.Config) config.Config {
-		updated, _ := config.SetAddingSearches(c, searches)
-		return updated
-	})
-}
-
-// SetAddingManage sets what Overtide manages in Radarr and Sonarr.
-func (service *Service) SetAddingManage(manage string) error {
-	if _, err := config.SetAddingManage(config.Config{}, manage); err != nil {
-		return err
-	}
-	return service.changeConfig(func(c config.Config) config.Config {
-		updated, _ := config.SetAddingManage(c, manage)
-		return updated
-	})
-}
-
-func (service *Service) SetAddingMode(mode string) error {
-	if _, err := config.SetAddingMode(config.Config{}, mode); err != nil {
-		return err
-	}
-	return service.changeConfig(func(c config.Config) config.Config {
-		updated, _ := config.SetAddingMode(c, mode)
-		return updated
-	})
-}
-
 // OverfinClient is the client of Overfin, for its suggestions; its address
 // is empty without Overfin.
 func (service *Service) OverfinClient() *overfin.Client {

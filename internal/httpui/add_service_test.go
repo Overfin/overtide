@@ -201,11 +201,13 @@ func TestTestServiceConnectionPersistsNothing(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`{"storage":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(configPath)
+	// Loading writes the file once (it gets its API key): what counts is
+	// what the test writes after.
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(configPath)
+	before, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}

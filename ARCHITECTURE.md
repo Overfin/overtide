@@ -150,11 +150,6 @@ Current tasks:
 - File reconciliation — service/file-identity reconciliation, sparse (currently 12h).
 - Automatic removal — evaluates each device's cleanup plan every 15 minutes, in confirm or automatic mode.
 - Removal operations — confirmed removals, run as exclusive mutation tasks.
-- Overfin suggestions — reads what Overfin suggests adding into the waiting list, hourly.
-- Adding: try titles — tries the titles whose turn it is, every 15 minutes.
-
-The two adding tasks hold an exclusive `adding` claim and do nothing while adding is off.
-
 Future tasks may include full reconciliation, storage capability scans, statistics maintenance and service-specific reconciliation. Schedules should eventually be configurable through the GUI.
 
 ## State and persistence

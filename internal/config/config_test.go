@@ -784,3 +784,22 @@ func TestKeepAndUnkeep(t *testing.T) {
 		t.Fatalf("expected the film off the list: %#v", c.Kept)
 	}
 }
+
+// The API key is made once, at the first load, and kept after.
+func TestAPIKeyMadeOnceAndKept(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.APIKey) != 48 {
+		t.Fatalf("key %q", first.APIKey)
+	}
+	again, err := Load(path)
+	if err != nil || again.APIKey != first.APIKey {
+		t.Fatalf("key changed: %q, %v", again.APIKey, err)
+	}
+}

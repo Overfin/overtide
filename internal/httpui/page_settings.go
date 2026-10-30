@@ -21,6 +21,8 @@ type settingsPageData struct {
 	AutoExcludeFromImportLists     bool
 	AutoRemoveIncompleteTorrents   bool
 	CopiesWithTitles               bool
+	// APIKey is what other apps give to ask Overtide something.
+	APIKey string
 }
 
 func (server *Server) settingsData() settingsPageData {
@@ -37,6 +39,7 @@ func (server *Server) settingsData() settingsPageData {
 		AutoExcludeFromImportLists:     cfg.Removal.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   cfg.Removal.AutoRemoveIncompleteTorrents,
 		CopiesWithTitles:               cfg.Removal.CopiesWithTitles,
+		APIKey:                         cfg.APIKey,
 	}
 }
 

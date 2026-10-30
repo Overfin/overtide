@@ -9,7 +9,7 @@
   <body data-controller="shell revisions">
     {{chrome "settings"}}
     <h1 class="page-title">Settings</h1>
-    <p class="page-desc">Your password, and when Overtide may remove titles on its own.</p>
+    <p class="page-desc">Your password, the API key, and when Overtide may remove titles on its own.</p>
     <div class="card settings-card">
       <h2>Change password</h2>
       {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
@@ -22,6 +22,11 @@
         </div>
         <button type="submit">Update password</button>
       </form>
+    </div>
+    <div class="card settings-card">
+      <h2>API key</h2>
+      <p class="muted">What Overswell gives to ask Overtide whether a folder has room before it adds a title: add Overtide in Overswell's Services with this key.</p>
+      <label for="settings-api-key">Key<input id="settings-api-key" value="{{.APIKey}}" readonly></label>
     </div>
     <div class="card settings-card">
       <h2>Automatic removal</h2>

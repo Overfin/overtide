@@ -584,49 +584,6 @@ func (service *Service) removeIncompleteTorrentViaQueue(ctx context.Context, has
 	}
 }
 
-// TagManaged tags a film or series model.TagFound, unless it has one of
-// Overtide's tags already: removing a title makes it Overtide's, even one
-// added from outside.
-func (service *Service) TagManaged(ctx context.Context, mediaType model.MediaType, svcID string, id int) error {
-	if items, _, err := service.Snapshot(); err == nil {
-		for _, m := range items {
-			if m.Type != mediaType || m.ServiceID != svcID || m.SourceID != id {
-				continue
-			}
-			if model.HasTag(m.Tags, model.TagIgnore) {
-				return nil // left alone: removed, but not made Overtide's
-			}
-			for _, tag := range m.Tags {
-				if model.IsManagedTag(tag) && !strings.EqualFold(tag, model.LegacyTag) {
-					return nil
-				}
-			}
-		}
-	}
-	if mediaType == model.Series {
-		client, err := service.sonarrClient(svcID)
-		if err != nil {
-			return err
-		}
-		client = client.WithContext(ctx)
-		tagID, err := client.EnsureTag(model.TagFound)
-		if err != nil {
-			return err
-		}
-		return client.TagSeries(id, tagID)
-	}
-	client, err := service.radarrClient(svcID)
-	if err != nil {
-		return err
-	}
-	client = client.WithContext(ctx)
-	tagID, err := client.EnsureTag(model.TagFound)
-	if err != nil {
-		return err
-	}
-	return client.TagMovie(id, tagID)
-}
-
 func (service *Service) SetMovieMonitored(ctx context.Context, svcID string, id int, monitored bool) error {
 	client, err := service.radarrClient(svcID)
 	if err != nil {
