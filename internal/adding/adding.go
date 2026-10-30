@@ -355,6 +355,8 @@ func (service *Service) match(entries []Entry) []Entry {
 		switch {
 		case !there && entry.Source == FromLibrary:
 			continue // taken from Radarr, and gone from it since
+		case there && model.HasTag(m.Tags, model.TagIgnore):
+			continue // left alone by the operator
 		case !there:
 			entry.ArrID = 0
 		case !service.managed(m):
@@ -375,8 +377,19 @@ func (service *Service) match(entries []Entry) []Entry {
 // release, unmonitored and counted as a try that found nothing. A title
 // that left Radarr or Sonarr waits for another try.
 func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool) {
+	ignored := map[string]bool{}
+	if items, _, err := service.inv.Snapshot(); err == nil {
+		for _, m := range items {
+			if model.HasTag(m.Tags, model.TagIgnore) {
+				ignored[fmt.Sprintf("%s|%s|%d", m.ServiceID, m.Type, m.SourceID)] = true
+			}
+		}
+	}
 	for i := range entries {
 		entry := &entries[i]
+		if ignored[fmt.Sprintf("%s|%s|%d", entry.ServiceID, entry.Kind, entry.ArrID)] {
+			continue // left alone by the operator
+		}
 		monitoredForRelease := entry.State == NotReleased && !entry.MonitoredAt.IsZero()
 		moving := entry.State == Downloading || entry.State == Imported
 		if entry.ArrID == 0 || (!moving && !monitoredForRelease) {

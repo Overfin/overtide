@@ -412,3 +412,36 @@ func TestSearchEpisodes(t *testing.T) {
 		t.Errorf("imported episode still wanted: %+v", states["s"].Wanted)
 	}
 }
+
+// A title tagged overtide-ignore is left alone: not tagged, unmonitored,
+// taken or put in line, and its series' episodes are neither followed nor
+// wanted.
+func TestTakeAllLeavesIgnoredAlone(t *testing.T) {
+	now := *day("2026-10-30")
+	fake := newFakeArrs(now)
+	ignoreFilm, ignoreSeries := fake.tagID("radarr", model.TagIgnore), fake.tagID("sonarr", model.TagIgnore)
+	fake.films[1] = map[string]any{"id": 1, "tmdbId": 11, "title": "Mine", "monitored": true, "hasFile": false, "tags": []int{ignoreFilm}, "added": iso(now.AddDate(-1, 0, 0))}
+	fake.series[1] = map[string]any{"id": 1, "title": "Mine too", "monitored": true, "monitorNewItems": "all", "tags": []int{ignoreSeries},
+		"seasons": []any{map[string]any{"seasonNumber": 1, "monitored": true}}, "added": iso(now.AddDate(-1, 0, 0))}
+	fake.eps[1] = map[string]any{"id": 1, "seriesId": 1, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": iso(now.AddDate(0, 0, -60)), "hasFile": false, "monitored": true}
+	fake.eps[2] = map[string]any{"id": 2, "seriesId": 1, "seasonNumber": 1, "episodeNumber": 2, "airDateUtc": iso(now.Add(24 * time.Hour)), "hasFile": false, "monitored": true}
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	// Followed and wanted before it was left alone.
+	if err := service.saveEpisodeStates(map[string]*sonarrState{"s": {Follow: map[int]bool{1: true}, Wanted: map[int]episodeWant{1: {SeriesID: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := service.takeAll(context.Background(), cfg, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range fake.mutations() {
+		t.Errorf("changed: %s", change)
+	}
+	if len(entries) != 0 {
+		t.Errorf("in line: %+v", entries)
+	}
+	states, _ := service.episodeStates()
+	if len(states["s"].Follow) != 0 || len(states["s"].Wanted) != 0 {
+		t.Errorf("still followed or wanted: %+v", states["s"])
+	}
+}

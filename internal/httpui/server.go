@@ -244,6 +244,7 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
 	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
 	mux.HandleFunc("/storage/keep", server.keepPost)
+	mux.HandleFunc("/library/ignore", server.ignorePost)
 	mux.HandleFunc("/torrents/missing", server.filesMissingDialog)
 	mux.HandleFunc("/services", server.servicesPage)
 	mux.HandleFunc("/services/add", server.addServiceForm)

@@ -30,7 +30,7 @@ func TestConfigReadersDontRaceALiveChange(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			if err := service.Keep(fmt.Sprintf("movie:1:%d", i), "Title"); err != nil {
+			if err := service.Keep(config.KeptTorrentKey(fmt.Sprintf("%040x", i)), "Title"); err != nil {
 				t.Error(err)
 				return
 			}

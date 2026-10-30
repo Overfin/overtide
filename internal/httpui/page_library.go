@@ -565,7 +565,8 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 			RemoveWithCurrent inventory.RemovalEstimate
 			KeptKey           string
 			Kept              bool
-		}{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent, keptKey, server.inv.Config().IsKept(keptKey)}
+			Ignored           bool
+		}{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent, keptKey, server.inv.Config().IsKept(keptKey) || model.HasTag(m.Tags, model.TagKeep), model.HasTag(m.Tags, model.TagIgnore)}
 		if e := renderTemplate(w, server.profileTpl, data); e != nil {
 			log.Printf("[http] render media profile: %v", e)
 		}
@@ -576,4 +577,29 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.NotFound(w, r)
+}
+
+// ignorePost sets or takes off a title's model.TagIgnore in Radarr or
+// Sonarr: left alone, Overtide never takes, tags, unmonitors or searches
+// for it (it can still be removed).
+func (server *Server) ignorePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	mediaType := model.MediaType(r.FormValue("type"))
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if (mediaType != model.Movie && mediaType != model.Series) || err != nil || id <= 0 {
+		http.Error(w, "type and id are required", http.StatusBadRequest)
+		return
+	}
+	if err := server.inv.SetTitleTag(r.Context(), mediaType, strings.TrimSpace(r.FormValue("service_id")), id, model.TagIgnore, r.FormValue("ignore") == "1"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, localPath(r.FormValue("back"), "/library"), http.StatusSeeOther)
 }

@@ -303,6 +303,9 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 		var toUnmonitor []int
 		for _, t := range titles {
 			key := fmt.Sprintf("%s|%s|%d", svc.ID, model.Movie, t.ID)
+			if hasLabel(t.Tags, labels, model.TagIgnore) {
+				continue
+			}
 			if !hasManagedTag(t.Tags, labels) {
 				label := labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
@@ -362,6 +365,16 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 		toTag := map[string][]int{}
 		var toTake []sonarr.Title
 		for _, t := range titles {
+			if hasLabel(t.Tags, labels, model.TagIgnore) {
+				// Left alone: nothing of it is followed or searched.
+				delete(state.Follow, t.ID)
+				for id, want := range state.Wanted {
+					if want.SeriesID == t.ID {
+						delete(state.Wanted, id)
+					}
+				}
+				continue
+			}
 			if !hasManagedTag(t.Tags, labels) {
 				label := labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
@@ -502,6 +515,16 @@ func (service *Service) airingWindow(client *sonarr.Client, state *sonarrState, 
 		return 0, err
 	}
 	return monitored, client.SetEpisodesMonitored(off, false)
+}
+
+// hasLabel reports whether one of the tag IDs is the tag.
+func hasLabel(ids []int, labels map[int]string, tag string) bool {
+	for _, id := range ids {
+		if strings.EqualFold(labels[id], tag) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasManagedTag(ids []int, labels map[int]string) bool {

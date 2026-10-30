@@ -366,6 +366,24 @@ const (
 	LegacyTag = "overtide"
 )
 
+// Tags the operator sets, in Radarr or Sonarr or from Overtide: TagKeep,
+// never planned for removal; TagIgnore, never taken, tagged, unmonitored
+// or searched by Overtide (it can still be removed).
+const (
+	TagKeep   = "overtide-keep"
+	TagIgnore = "overtide-ignore"
+)
+
+// HasTag reports whether labels holds tag.
+func HasTag(labels []string, tag string) bool {
+	for _, label := range labels {
+		if strings.EqualFold(label, tag) {
+			return true
+		}
+	}
+	return false
+}
+
 // ManagedTags are Overtide's tags, the legacy one included.
 var ManagedTags = []string{TagAdded, TagRequested, TagFound, TagNew, LegacyTag}
 

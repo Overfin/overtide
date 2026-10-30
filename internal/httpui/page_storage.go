@@ -37,6 +37,13 @@ func (server *Server) storagePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, _, _ := server.inv.Snapshot()
+	var keptTitles []config.KeptItem
+	for _, m := range items {
+		if model.HasTag(m.Tags, model.TagKeep) {
+			keptTitles = append(keptTitles, config.KeptItem{Key: config.KeptMediaKey(string(m.Type), m.ServiceID, m.SourceID), Name: keptMediaName(m), From: "tag " + model.TagKeep})
+		}
+	}
+	sort.Slice(keptTitles, func(i, j int) bool { return strings.ToLower(keptTitles[i].Name) < strings.ToLower(keptTitles[j].Name) })
 	projection := server.pendingProjection()
 	items = projection.filterMedia(items)
 	ts := projection.filterTorrents(server.inv.TorrentSnapshot())
@@ -47,6 +54,7 @@ func (server *Server) storagePage(w http.ResponseWriter, r *http.Request) {
 		Capabilities:        server.inv.StorageCapabilities(),
 		AutoRemovalDisabled: autoMode != config.RemovalAutoConfirm && autoMode != config.RemovalAutoAuto,
 	}
+	data.Kept = keptTitles
 	for i := len(server.inv.Config().Kept) - 1; i >= 0; i-- {
 		data.Kept = append(data.Kept, server.inv.Config().Kept[i])
 	}

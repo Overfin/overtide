@@ -526,6 +526,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 		}
 		service.mu.Unlock()
 		service.importKeepTags()
+		service.migrateKept()
 		return nil
 	}
 
@@ -701,5 +702,6 @@ func (service *Service) Refresh(ctx context.Context) error {
 	}
 	service.mu.Unlock()
 	service.importKeepTags()
+	service.migrateKept()
 	return nil
 }

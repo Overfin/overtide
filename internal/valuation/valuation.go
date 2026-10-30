@@ -55,10 +55,10 @@ const notValued = "Not valued by Overfin"
 // protected; anything Overfin didn't score is protected, with the highest
 // value.
 func applyOverfinValue(mediaItem *model.Media, configuration config.Config) {
-	if configuration.IsKept(config.KeptMediaKey(string(mediaItem.Type), mediaItem.ServiceID, mediaItem.SourceID)) {
+	if model.HasTag(mediaItem.Tags, model.TagKeep) || configuration.IsKept(config.KeptMediaKey(string(mediaItem.Type), mediaItem.ServiceID, mediaItem.SourceID)) {
 		mediaItem.Protected = true
 		mediaItem.ProtectionReason = "Kept"
-		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Kept", Value: "on the Storage page's list"})
+		mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, model.Reason{Label: "Kept", Value: "tagged " + model.TagKeep})
 	}
 	scored := func(score float64) model.Reason {
 		return model.Reason{Label: "Overfin value", Value: fmt.Sprintf("%.1f/100", score), Points: score,

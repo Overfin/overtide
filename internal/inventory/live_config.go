@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 
@@ -245,18 +246,136 @@ func (service *Service) syncDeviceRegistry() {
 	service.mu.Unlock()
 }
 
-// Keep adds a title or torrent to the operator's Kept list, so it's never
-// planned for removal until taken off it. key is config.KeptMediaKey's or
-// config.KeptTorrentKey's; name is what the Storage page lists it as.
+// Keep keeps a title or torrent, so it's never planned for removal until
+// taken off. key is config.KeptMediaKey's or config.KeptTorrentKey's; name
+// is what the Storage page lists a torrent as. A title is kept with the
+// model.TagKeep tag in Radarr or Sonarr (set there by hand too); a torrent
+// on the Kept list.
 func (service *Service) Keep(key, name string) error {
+	if mediaType, svcID, id, ok := parseKeptMediaKey(key); ok {
+		if err := service.SetTitleTag(context.Background(), mediaType, svcID, id, model.TagKeep, true); err != nil {
+			return err
+		}
+		return service.changeKept(func(c config.Config) config.Config { return config.Unkeep(c, key) })
+	}
 	return service.changeKept(func(c config.Config) config.Config {
 		return config.Keep(c, config.KeptItem{Key: key, Name: name, KeptAt: time.Now().UTC()})
 	})
 }
 
-// Unkeep takes key off the Kept list.
+// Unkeep takes a title's model.TagKeep off, or a torrent off the Kept list.
 func (service *Service) Unkeep(key string) error {
+	if mediaType, svcID, id, ok := parseKeptMediaKey(key); ok {
+		if err := service.SetTitleTag(context.Background(), mediaType, svcID, id, model.TagKeep, false); err != nil {
+			return err
+		}
+	}
 	return service.changeKept(func(c config.Config) config.Config { return config.Unkeep(c, key) })
+}
+
+// parseKeptMediaKey reads a config.KeptMediaKey.
+func parseKeptMediaKey(key string) (model.MediaType, string, int, bool) {
+	kind, rest, ok := strings.Cut(key, ":")
+	if !ok || (kind != string(model.Movie) && kind != string(model.Series)) {
+		return "", "", 0, false
+	}
+	at := strings.LastIndex(rest, ":")
+	if at <= 0 {
+		return "", "", 0, false
+	}
+	id, err := strconv.Atoi(rest[at+1:])
+	if err != nil || id <= 0 {
+		return "", "", 0, false
+	}
+	return model.MediaType(kind), rest[:at], id, true
+}
+
+// SetTitleTag puts tag on a film or series in Radarr or Sonarr, or takes
+// it off, and on the inventory's copy, so pages show it at once.
+func (service *Service) SetTitleTag(ctx context.Context, mediaType model.MediaType, svcID string, id int, tag string, on bool) error {
+	if mediaType == model.Series {
+		client, err := service.sonarrClient(svcID)
+		if err != nil {
+			return err
+		}
+		client = client.WithContext(ctx)
+		tagID, err := client.EnsureTag(tag)
+		if err != nil {
+			return err
+		}
+		if err := client.EditTags([]int{id}, tagID, on); err != nil {
+			return err
+		}
+	} else {
+		client, err := service.radarrClient(svcID)
+		if err != nil {
+			return err
+		}
+		client = client.WithContext(ctx)
+		tagID, err := client.EnsureTag(tag)
+		if err != nil {
+			return err
+		}
+		if err := client.EditTags([]int{id}, tagID, on); err != nil {
+			return err
+		}
+	}
+	service.mu.Lock()
+	items := cloneMedia(service.items)
+	for i := range items {
+		m := &items[i]
+		if m.Type != mediaType || m.ServiceID != svcID || m.SourceID != id {
+			continue
+		}
+		var tags []string
+		for _, label := range m.Tags {
+			if !strings.EqualFold(label, tag) {
+				tags = append(tags, label)
+			}
+		}
+		if on {
+			tags = append(tags, tag)
+		}
+		m.Tags = tags
+	}
+	service.items = items
+	service.mu.Unlock()
+	service.revalue()
+	return nil
+}
+
+// migrateKept moves, once each, the titles on the Kept list to the
+// model.TagKeep tag in Radarr and Sonarr, where keeping titles lives now;
+// one that can't be tagged yet stays on the list, for the next time.
+func (service *Service) migrateKept() {
+	service.mu.RLock()
+	var keys []string
+	for _, item := range service.cfg.Kept {
+		if _, _, _, ok := parseKeptMediaKey(item.Key); ok {
+			keys = append(keys, item.Key)
+		}
+	}
+	service.mu.RUnlock()
+	if len(keys) == 0 || service.configPath == "" {
+		return
+	}
+	var moved []string
+	for _, key := range keys {
+		mediaType, svcID, id, _ := parseKeptMediaKey(key)
+		if err := service.SetTitleTag(context.Background(), mediaType, svcID, id, model.TagKeep, true); err != nil {
+			log.Printf("[inventory] move %s to the %s tag: %v", key, model.TagKeep, err)
+			continue
+		}
+		moved = append(moved, key)
+	}
+	if err := service.changeKept(func(c config.Config) config.Config {
+		for _, key := range moved {
+			c = config.Unkeep(c, key)
+		}
+		return c
+	}); err != nil {
+		log.Printf("[inventory] move the kept titles to the %s tag: %v", model.TagKeep, err)
+	}
 }
 
 // SetAddingMode saves how titles are brought in (see config.AddingConfig).

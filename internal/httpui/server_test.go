@@ -575,6 +575,7 @@ func TestProfileTemplateShowsTorrentNamesAndGroups(t *testing.T) {
 		FilesErr     error
 		KeptKey      string
 		Kept         bool
+		Ignored      bool
 	}{
 		Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}, Total: 1,
 		Current:    []model.Torrent{{Hash: "a", Name: "Current.Release", AssociationStatus: "ASSOCIATED"}},
@@ -631,6 +632,7 @@ func TestProfileTemplateRendersFileTopology(t *testing.T) {
 		FilesErr                                    error
 		KeptKey                                     string
 		Kept                                        bool
+		Ignored                                     bool
 		RemoveMedia                                 inventory.RemovalEstimate
 		RemoveWithCurrent                           inventory.RemovalEstimate
 	}{

@@ -593,6 +593,9 @@ func (service *Service) TagManaged(ctx context.Context, mediaType model.MediaTyp
 			if m.Type != mediaType || m.ServiceID != svcID || m.SourceID != id {
 				continue
 			}
+			if model.HasTag(m.Tags, model.TagIgnore) {
+				return nil // left alone: removed, but not made Overtide's
+			}
 			for _, tag := range m.Tags {
 				if model.IsManagedTag(tag) && !strings.EqualFold(tag, model.LegacyTag) {
 					return nil
