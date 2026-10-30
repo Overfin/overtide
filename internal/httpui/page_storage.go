@@ -469,8 +469,11 @@ func (server *Server) keepPost(w http.ResponseWriter, r *http.Request) {
 
 // localPath returns back when it is a path on this site, fallback otherwise.
 // "//host" and "/\host" are refused: browsers read both as another site.
+// So is any control character or space: browsers drop tabs and line breaks
+// from an address, so "/\t/host" would be "//host".
 func localPath(back, fallback string) string {
-	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, "\\") {
+	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, "\\") ||
+		strings.ContainsFunc(back, func(c rune) bool { return c < 0x21 || c == 0x7f }) {
 		return fallback
 	}
 	return back
