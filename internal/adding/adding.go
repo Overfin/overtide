@@ -199,6 +199,29 @@ func New(inv *inventory.Service) *Service {
 	return &Service{inv: inv, now: time.Now}
 }
 
+// Clear empties the waiting list, but for requests and the titles "Manage
+// all" put in line (nothing else would bring them back): Overfin's
+// suggestions come back at its next reading, in its order. What's moving
+// (downloading, imported, monitored for its release) stays. It returns how
+// many titles left.
+func (service *Service) Clear() (int, error) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	entries, err := service.load()
+	if err != nil {
+		return 0, err
+	}
+	kept := entries[:0]
+	for _, entry := range entries {
+		if entry.waiting() && entry.Source != FromRequest && entry.Source != FromLibrary {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	cleared := len(entries) - len(kept)
+	return cleared, service.save(kept)
+}
+
 // Entries returns the waiting list in the order titles are tried.
 func (service *Service) Entries() ([]Entry, error) {
 	service.mu.Lock()

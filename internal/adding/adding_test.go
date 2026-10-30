@@ -2,9 +2,11 @@ package adding
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 )
@@ -110,5 +112,34 @@ func TestEntrySearches(t *testing.T) {
 	}
 	if n := (Entry{Kind: "series", Seasons: []int{1, 2, 3, 4}}).searches(); n != 4 {
 		t.Errorf("series: %d", n)
+	}
+}
+
+// Clearing takes out what waits, but for requests and the titles taken
+// from Radarr; what's moving stays.
+func TestClear(t *testing.T) {
+	service := newTestService(t, config.Config{}, *day("2026-10-30"))
+	entries := []Entry{
+		{Key: movieKey(1), ServiceID: "r", Source: FromOverfin, State: Waiting},
+		{Key: movieKey(2), ServiceID: "r", Source: FromRequest, State: Waiting},
+		{Key: movieKey(3), ServiceID: "r", Source: FromLibrary, State: Waiting},
+		{Key: movieKey(4), ServiceID: "r", Source: FromOverfin, State: Downloading},
+		{Key: movieKey(5), ServiceID: "r", Source: FromOverfin, State: NotReleased},
+		{Key: movieKey(6), ServiceID: "r", Source: FromOverfin, State: NotReleased, MonitoredAt: *day("2026-10-29")},
+	}
+	if err := service.save(entries); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := service.Clear()
+	if err != nil || cleared != 2 {
+		t.Fatalf("cleared %d, %v", cleared, err)
+	}
+	left, _ := service.load()
+	var keys []string
+	for _, e := range left {
+		keys = append(keys, e.Key)
+	}
+	if strings.Join(keys, " ") != "movie:2 movie:3 movie:4 movie:6" {
+		t.Fatalf("left: %v", keys)
 	}
 }

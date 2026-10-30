@@ -245,6 +245,8 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 				err = server.inv.SetAddingSearches(n)
 			}
 		}
+	case "/adding/clear":
+		_, err = server.adder.Clear()
 	case "/adding/run":
 		if server.tasks == nil {
 			http.Error(w, "task manager unavailable", http.StatusServiceUnavailable)

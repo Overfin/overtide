@@ -66,6 +66,7 @@
         {{if eq .Mode "off"}}Adding is off.{{else}}{{if .Total}}<b>{{.Matching}}</b>{{if ne .Matching .Total}} of {{.Total}}{{end}} titles{{else}}Nothing yet: Overfin's suggestions are read every hour.{{end}}{{if not .NextRead.IsZero}} · suggestions read next at {{.NextRead.Local.Format "15:04"}}{{end}}{{if not .NextRun.IsZero}} · titles tried next at {{.NextRun.Local.Format "15:04"}}{{end}}{{end}}
       </p>
       {{if ne .Mode "off"}}<form method="post" action="/adding/run" class="adding-run" title="Reads the suggestions, then tries the titles whose turn it is"><button type="submit" class="ghost">Run now</button></form>{{end}}
+      {{if .Total}}<form method="post" action="/adding/clear" class="adding-run" data-confirm="Take every waiting title out of the list, except requests and the titles taken from Radarr? Overfin's suggestions come back at its next reading, in its order. Titles downloading, imported or monitored for their release stay." data-confirm-title="Clear the waiting list" data-confirm-action="Clear the list" data-confirm-danger><button type="submit" class="ghost">Clear the waiting list</button></form>{{end}}
       {{range .Groups}}
       <details class="card adding-group"{{if .Open}} open{{end}}>
         <summary><b>{{.Label}}</b> <span class="count">{{.Count}}</span></summary>
