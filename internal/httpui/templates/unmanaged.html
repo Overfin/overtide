@@ -45,7 +45,7 @@
       <table>
         <thead>
           <tr>
-            <th><input type="checkbox" id="unmanagedAll" {{if not .Files}}disabled{{end}}></th>
+            <th><input type="checkbox" id="unmanagedAll" aria-label="Select all files" {{if not .Files}}disabled{{end}}></th>
             <th><a href="{{index .SortURLs "path"}}">Path</a></th>
             <th><a href="{{index .SortURLs "size"}}">Size</a></th>
             <th><a href="{{index .SortURLs "reclaimable"}}">Physical potential</a></th>
@@ -58,7 +58,7 @@
           {{range $i, $group := .Files}}
           <tr>
             <td>
-              <input class="unmanagedPick" type="checkbox" data-unmanaged-group="{{$i}}">
+              <input class="unmanagedPick" type="checkbox" data-unmanaged-group="{{$i}}" aria-label="Select {{with index $group.Paths 0}}{{shortPath .Path}}{{end}}">
               {{range $group.Paths}}<input class="unmanagedGroupPath" type="checkbox" name="path" value="{{.Path}}" data-unmanaged-group="{{$i}}" hidden>{{end}}
             </td>
             <td>
