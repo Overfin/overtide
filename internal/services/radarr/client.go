@@ -173,7 +173,6 @@ type queueRecord struct {
 	DownloadID string `json:"downloadId"`
 }
 type queueResponse struct {
-	PageSize     int           `json:"pageSize"`
 	TotalRecords int           `json:"totalRecords"`
 	Records      []queueRecord `json:"records"`
 }
@@ -187,9 +186,12 @@ func (client *Client) FindQueueItem(hash string) (int, bool, error) {
 	if hash == "" {
 		return 0, false, fmt.Errorf("hash is required")
 	}
+	// Pages are counted at the size asked for, not the one answered, so an
+	// answer without one can't keep the search going.
+	const pageSize = 250
 	for page := 1; ; page++ {
 		var resp queueResponse
-		if err := client.get(fmt.Sprintf("/api/v3/queue?page=%d&pageSize=250", page), &resp); err != nil {
+		if err := client.get(fmt.Sprintf("/api/v3/queue?page=%d&pageSize=%d", page, pageSize), &resp); err != nil {
 			return 0, false, err
 		}
 		for _, rec := range resp.Records {
@@ -197,7 +199,7 @@ func (client *Client) FindQueueItem(hash string) (int, bool, error) {
 				return rec.ID, true, nil
 			}
 		}
-		if len(resp.Records) == 0 || page*resp.PageSize >= resp.TotalRecords {
+		if len(resp.Records) == 0 || page*pageSize >= resp.TotalRecords {
 			return 0, false, nil
 		}
 	}
