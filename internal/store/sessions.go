@@ -22,6 +22,12 @@ func sessionKey(token string) string {
 func (s *Store) CreateSession(token string, expiresAt time.Time) error {
 	s.accessMu.Lock()
 	defer s.accessMu.Unlock()
+	// Sessions that ran out go now: one never looked up again would stay.
+	// The times are compared as text, which orders fractions of a second
+	// loosely: a second's margin keeps every one deleted already out.
+	if err := s.exec(`DELETE FROM sessions WHERE expires_at < ?`, rfc3339(time.Now().Add(-time.Second))); err != nil {
+		return err
+	}
 	return s.exec(`INSERT INTO sessions(token,created_at,expires_at) VALUES(?,?,?)`, sessionKey(token), rfc3339(time.Now()), rfc3339(expiresAt))
 }
 

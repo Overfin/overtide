@@ -60,3 +60,33 @@ func TestSessionsKeepOnlyAHash(t *testing.T) {
 		t.Fatal("still valid after DeleteSession")
 	}
 }
+
+// Signing in clears the sessions that ran out, and only those.
+func TestCreateSessionClearsExpiredOnes(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "overtide.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.CreateSession("old", time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession("live", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession("new", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := db.q.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 {
+		t.Fatalf("%d sessions, want the two live ones", rows)
+	}
+	for _, token := range []string{"live", "new"} {
+		if ok, err := db.SessionValid(token); !ok || err != nil {
+			t.Fatalf("%s: valid %v, err %v", token, ok, err)
+		}
+	}
+}
