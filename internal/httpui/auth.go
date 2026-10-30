@@ -3,12 +3,15 @@ package httpui
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/overfin/overtide/internal/inventory"
 )
 
 const (
@@ -229,7 +232,10 @@ func (server *Server) setupPage(w http.ResponseWriter, r *http.Request) {
 		_ = renderTemplate(w, server.setupTpl, setupPageData{Username: username, Error: "Passwords do not match."})
 		return
 	}
-	if err := server.inv.SetCredentials(username, password); err != nil {
+	if err := server.inv.CreateAccount(username, password); errors.Is(err, inventory.ErrAccountExists) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	} else if err != nil {
 		_ = renderTemplate(w, server.setupTpl, setupPageData{Username: username, Error: err.Error()})
 		return
 	}

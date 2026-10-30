@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -513,6 +514,19 @@ func validateServiceConnection(ctx context.Context, svc config.Service) error {
 // isn't a live-service concept, so no connection check or client
 // (de)activation happens here.
 func (service *Service) SetCredentials(username, password string) error {
+	return service.setCredentials(username, password, false)
+}
+
+// ErrAccountExists is CreateAccount's answer once the admin account exists.
+var ErrAccountExists = errors.New("the admin account already exists")
+
+// CreateAccount makes the admin account, unless one exists: checked under
+// the same lock as the change, so setups sent at once make one account.
+func (service *Service) CreateAccount(username, password string) error {
+	return service.setCredentials(username, password, true)
+}
+
+func (service *Service) setCredentials(username, password string, firstOnly bool) error {
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
 
@@ -523,6 +537,9 @@ func (service *Service) SetCredentials(username, password string) error {
 	service.mu.RLock()
 	currentCfg := service.cfg
 	service.mu.RUnlock()
+	if firstOnly && currentCfg.Auth.Username != "" {
+		return ErrAccountExists
+	}
 
 	updatedCfg, err := config.SetCredentials(currentCfg, username, password)
 	if err != nil {
