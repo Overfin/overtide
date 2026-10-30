@@ -13,7 +13,8 @@ import (
 )
 
 // Run with six films waiting: off, it asks Radarr nothing; in its dry run,
-// it changes nothing there; on, it asks for 3 searches and no more.
+// it changes nothing there; on, it asks for the searches set (3 by
+// default) and no more.
 func TestRunHonorsItsModeAndPace(t *testing.T) {
 	var mu sync.Mutex
 	var asked, changes []string
@@ -54,12 +55,15 @@ func TestRunHonorsItsModeAndPace(t *testing.T) {
 	defer srv.Close()
 	pollEvery = time.Millisecond
 
-	for _, mode := range []string{config.AddingOff, config.AddingDryRun, config.AddingOn} {
+	for _, mode := range []string{config.AddingOff, config.AddingDryRun, config.AddingOn, "on, 5 searches"} {
 		mu.Lock()
 		asked, changes, searches = nil, nil, 0
 		mu.Unlock()
 		cfg := config.Config{Services: []config.Service{{ID: "r", Type: "radarr", URL: srv.URL, APIKey: "k"}}}
 		cfg.Adding.Mode = mode
+		if mode == "on, 5 searches" {
+			cfg.Adding.Mode, cfg.Adding.Searches = config.AddingOn, 5
+		}
 		now := *day("2026-10-25")
 		service := newTestService(t, cfg, now)
 		service.disk = func(config.Config, string, bool) string { return "" }
@@ -87,8 +91,12 @@ func TestRunHonorsItsModeAndPace(t *testing.T) {
 				t.Errorf("dry run: looked nothing up")
 			}
 		case config.AddingOn:
-			if searches != SearchesPerRun {
-				t.Errorf("on: %d searches, want %d", searches, SearchesPerRun)
+			if searches != config.DefaultSearches {
+				t.Errorf("on: %d searches, want %d", searches, config.DefaultSearches)
+			}
+		case "on, 5 searches":
+			if searches != 5 {
+				t.Errorf("on, 5 searches: %d searches", searches)
 			}
 		}
 		mu.Unlock()

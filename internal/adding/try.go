@@ -139,7 +139,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 // looks for the grab); out, with a search of that title, and if nothing
 // started it's unmonitored again until its next try. In dry run, only the
 // reading is done. It returns how many searches it asked for (none in dry
-// run), what SearchesPerRun counts.
+// run), what the run's search budget counts.
 func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry, dryRun bool) int {
 	now := service.now()
 	if entry.Kind == model.Series && len(entry.Seasons) == 0 {

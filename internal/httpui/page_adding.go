@@ -1,9 +1,11 @@
 package httpui
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,7 +72,9 @@ type addingPageData struct {
 	// last "Manage all" pass did, or would do.
 	Manage  string
 	Summary adding.ManageSummary
-	Groups  []addingGroup
+	// Searches is how many searches a run may ask for.
+	Searches int
+	Groups   []addingGroup
 	// Sources counts the titles of each source there is.
 	Sources []addingSourceCount
 	Total   int
@@ -118,6 +122,7 @@ func (server *Server) addingData(query url.Values) addingPageData {
 	if data.Manage == "" {
 		data.Manage = config.ManageOwn
 	}
+	data.Searches = cfg.Adding.SearchesPerRun()
 	if data.Manage == config.ManageAll {
 		if summary, err := server.adder.Summary(); err == nil {
 			data.Summary = summary
@@ -231,6 +236,14 @@ func (server *Server) addingPost(w http.ResponseWriter, r *http.Request) {
 		err = server.inv.SetAddingMode(r.FormValue("mode"))
 		if manage := r.FormValue("manage"); err == nil && manage != "" {
 			err = server.inv.SetAddingManage(manage)
+		}
+		if searches := r.FormValue("searches"); err == nil && searches != "" {
+			n, convErr := strconv.Atoi(searches)
+			if convErr != nil {
+				err = fmt.Errorf("searches every 15 minutes must be a number")
+			} else {
+				err = server.inv.SetAddingSearches(n)
+			}
 		}
 	case "/adding/run":
 		if server.tasks == nil {

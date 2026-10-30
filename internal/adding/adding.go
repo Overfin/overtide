@@ -61,9 +61,6 @@ const (
 	// ReleaseGrace after the release.
 	ReleaseWindow = 2 * 24 * time.Hour
 	ReleaseGrace  = 14 * 24 * time.Hour
-	// SearchesPerRun paces the indexers: a run stops after that many
-	// searches (a series' seasons each count), so at most 12 an hour.
-	SearchesPerRun = 3
 )
 
 const (
@@ -240,9 +237,10 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 	sortForTries(entries)
 	stopAt := service.now().Add(RunFor)
+	budget := cfg.Adding.SearchesPerRun()
 	searches := 0
 	for i := range entries {
-		if ctx.Err() != nil || service.now().After(stopAt) || searches >= SearchesPerRun {
+		if ctx.Err() != nil || service.now().After(stopAt) || searches >= budget {
 			break
 		}
 		entry := &entries[i]
@@ -251,7 +249,7 @@ func (service *Service) Run(ctx context.Context) error {
 		}
 		// A series whose seasons would go past the limit waits for the next
 		// run, unless it's the run's first title (it would never fit).
-		if searches > 0 && searches+entry.searches() > SearchesPerRun {
+		if searches > 0 && searches+entry.searches() > budget {
 			continue
 		}
 		searches += service.try(ctx, cfg, entry, dryRun)
@@ -268,13 +266,13 @@ func (service *Service) Run(ctx context.Context) error {
 	if !cfg.Adding.ManagesAll() {
 		return nil
 	}
-	used, err := service.replaceSeasons(ctx, cfg, SearchesPerRun-searches, dryRun)
+	used, err := service.replaceSeasons(ctx, cfg, budget-searches, dryRun)
 	if err != nil {
 		return err
 	}
 	searches += used
-	if searches < SearchesPerRun && !service.now().After(stopAt) {
-		return service.searchEpisodes(ctx, cfg, SearchesPerRun-searches, dryRun)
+	if searches < budget && !service.now().After(stopAt) {
+		return service.searchEpisodes(ctx, cfg, budget-searches, dryRun)
 	}
 	return nil
 }

@@ -260,6 +260,34 @@ type AddingConfig struct {
 	Mode string `json:"mode"`
 	// Manage is ManageOwn (also what empty means) or ManageAll.
 	Manage string `json:"manage,omitempty"`
+	// Searches is how many searches a run (every 15 minutes) may ask
+	// for; 0 means DefaultSearches.
+	Searches int `json:"searches,omitempty"`
+}
+
+// DefaultSearches and MaxSearches bound AddingConfig.Searches: a cautious
+// pace by default, for the trackers' limits.
+const (
+	DefaultSearches = 3
+	MaxSearches     = 60
+)
+
+// SearchesPerRun is how many searches a run may ask for.
+func (adding AddingConfig) SearchesPerRun() int {
+	if adding.Searches <= 0 {
+		return DefaultSearches
+	}
+	return min(adding.Searches, MaxSearches)
+}
+
+// SetAddingSearches sets how many searches a run may ask for.
+func SetAddingSearches(configuration Config, searches int) (Config, error) {
+	if searches < 1 || searches > MaxSearches {
+		return configuration, fmt.Errorf("searches every 15 minutes must be between 1 and %d", MaxSearches)
+	}
+	updated := configuration
+	updated.Adding.Searches = searches
+	return updated, nil
 }
 
 const (
