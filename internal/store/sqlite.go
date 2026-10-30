@@ -75,6 +75,7 @@ func Open(path string) (*Store, error) {
 		`CREATE INDEX IF NOT EXISTS idx_cleanup_actions_run ON cleanup_actions(run_id);`,
 		`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);`,
+		`DELETE FROM sessions WHERE token NOT LIKE 'sha256:%';`,
 		// Torrents' history, sampled every 30 minutes while Overtide scored
 		// torrents on it: nothing reads it any more.
 		`DROP TABLE IF EXISTS torrent_history;`,
