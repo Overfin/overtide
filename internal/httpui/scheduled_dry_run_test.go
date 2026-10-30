@@ -92,8 +92,8 @@ func newScheduledFixture(t *testing.T, torrent model.Torrent, kept ...config.Kep
 }
 
 // run queues command's removal in the history, has the scheduler run it, and
-// returns its history event, the scheduler's error, and the changes asked.
-func (fx *scheduledFixture) run(command scheduledRemovalCommand) (store.HistoryEvent, error, []string) {
+// returns its history event, the changes asked, and the scheduler's error.
+func (fx *scheduledFixture) run(command scheduledRemovalCommand) (store.HistoryEvent, []string, error) {
 	fx.t.Helper()
 	fx.mu.Lock()
 	fx.changes = nil
@@ -114,7 +114,7 @@ func (fx *scheduledFixture) run(command scheduledRemovalCommand) (store.HistoryE
 	}
 	fx.mu.Lock()
 	defer fx.mu.Unlock()
-	return event, runErr, append([]string(nil), fx.changes...)
+	return event, append([]string(nil), fx.changes...), runErr
 }
 
 func (fx *scheduledFixture) filesStay(what string) {
@@ -135,7 +135,7 @@ const scheduledHash = "0123456789abcdef0123456789abcdef01234567"
 func TestSchedulerRunsAQueuedDryRunDry(t *testing.T) {
 	fx := newScheduledFixture(t, model.Torrent{Hash: scheduledHash, Name: "Old Release", AssociationStatus: model.TorrentSuperseded, ServiceID: "qbittorrent-1", Client: "Downloader"})
 	for _, form := range fx.forms {
-		event, err, changes := fx.run(scheduledRemovalCommand{Form: form, DryRun: true})
+		event, changes, err := fx.run(scheduledRemovalCommand{Form: form, DryRun: true})
 		if err != nil || !event.DryRun || event.Status == "failed" {
 			t.Errorf("%s: history %s, dry run %v, error %v", form.Get("kind"), event.Status, event.DryRun, err)
 		}
@@ -146,7 +146,7 @@ func TestSchedulerRunsAQueuedDryRunDry(t *testing.T) {
 	}
 	for _, form := range fx.forms {
 		// A live removal against the fake may fail; only what it asked matters.
-		event, _, changes := fx.run(scheduledRemovalCommand{Form: form})
+		event, changes, _ := fx.run(scheduledRemovalCommand{Form: form})
 		if len(changes) == 0 {
 			t.Errorf("%s queued live asked for nothing (history %s, dry run %v)", form.Get("kind"), event.Status, event.DryRun)
 		}
@@ -160,7 +160,7 @@ func TestSchedulerRunsAQueuedDryRunDry(t *testing.T) {
 func TestSchedulerRechecksACleanupRemoval(t *testing.T) {
 	fx := newScheduledFixture(t, model.Torrent{Hash: scheduledHash, Name: "Old Release", AssociationStatus: model.TorrentSuperseded, ServiceID: "qbittorrent-1", Client: "Downloader", AddedOn: 1_600_000_000}, config.KeptItem{Key: config.KeptTorrentKey(scheduledHash)})
 	torrent := fx.forms[1]
-	event, err, changes := fx.run(scheduledRemovalCommand{Form: torrent, Cleanup: true})
+	event, changes, err := fx.run(scheduledRemovalCommand{Form: torrent, Cleanup: true})
 	if err == nil || event.Status != "failed" || !strings.Contains(event.Error, "No longer a cleanup candidate") || !strings.Contains(event.Error, "Old Release: Kept") {
 		t.Errorf("history %s %q, error %v", event.Status, event.Error, err)
 	}
@@ -168,7 +168,7 @@ func TestSchedulerRechecksACleanupRemoval(t *testing.T) {
 		t.Errorf("asked for changes: %v", changes)
 	}
 	fx.filesStay("cleanup removal of a torrent that must stay")
-	if _, _, changes := fx.run(scheduledRemovalCommand{Form: torrent}); len(changes) == 0 {
+	if _, changes, _ := fx.run(scheduledRemovalCommand{Form: torrent}); len(changes) == 0 {
 		t.Errorf("queued by hand, the removal asked for nothing")
 	}
 }
