@@ -236,6 +236,17 @@ func (client *Client) CommandStatus(commandID int) (string, error) {
 	return command.Status, client.send(http.MethodGet, fmt.Sprintf("/api/v3/command/%d", commandID), nil, &command)
 }
 
+// Queued reports whether the series has a download in Sonarr's queue:
+// from the grab until it's imported, finished ones waiting for import
+// included.
+func (client *Client) Queued(seriesID int) (bool, error) {
+	var queued []json.RawMessage
+	if err := client.send(http.MethodGet, fmt.Sprintf("/api/v3/queue/details?seriesId=%d", seriesID), nil, &queued); err != nil {
+		return false, err
+	}
+	return len(queued) > 0, nil
+}
+
 // GrabbedSince reports whether a download was started for any episode of
 // the series since the given time: in Sonarr's queue now, or grabbed in
 // its history.

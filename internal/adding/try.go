@@ -42,7 +42,9 @@ type arr struct {
 	search   func(ctx context.Context, id int) (bool, error)
 	grabbed  func(id int, since time.Time) (bool, error)
 	hasFiles func(id int) (bool, error)
-	gone     func(error) bool
+	// queued says whether a download of it is in the queue.
+	queued func(id int) (bool, error)
+	gone   func(error) bool
 }
 
 func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
@@ -88,6 +90,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 			},
 			grabbed:  client.GrabbedSince,
 			hasFiles: func(id int) (bool, error) { return client.SeasonsHaveFiles(id, seasons) },
+			queued:   client.Queued,
 			gone:     sonarr.IsNotFound,
 		}, nil
 	}
@@ -124,6 +127,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (arr, error) {
 		},
 		grabbed:  client.GrabbedSince,
 		hasFiles: client.MovieHasFile,
+		queued:   client.Queued,
 		gone:     radarr.IsNotFound,
 	}, nil
 }
@@ -215,7 +219,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 	searches := entry.searches()
 	grabbed, err := a.search(ctx, entry.ArrID)
 	if err == nil && grabbed {
-		entry.State, entry.Result = Downloading, "Downloading"
+		service.downloading(entry, a, false)
 		return searches
 	}
 	if unmonitorErr := a.monitor(entry.ArrID, false); unmonitorErr != nil {
@@ -264,6 +268,15 @@ func searchAndCheck(ctx context.Context, search func() (int, error), status func
 // failed counts a try that found nothing (or a title Radarr or Sonarr has
 // no record of, often one too new for their sources): it's tried again
 // after retryDelay, unless the lifecycle takes it out first.
+// downloading marks a download confirmed and unmonitors the title, so
+// Radarr and Sonarr don't upgrade it on their own: Overtide decides what
+// comes in. It's imported all the same (neither checks monitoring to
+// import). If unmonitoring fails, follow tries again.
+func (service *Service) downloading(entry *Entry, a arr, dryRun bool) {
+	entry.State, entry.Result = Downloading, "Downloading"
+	entry.Unmonitored = !dryRun && a.monitor(entry.ArrID, false) == nil
+}
+
 func (service *Service) failed(entry *Entry, why string) {
 	entry.State = Waiting
 	entry.Tries++

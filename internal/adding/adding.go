@@ -93,7 +93,8 @@ const (
 	// (MonitoredAt set), follow looks for the grab until ReleaseGrace after
 	// the release.
 	NotReleased State = "not released"
-	// Downloading: a try started a download; followed until imported.
+	// Downloading: a try started a download, and the title is unmonitored;
+	// followed until imported, or back to Waiting if the download stops.
 	Downloading State = "downloading"
 	// Imported: the title has its files.
 	Imported State = "imported"
@@ -115,9 +116,12 @@ type Entry struct {
 	Position int   `json:"position"`
 	State    State `json:"state"`
 	// ArrID is its ID in Radarr or Sonarr once it's there.
-	ArrID   int       `json:"arrId,omitempty"`
-	Tries   int       `json:"tries"`
-	NextTry time.Time `json:"nextTry,omitempty"`
+	ArrID int `json:"arrId,omitempty"`
+	// Unmonitored: unmonitored once its download was confirmed, so Radarr
+	// and Sonarr don't upgrade it on their own.
+	Unmonitored bool      `json:"unmonitored,omitempty"`
+	Tries       int       `json:"tries"`
+	NextTry     time.Time `json:"nextTry,omitempty"`
 	// ReleaseAt and MonitoredAt: a title monitored for its release.
 	ReleaseAt   time.Time `json:"releaseAt,omitempty"`
 	MonitoredAt time.Time `json:"monitoredAt,omitempty"`
@@ -379,11 +383,23 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 	for i := range entries {
 		entry := &entries[i]
 		monitoredForRelease := entry.State == NotReleased && !entry.MonitoredAt.IsZero()
-		if entry.ArrID == 0 || (entry.State != Downloading && !monitoredForRelease) {
+		moving := entry.State == Downloading || entry.State == Imported
+		if entry.ArrID == 0 || (!moving && !monitoredForRelease) {
 			continue
 		}
 		a, err := service.arrFor(ctx, entry)
 		if err != nil {
+			continue
+		}
+		if moving && !entry.Unmonitored && !dryRun {
+			// Saved by a version that left it monitored, or the unmonitoring
+			// failed: Radarr and Sonarr mustn't upgrade it on their own.
+			if a.monitor(entry.ArrID, false) == nil {
+				entry.Unmonitored = true
+				entry.UpdatedAt = service.now()
+			}
+		}
+		if entry.State == Imported {
 			continue
 		}
 		if entry.State == Downloading {
@@ -392,10 +408,25 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 			case a.gone(err):
 				entry.State, entry.ArrID, entry.NextTry = Waiting, 0, service.now()
 				entry.Result = "No longer in " + a.name
-			case err == nil && hasFiles:
+			case err != nil:
+				continue
+			case hasFiles:
 				entry.State, entry.Result = Imported, "Imported"
 			default:
-				continue
+				// Unmonitored, it isn't downloaded again on its own: a
+				// download that left the queue without its files goes back
+				// in line.
+				queued, err := a.queued(entry.ArrID)
+				if err != nil || queued {
+					continue
+				}
+				if hasFiles, err = a.hasFiles(entry.ArrID); err != nil {
+					continue
+				} else if hasFiles {
+					entry.State, entry.Result = Imported, "Imported"
+				} else {
+					service.failed(entry, "The download stopped before it was imported")
+				}
 			}
 			entry.UpdatedAt = service.now()
 			continue
@@ -406,7 +437,7 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 			entry.State, entry.ArrID, entry.MonitoredAt, entry.NextTry = Waiting, 0, time.Time{}, service.now()
 			entry.Result = "No longer in " + a.name
 		case err == nil && grabbed:
-			entry.State, entry.Result = Downloading, "Downloading"
+			service.downloading(entry, a, dryRun)
 		case err == nil && service.now().After(entry.ReleaseAt.Add(ReleaseGrace)) && !dryRun:
 			if a.monitor(entry.ArrID, false) != nil {
 				continue

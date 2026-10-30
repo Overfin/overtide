@@ -100,7 +100,7 @@ func itoa(i int) string {
 
 // A live try of a film: added once, unmonitored and tagged; monitored and
 // searched; nothing started, unmonitored again and counted; a later try
-// that starts a download leaves it monitored, downloading.
+// that starts a download unmonitors it too, so Radarr doesn't upgrade it.
 func TestTryMovieMonitors(t *testing.T) {
 	var calls []string
 	grab := false
@@ -160,10 +160,10 @@ func TestTryMovieMonitors(t *testing.T) {
 	}
 	calls, grab = nil, true
 	service.try(context.Background(), cfg, &entry, false)
-	if got := strings.Join(calls, ", "); got != "monitored=true, search" {
+	if got := strings.Join(calls, ", "); got != "monitored=true, search, monitored=false" {
 		t.Fatalf("calls: %s", got)
 	}
-	if entry.State != Downloading {
+	if entry.State != Downloading || !entry.Unmonitored {
 		t.Fatalf("grabbed: %+v", entry)
 	}
 }
