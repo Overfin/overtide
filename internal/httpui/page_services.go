@@ -9,6 +9,7 @@ import (
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/trackers"
 )
 
 // consistencyWorkflowInstanceID identifies the single global workflow
@@ -42,6 +43,10 @@ func (server *Server) scheduleServiceConsistency(cause string) {
 type servicesData struct {
 	Services     []inventory.ServiceStatus
 	ServiceRoots map[string][]string
+	// Prowlarr is the connection to it, and Trackers what each tracker
+	// was asked through Overtide over the last 24 hours.
+	Prowlarr config.ProwlarrConfig
+	Trackers []trackers.Stat
 }
 
 // serviceTypeOption is one entry in the Add-service overlay's Type select.
@@ -97,7 +102,10 @@ func (server *Server) servicesPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := servicesData{ServiceRoots: server.inv.ServiceRootPaths()}
+	data := servicesData{ServiceRoots: server.inv.ServiceRootPaths(), Prowlarr: server.inv.Config().Prowlarr}
+	if server.gate != nil && data.Prowlarr.Route {
+		data.Trackers = server.gate.Stats()
+	}
 	for _, svc := range server.inv.StatusSnapshot() {
 		if svc.Configured {
 			data.Services = append(data.Services, svc)
@@ -334,4 +342,47 @@ func (server *Server) serviceConsistencyStatus(w http.ResponseWriter, r *http.Re
 		}
 	}
 	writeJSON(w, response)
+}
+
+type prowlarrFormData struct {
+	Address, ProxyURL string
+	HasKey, Route     bool
+	Replaced          map[string]string
+}
+
+// prowlarrForm is the Prowlarr window: GET, the form (Prowlarr's address
+// read from Radarr or Sonarr until saved; Overtide's from the browser's
+// until saved); POST, saving it (inventory.SetProwlarr).
+func (server *Server) prowlarrForm(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := server.inv.Config().Prowlarr
+		data := prowlarrFormData{Address: cfg.URL, ProxyURL: cfg.ProxyURL, HasKey: cfg.APIKey != "", Route: cfg.Route, Replaced: cfg.Replaced}
+		if data.Address == "" {
+			data.Address = server.inv.ProwlarrAddress(r.Context())
+		}
+		if data.ProxyURL == "" {
+			scheme := "http"
+			if requestIsHTTPS(r) {
+				scheme = "https"
+			}
+			data.ProxyURL = scheme + "://" + r.Host
+		}
+		if err := renderTemplate(w, server.prowlarrTpl, data); err != nil {
+			log.Printf("[http] render prowlarr: %v", err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		if err := server.inv.SetProwlarr(r.Context(), r.FormValue("address"), r.FormValue("api_key"), r.FormValue("proxy_url"), r.FormValue("route") == "on"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		server.publishUIChange("services")
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

@@ -244,6 +244,9 @@ type Config struct {
 	Kept    []KeptItem    `json:"kept,omitempty"`
 	Removal RemovalConfig `json:"removal"`
 	Adding  AddingConfig  `json:"adding"`
+	// Prowlarr is the optional connection to Prowlarr, for the searches
+	// to go through Overtide.
+	Prowlarr ProwlarrConfig `json:"prowlarr,omitempty"`
 	// Auth holds the single admin account's credentials. An empty Username
 	// means no account has been created yet — the app's first-run setup
 	// screen is the only route reachable until SetCredentials is called.
@@ -871,4 +874,24 @@ func RemoveService(configuration Config, id string) (Config, error) {
 	updated.Services = append(append([]Service(nil), configuration.Services[:index]...), configuration.Services[index+1:]...)
 	updated.populateDerivedServiceFields()
 	return updated, nil
+}
+
+// ProxyPath is where Overtide's proxy to Prowlarr answers.
+const ProxyPath = "/prowlarr"
+
+// ProwlarrConfig is the optional connection to Prowlarr. With Route on,
+// Prowlarr's apps (Radarr, Sonarr) reach their trackers through Overtide's
+// proxy at ProxyURL, which paces them tracker by tracker.
+type ProwlarrConfig struct {
+	// URL is Prowlarr's address; empty, it's read from Radarr's or
+	// Sonarr's indexers.
+	URL    string `json:"url,omitempty"`
+	APIKey string `json:"api_key,omitempty"`
+	// ProxyURL is Overtide's address as Radarr and Sonarr reach it, such
+	// as http://192.168.1.10:8089; its proxy is under /prowlarr.
+	ProxyURL string `json:"proxy_url,omitempty"`
+	Route    bool   `json:"route,omitempty"`
+	// Replaced is each Prowlarr app's own "Prowlarr Server" address before
+	// Overtide replaced it, by app ID: put back when Route goes off.
+	Replaced map[string]string `json:"replaced,omitempty"`
 }

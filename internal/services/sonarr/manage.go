@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 )
 
@@ -164,4 +165,32 @@ func (client *Client) QueuedEpisodes() (map[int]bool, error) {
 		ids[q.EpisodeID] = true
 	}
 	return ids, nil
+}
+
+// prowlarrIndexer matches an indexer Prowlarr made: its address is
+// Prowlarr's, then the tracker's ID in Prowlarr.
+var prowlarrIndexer = regexp.MustCompile(`^(https?://.+?)/(\d+)/?$`)
+
+// ProwlarrURL returns Prowlarr's address, read from the indexers Prowlarr
+// made here ("" without any).
+func (client *Client) ProwlarrURL() (string, error) {
+	var indexers []struct {
+		Fields []struct {
+			Name  string `json:"name"`
+			Value any    `json:"value"`
+		} `json:"fields"`
+	}
+	if err := client.send(http.MethodGet, "/api/v3/indexer", nil, &indexers); err != nil {
+		return "", err
+	}
+	for _, indexer := range indexers {
+		for _, field := range indexer.Fields {
+			if base, ok := field.Value.(string); ok && field.Name == "baseUrl" {
+				if match := prowlarrIndexer.FindStringSubmatch(base); match != nil {
+					return match[1], nil
+				}
+			}
+		}
+	}
+	return "", nil
 }
