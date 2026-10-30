@@ -66,3 +66,36 @@ func TestVerifyUnmanagedAsksRadarr(t *testing.T) {
 		t.Error("Radarr down: verified anyway")
 	}
 }
+
+// The same for Sonarr: one of a series' episode files is refused, another
+// file in its folder isn't.
+func TestVerifyUnmanagedAsksSonarr(t *testing.T) {
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "TV", "Show")
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/series":
+			json.NewEncoder(w).Encode([]map[string]any{{"id": 3, "title": "Show", "year": 2020, "path": folder}})
+		case "/api/v3/episodefile":
+			json.NewEncoder(w).Encode([]map[string]any{{"id": 30, "seriesId": 3, "relativePath": "Season 01/Show S01E01.mkv", "size": 4}})
+		default:
+			w.Write([]byte("[]"))
+		}
+	}))
+	defer fake.Close()
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(config.Config{Services: []config.Service{{ID: "sonarr-1", Type: "sonarr", Name: "TV", URL: fake.URL, APIKey: "k"}}}, database)
+	ctx := context.Background()
+	err = service.VerifyUnmanagedContext(ctx, []string{filepath.Join(folder, "Season 01", "Show S01E01.mkv")})
+	if err == nil || !strings.Contains(err.Error(), "claimed by Sonarr") {
+		t.Errorf("the episode's file: %v", err)
+	}
+	if err := service.VerifyUnmanagedContext(ctx, []string{filepath.Join(folder, "Season 01", "extra.mkv")}); err != nil {
+		t.Errorf("another file in its folder: %v", err)
+	}
+}
