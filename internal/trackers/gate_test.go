@@ -102,8 +102,10 @@ func TestGateBudget(t *testing.T) {
 	if fake.count() != before+2 {
 		t.Fatalf("RSS or the other tracker held back: %d", fake.count()-before)
 	}
-	if stats := gate.Stats(); stats[0].Refused != 1 {
-		t.Fatalf("stats: %+v", stats)
+	for _, stat := range gate.Stats() {
+		if stat.ID == 14 && stat.Refused != 1 {
+			t.Fatalf("stats: %+v", stat)
+		}
 	}
 	// A day later, the budget is back.
 	*now = now.Add(24 * time.Hour)
