@@ -72,6 +72,9 @@ func (service *Service) replaceSeasons(ctx context.Context, cfg config.Config, b
 	if err != nil {
 		return 0, err
 	}
+	if dryRun && service.preview != nil {
+		states, service.preview = service.preview, nil
+	}
 	now := service.now()
 	used, waiting := 0, 0
 	for _, svc := range cfg.ServicesOfType("sonarr") {

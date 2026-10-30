@@ -453,10 +453,10 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 		}
 		summary.EpisodesWanted += len(state.Wanted)
 	}
-	if !dryRun {
-		if err := service.saveEpisodeStates(states); err != nil {
-			return fail(err)
-		}
+	if dryRun {
+		service.preview = states
+	} else if err := service.saveEpisodeStates(states); err != nil {
+		return fail(err)
 	}
 	return entries, service.saveSummary(summary)
 }

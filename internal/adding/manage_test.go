@@ -513,9 +513,15 @@ func TestReplaceSeasons(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Dry run: nothing asked of the indexers.
+	// Dry run: nothing asked of the indexers; the season is counted, from
+	// what a dry run of takeAll found.
+	service.saveSummary(ManageSummary{At: now, DryRun: true})
+	service.preview = map[string]*sonarrState{"s": {Follow: map[int]bool{}, Wanted: map[int]episodeWant{2: {SeriesID: 5, Season: 1}}}}
 	if used, err := service.replaceSeasons(context.Background(), cfg, 3, true); err != nil || used != 0 {
 		t.Fatalf("dry run: %d searches, %v", used, err)
+	}
+	if summary, _ := service.Summary(); summary.Seasons != 1 {
+		t.Fatalf("dry run counted %d seasons", summary.Seasons)
 	}
 	if changes := fake.mutations(); len(changes) != 0 {
 		t.Fatalf("dry run changed: %v", changes)

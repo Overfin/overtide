@@ -173,6 +173,9 @@ type Service struct {
 	now func() time.Time
 	// disk replaces diskStop in tests.
 	disk func(cfg config.Config, rootFolder string, dryRun bool) string
+	// preview is the wanted episodes a dry run of takeAll found, which it
+	// doesn't save: what replaceSeasons counts in dry run.
+	preview map[string]*sonarrState
 }
 
 func New(inv *inventory.Service) *Service {
