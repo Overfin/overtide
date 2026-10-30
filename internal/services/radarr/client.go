@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/redirect"
 )
 
 type Client struct {
@@ -21,7 +22,7 @@ type Client struct {
 }
 
 func New(base, key string) *Client {
-	return &Client{base: strings.TrimRight(base, "/"), key: key, hc: &http.Client{Timeout: 20 * time.Second}}
+	return &Client{base: strings.TrimRight(base, "/"), key: key, hc: &http.Client{Timeout: 20 * time.Second, CheckRedirect: redirect.Check}}
 }
 
 func (client *Client) WithContext(ctx context.Context) *Client {

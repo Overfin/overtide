@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/redirect"
 )
 
 // NotFoundError reports that qBittorrent authoritatively has no such object
@@ -45,7 +46,7 @@ func New(name, base, username, password, apiKey string) *Client {
 	if name == "" {
 		name = "qBittorrent"
 	}
-	return &Client{name: name, base: strings.TrimRight(base, "/"), username: username, password: password, apiKey: apiKey, hc: &http.Client{Timeout: 30 * time.Second, Jar: jar}}
+	return &Client{name: name, base: strings.TrimRight(base, "/"), username: username, password: password, apiKey: apiKey, hc: &http.Client{Timeout: 30 * time.Second, Jar: jar, CheckRedirect: redirect.Check}}
 }
 
 func (client *Client) WithContext(ctx context.Context) *Client {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/redirect"
 	"math"
 	"net/http"
 	"net/url"
@@ -25,7 +26,7 @@ type Client struct {
 }
 
 func New(base, key string) *Client {
-	return &Client{base: strings.TrimRight(base, "/"), key: key, hc: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{base: strings.TrimRight(base, "/"), key: key, hc: &http.Client{Timeout: 30 * time.Second, CheckRedirect: redirect.Check}}
 }
 
 func (client *Client) WithContext(ctx context.Context) *Client {
