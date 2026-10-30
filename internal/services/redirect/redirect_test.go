@@ -9,13 +9,18 @@ import (
 
 func TestCheck(t *testing.T) {
 	var got []string
-	end := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var to string
+	var status int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" {
+			http.Redirect(w, r, to+"/next", status)
+			return
+		}
 		got = append(got, r.Method+" "+r.Host+r.URL.Path+" key="+r.Header.Get("X-Api-Key"))
 	}))
-	defer end.Close()
-	port := end.URL[strings.LastIndex(end.URL, ":"):]
-	sameHost := "http://127.0.0.1" + port
-	otherHost := "http://localhost" + port
+	defer srv.Close()
+	sameHost := srv.URL
+	otherHost := "http://localhost" + srv.URL[strings.LastIndex(srv.URL, ":"):]
 
 	for _, tc := range []struct {
 		name, method, to string
@@ -29,14 +34,10 @@ func TestCheck(t *testing.T) {
 		{"a GET to another host", http.MethodGet, otherHost, http.StatusFound, false},
 		{"a DELETE to another host, even by a 307", http.MethodDelete, otherHost, http.StatusTemporaryRedirect, false},
 	} {
-		got = nil
-		start := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, tc.to+"/next", tc.status)
-		}))
-		req, _ := http.NewRequest(tc.method, start.URL+"/api", nil)
+		got, to, status = nil, tc.to, tc.status
+		req, _ := http.NewRequest(tc.method, srv.URL+"/api", nil)
 		req.Header.Set("X-Api-Key", "secret")
 		res, err := (&http.Client{CheckRedirect: Check}).Do(req)
-		start.Close()
 		if res != nil {
 			res.Body.Close()
 		}
@@ -59,5 +60,27 @@ func TestCheckRefusesHTTPSToHTTP(t *testing.T) {
 	plain, _ := http.NewRequest(http.MethodGet, "http://radarr.example/api", nil)
 	if err := Check(up, []*http.Request{plain}); err != nil {
 		t.Fatalf("http to https refused: %v", err)
+	}
+}
+
+func TestCheckStaysOnTheService(t *testing.T) {
+	for _, tc := range []struct {
+		from, to string
+		follow   bool
+	}{
+		{"http://radarr.example:7878/api", "http://radarr.example:7878/api/", true},
+		{"http://radarr.example:7878/api", "http://RADARR.example:7878/api/", true},
+		{"http://radarr.example/api", "https://radarr.example/api", true},
+		{"http://radarr.example:80/api", "https://radarr.example:443/api", true},
+		{"http://radarr.example:7878/api", "http://radarr.example:8080/api", false},
+		{"http://radarr.example:7878/api", "https://radarr.example/api", false},
+		{"http://radarr.example/api", "https://radarr.example:8443/api", false},
+		{"https://radarr.example/api", "https://radarr.example:8443/api", false},
+	} {
+		first, _ := http.NewRequest(http.MethodGet, tc.from, nil)
+		next, _ := http.NewRequest(http.MethodGet, tc.to, nil)
+		if err := Check(next, []*http.Request{first}); (err == nil) != tc.follow {
+			t.Errorf("%s → %s: %v, want followed %v", tc.from, tc.to, err, tc.follow)
+		}
 	}
 }
