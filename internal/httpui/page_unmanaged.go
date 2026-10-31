@@ -1,8 +1,6 @@
 package httpui
 
 import (
-	"log"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"sort"
@@ -32,18 +30,6 @@ type unmanagedFileGroup struct {
 	// specific configured/discovered service root but a broader shared
 	// ancestor directory that still had to be walked.
 	RootKeys []string
-}
-
-// unmanagedRemovalURL builds the removal overlay URL for one physical
-// file's trash icon — every hardlinked path of the group, not just the
-// first, so a single-click removal reclaims the same space the bulk
-// checkbox-select path does rather than leaving a dangling hardlink.
-func unmanagedRemovalURL(group unmanagedFileGroup) string {
-	query := url.Values{}
-	for _, file := range group.Paths {
-		query.Add("path", file.Path)
-	}
-	return "/removal/unmanaged?" + query.Encode()
 }
 
 type unmanagedData struct {
@@ -227,11 +213,9 @@ func sortUnmanaged(items []unmanagedFileGroup, key, order string) {
 	})
 }
 
-func (server *Server) unmanagedDownloads(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/unmanaged" {
-		http.NotFound(w, r)
-		return
-	}
+// unmanagedListing is the Unmanaged files page's data for a query: the
+// totals, the filters as understood, and the page of files asked for.
+func (server *Server) unmanagedListing(query url.Values) unmanagedData {
 	raw, updated, scanErr := server.inv.UnmanagedSnapshot()
 	projection := server.pendingProjection()
 	all := groupUnmanagedFiles(raw)
@@ -254,9 +238,9 @@ func (server *Server) unmanagedDownloads(w http.ResponseWriter, r *http.Request)
 		sharedBytes += f.SharedBytes
 	}
 	rootOptions := availableUnmanagedRoots(all)
-	qtext := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-	statusFilter := normalizeUnmanagedStatusFilter(r.URL.Query().Get("status"))
-	rootFilter := r.URL.Query().Get("root")
+	qtext := strings.ToLower(strings.TrimSpace(query.Get("q")))
+	statusFilter := normalizeUnmanagedStatusFilter(query.Get("status"))
+	rootFilter := query.Get("root")
 	if rootFilter != "" {
 		found := false
 		for _, opt := range rootOptions {
@@ -269,7 +253,7 @@ func (server *Server) unmanagedDownloads(w http.ResponseWriter, r *http.Request)
 			rootFilter = ""
 		}
 	}
-	minSizeMiBText := strings.TrimSpace(r.URL.Query().Get("min_size_mib"))
+	minSizeMiBText := strings.TrimSpace(query.Get("min_size_mib"))
 	var minSizeBytes int64
 	if v, err := strconv.ParseFloat(minSizeMiBText, 64); err == nil && v > 0 {
 		minSizeBytes = int64(v * 1024 * 1024)
@@ -324,16 +308,16 @@ func (server *Server) unmanagedDownloads(w http.ResponseWriter, r *http.Request)
 		}
 		all = filtered
 	}
-	pageSize := allowedPageSize(queryInt(r, "page_size", 50))
-	page := queryInt(r, "page", 1)
+	pageSize := allowedPageSize(queryValueInt(query, "page_size", 50))
+	page := queryValueInt(query, "page", 1)
 	if page < 1 {
 		page = 1
 	}
-	sortKey := r.URL.Query().Get("sort")
+	sortKey := query.Get("sort")
 	if !validUnmanagedSort(sortKey) {
 		sortKey = "reclaimable"
 	}
-	order := strings.ToLower(r.URL.Query().Get("order"))
+	order := strings.ToLower(query.Get("order"))
 	if order != "asc" && order != "desc" {
 		order = "desc"
 	}
@@ -397,14 +381,12 @@ func (server *Server) unmanagedDownloads(w http.ResponseWriter, r *http.Request)
 	for pg := maxInt(1, page-2); pg <= minInt(pages, page+2); pg++ {
 		links = append(links, navLink{pg, mk(pg, pageSize, sortKey, order)})
 	}
-	d := unmanagedData{Files: all[from:to], Updated: updated, ScanErr: scanErr, TotalItems: total, AllItems: allItems, TotalBytes: totalBytes, ReclaimableBytes: reclaimableBytes, SharedBytes: sharedBytes, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, Query: r.URL.Query().Get("q"), SortURLs: sortURLs, StatusFilter: statusFilter, RootFilter: rootFilter, RootOptions: rootOptions, MinSizeMiB: minSizeMiBText}
+	d := unmanagedData{Files: all[from:to], Updated: updated, ScanErr: scanErr, TotalItems: total, AllItems: allItems, TotalBytes: totalBytes, ReclaimableBytes: reclaimableBytes, SharedBytes: sharedBytes, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, Query: query.Get("q"), SortURLs: sortURLs, StatusFilter: statusFilter, RootFilter: rootFilter, RootOptions: rootOptions, MinSizeMiB: minSizeMiBText}
 	if d.HasPrev {
 		d.PrevURL = mk(page-1, pageSize, sortKey, order)
 	}
 	if d.HasNext {
 		d.NextURL = mk(page+1, pageSize, sortKey, order)
 	}
-	if e := renderTemplate(w, server.unmanagedTpl, d); e != nil {
-		log.Printf("[http] render unmanaged files: %v", e)
-	}
+	return d
 }

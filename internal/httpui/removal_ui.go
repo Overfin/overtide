@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -102,21 +101,11 @@ func prepareRemovalData(data *removalData) error {
 		}
 		selection.Files = append(selection.Files, fact)
 	}
+	data.Selection = selection
 	encoded, err := json.Marshal(selection)
 	if err != nil {
 		return fmt.Errorf("encode removal selection facts: %w", err)
 	}
 	data.SelectionModel = base64.StdEncoding.EncodeToString(encoded)
 	return nil
-}
-
-func (server *Server) renderRemoval(response http.ResponseWriter, data removalData) {
-	if err := prepareRemovalData(&data); err != nil {
-		http.Error(response, "Removal plan could not be prepared: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := renderTemplate(response, server.removalTpl, data); err != nil {
-		// renderTemplate already returned an HTTP error.
-		return
-	}
 }

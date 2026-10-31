@@ -1,7 +1,6 @@
 package httpui
 
 import (
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -12,7 +11,7 @@ import (
 // starts the lockout.
 func TestLoginLimitHoldsAgainstParallelTries(t *testing.T) {
 	handler, _ := newAuthTestServer(t)
-	postForm(t, handler, "/setup", url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}, "confirm": {"correct-horse-battery"}}, nil)
+	setUp(t, handler)
 
 	var mu sync.Mutex
 	checked, refused := 0, 0
@@ -21,7 +20,7 @@ func TestLoginLimitHoldsAgainstParallelTries(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			body := postForm(t, handler, "/login", url.Values{"username": {"admin"}, "password": {"wrong-password"}}, nil).Body.String()
+			body := login(t, handler, "admin", "wrong-password").Body.String()
 			mu.Lock()
 			defer mu.Unlock()
 			switch {

@@ -31,8 +31,14 @@ part of the Overfin project: it works the way Overfin's server does.
 - Plain, idiomatic Go. Clear code over clever code.
 - `gofmt`, `go vet ./...`, staticcheck and `go test -race ./...` must pass;
   CI (`.github/workflows/ci.yml`) runs them, govulncheck, and checks the
-  committed web bundles match their TypeScript sources (rebuild with
-  `go run ./tools/buildassets`).
+  committed panel (`internal/httpui/dist`) matches its sources.
+- The pages are a Svelte app (`frontend/`) on Overfin UI, the panels'
+  shared kit: its look and components, never restyled here. Lists with
+  Edit/Delete, forms in a `FormModal`, confirmations with `ask`. The Go
+  side answers JSON (`/api/…`, one routes_*.go per area) and pushes live
+  revisions on `/ui/events`. After a change: `npm run check` and `npm run
+  build` in `frontend/` (commit `internal/httpui/dist`), screenshots dark,
+  light and on a phone.
 - SQLite through `database/sql` and the pure-Go `modernc.org/sqlite`, as in
   Overfin: no cgo; the image is one static binary on distroless.
 - Releases: a version tag (`v0.6.0`) publishes `ghcr.io/overfin/overtide`
@@ -41,7 +47,8 @@ part of the Overfin project: it works the way Overfin's server does.
 
 ## Layout
 - `cmd/overtide`: entry point
-- `internal/httpui`: the web UI, server-rendered (templates, htmx, Stimulus)
+- `frontend/`: the panel (Svelte), built into `internal/httpui/dist`
+- `internal/httpui`: the JSON API, sign-in, live updates, serving the built panel
 - `internal/inventory`: what the services report, reconciled
 - `internal/cleanup`: the removal planner (cleanup plans)
 - `internal/valuation`: Retention Value (Overfin's scores, unchanged) and

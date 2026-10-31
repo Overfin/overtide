@@ -2,7 +2,6 @@ package httpui
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -227,11 +226,9 @@ func filterMedia(items []model.Media, q, typeFilter, sourceFilter string, servic
 	return out
 }
 
-func (server *Server) library(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/library" {
-		http.NotFound(w, r)
-		return
-	}
+// libraryData is the Library page's list: filtered, sorted and paged as
+// the request's query says.
+func (server *Server) libraryData(r *http.Request) libraryData {
 	items, updated, last := server.inv.Snapshot()
 	items = server.pendingProjection().filterMedia(items)
 	reliability := server.inv.ReliabilitySnapshot()
@@ -387,9 +384,7 @@ func (server *Server) library(w http.ResponseWriter, r *http.Request) {
 	if d.HasNext {
 		d.NextURL = mkURL(page+1, pageSize, sortKey, order)
 	}
-	if e := renderTemplate(w, server.libraryTpl, d); e != nil {
-		log.Printf("[http] render library: %v", e)
-	}
+	return d
 }
 
 func validMediaSort(v string) bool {
@@ -464,26 +459,42 @@ func groupMediaTorrents(items []model.Torrent) (current, superseded, orphaned, u
 	return
 }
 
-func (server *Server) media(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	if strings.HasPrefix(path, "/library/") {
-		path = strings.TrimPrefix(path, "/library/")
-	} else {
-		path = strings.TrimPrefix(path, "/media/")
-	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 2 {
-		http.NotFound(w, r)
-		return
-	}
-	var sourceID int
-	if _, err := fmt.Sscanf(parts[1], "%d", &sourceID); err != nil || sourceID <= 0 {
-		http.NotFound(w, r)
-		return
-	}
-	serviceID := strings.TrimSpace(r.URL.Query().Get("service_id"))
+// mediaDetailData is what a title's page shows.
+type mediaDetailData struct {
+	Media             model.Media
+	Updated           time.Time
+	LastErr           error
+	Refreshing        bool
+	Current           []model.Torrent
+	Superseded        []model.Torrent
+	Orphaned          []model.Torrent
+	Unassociated      []model.Torrent
+	Files             []inventory.FileView
+	FileCount         int
+	FilesUpdated      time.Time
+	FilesErr          error
+	RemoveMedia       inventory.RemovalEstimate
+	RemoveWithCurrent inventory.RemovalEstimate
+	KeptKey           string
+	Kept              bool
+}
+
+// mediaLookup is a title's page, or the removal it went through, or why
+// there's neither.
+type mediaLookup struct {
+	Detail    *mediaDetailData
+	Operation *operationNotice
+	// Status is http.StatusConflict when the id is ambiguous (Message
+	// says so), else 0.
+	Status  int
+	Message string
+}
+
+// mediaDetail finds a title by its type, its id in its service and, when
+// several services have that id, the service's.
+func (server *Server) mediaDetail(kind string, sourceID int, serviceID string) mediaLookup {
 	projection := server.pendingProjection()
-	mediaType := model.MediaType(parts[0])
+	mediaType := model.MediaType(kind)
 
 	items, updated, last := server.inv.Snapshot()
 	reliability := server.inv.ReliabilitySnapshot()
@@ -493,26 +504,24 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 	resolved, resolvedOK := mediaRefFor(items, mediaType, sourceID, serviceID)
 	if resolvedOK {
 		if notice, pending := projection.mediaOperation(mediaType, sourceID, resolved.ServiceID); pending {
-			server.renderOperation(w, operationPageData{Active: "library", FragmentID: "media-detail", Label: notice.Label, Notice: notice, BackURL: "/library", BackLabel: "Library"})
-			return
+			return mediaLookup{Operation: &notice}
 		}
 	}
 	if serviceID == "" && !resolvedOK {
 		matches := 0
 		for _, m := range items {
-			if string(m.Type) == parts[0] && m.SourceID == sourceID {
+			if string(m.Type) == kind && m.SourceID == sourceID {
 				matches++
 			}
 		}
 		if matches > 1 {
-			http.Error(w, "this media id exists in more than one configured instance; an service_id is required", http.StatusConflict)
-			return
+			return mediaLookup{Status: http.StatusConflict, Message: "this media id exists in more than one configured instance; an service_id is required"}
 		}
 	}
 
 	for i := range items {
 		m := items[i]
-		if string(m.Type) != parts[0] || m.SourceID != sourceID {
+		if string(m.Type) != kind || m.SourceID != sourceID {
 			continue
 		}
 		if serviceID != "" {
@@ -548,32 +557,10 @@ func (server *Server) media(w http.ResponseWriter, r *http.Request) {
 		}
 
 		keptKey := config.KeptMediaKey(string(m.Type), m.ServiceID, m.SourceID)
-		data := struct {
-			Media             model.Media
-			Updated           time.Time
-			LastErr           error
-			Refreshing        bool
-			Current           []model.Torrent
-			Superseded        []model.Torrent
-			Orphaned          []model.Torrent
-			Unassociated      []model.Torrent
-			Files             []inventory.FileView
-			FileCount         int
-			FilesUpdated      time.Time
-			FilesErr          error
-			RemoveMedia       inventory.RemovalEstimate
-			RemoveWithCurrent inventory.RemovalEstimate
-			KeptKey           string
-			Kept              bool
-		}{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent, keptKey, server.inv.Config().IsKept(keptKey) || model.HasTag(m.Tags, model.TagKeep)}
-		if e := renderTemplate(w, server.profileTpl, data); e != nil {
-			log.Printf("[http] render media profile: %v", e)
-		}
-		return
+		return mediaLookup{Detail: &mediaDetailData{m, updated, last, server.inv.IsRefreshing(), current, superseded, orphaned, unassociated, files, fileCount, filesUpdated, filesErr, storageView.RemoveMedia, storageView.RemoveWithCurrent, keptKey, server.inv.Config().IsKept(keptKey) || model.HasTag(m.Tags, model.TagKeep)}}
 	}
 	if notice, found := server.removalHistory("media", mediaOperationKey(mediaType, sourceID, serviceID)); found {
-		server.renderOperation(w, operationPageData{Active: "library", FragmentID: "media-detail", Label: notice.Label, Notice: notice, BackURL: "/library", BackLabel: "Library"})
-		return
+		return mediaLookup{Operation: &notice}
 	}
-	http.NotFound(w, r)
+	return mediaLookup{}
 }

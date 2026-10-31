@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -201,21 +200,12 @@ func TestRemovalAdmissionReturnsImmediatelyAndIsIdempotent(t *testing.T) {
 	sessionCookie := loginForTest(t, handler)
 
 	post := func() *httptest.ResponseRecorder {
-		var body bytes.Buffer
-		writer := multipart.NewWriter(&body)
-		for name, value := range map[string]string{
-			"kind": "torrent", "hash": "ABC123", "target": "1", "operation_token": "stable-browser-token",
-		} {
-			if err := writer.WriteField(name, value); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := writer.Close(); err != nil {
+		body, err := json.Marshal(removalRequest{Kind: "torrent", Hash: "ABC123", Target: true, OperationToken: "stable-browser-token"})
+		if err != nil {
 			t.Fatal(err)
 		}
-		request := httptest.NewRequest(http.MethodPost, "/removal/execute", &body)
-		request.Header.Set("Content-Type", writer.FormDataContentType())
-		request.Header.Set("Accept", "application/json")
+		request := httptest.NewRequest(http.MethodPost, "/api/removal/execute", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
 		request.AddCookie(sessionCookie)
 		response := httptest.NewRecorder()
 		done := make(chan struct{})

@@ -40,12 +40,19 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Web assets
+      # .npmrc turns install scripts off.
+      - name: The panel
+        working-directory: frontend
         run: |
-          npm --prefix internal/httpui/static/src ci
-          npm --prefix internal/httpui/static/src run typecheck
-          go run ./tools/buildassets
-          git diff --exit-code internal/httpui/static/app.js internal/httpui/static/app.css ||
-            { echo "The committed web assets differ from their sources: run go run ./tools/buildassets"; exit 1; }
+          npm ci
+          npm run check
+          npm run build
+
+      - name: The built panel matches its sources
+        run: |
+          git diff --exit-code -- internal/httpui/dist || { echo "internal/httpui/dist is out of date: run npm run build in frontend/ and commit it"; exit 1; }
+          test -z "$(git status --porcelain -- internal/httpui/dist)" || { git status -- internal/httpui/dist; exit 1; }

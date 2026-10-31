@@ -2,7 +2,6 @@ package httpui
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,7 +13,7 @@ import (
 
 func (server *Server) apiMedia(w http.ResponseWriter, r *http.Request) {
 	x, u, e := server.inv.Snapshot()
-	writeJSON(w, map[string]any{"items": x, "updated": u, "error": errString(e), "refreshing": server.inv.IsRefreshing(), "reliability": server.inv.ReliabilitySnapshot()})
+	writeJSON(w, http.StatusOK, map[string]any{"items": x, "updated": u, "error": errString(e), "refreshing": server.inv.IsRefreshing(), "reliability": server.inv.ReliabilitySnapshot()})
 }
 
 type dashboardAPI struct {
@@ -48,7 +47,7 @@ func (server *Server) apiDashboard(response http.ResponseWriter, request *http.R
 		return
 	}
 	data := server.dashboardSnapshot()
-	writeJSON(response, dashboardAPI{
+	writeJSON(response, http.StatusOK, dashboardAPI{
 		Revision:   revision,
 		TotalMedia: data.TotalMedia, Movies: data.Movies, Series: data.Series, LibraryBytes: cleanup.Human(uint64(max64(data.LibraryBytes, 0))),
 		TotalTorrents: data.TotalTorrents, Current: data.Current, Superseded: data.Superseded, Orphaned: data.Orphaned, Unassociated: data.Unassociated,
@@ -57,15 +56,15 @@ func (server *Server) apiDashboard(response http.ResponseWriter, request *http.R
 	})
 }
 func (server *Server) apiTorrents(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"items": server.inv.TorrentSnapshot(), "refreshing": server.inv.IsRefreshing()})
+	writeJSON(w, http.StatusOK, map[string]any{"items": server.inv.TorrentSnapshot(), "refreshing": server.inv.IsRefreshing()})
 }
 func (server *Server) apiUnmanaged(w http.ResponseWriter, r *http.Request) {
 	x, u, e := server.inv.UnmanagedSnapshot()
-	writeJSON(w, map[string]any{"items": x, "updated": u, "error": errString(e), "refreshing": server.inv.IsRefreshing()})
+	writeJSON(w, http.StatusOK, map[string]any{"items": x, "updated": u, "error": errString(e), "refreshing": server.inv.IsRefreshing()})
 }
 func (server *Server) apiFiles(w http.ResponseWriter, r *http.Request) {
 	x, mr, tr, u, e := server.inv.FileSnapshot()
-	writeJSON(w, map[string]any{"items": x, "mediaRefs": mr, "torrentRefs": tr, "updated": u, "error": errString(e)})
+	writeJSON(w, http.StatusOK, map[string]any{"items": x, "mediaRefs": mr, "torrentRefs": tr, "updated": u, "error": errString(e)})
 }
 func (server *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -92,9 +91,5 @@ func (server *Server) plan(w http.ResponseWriter, r *http.Request) {
 	for _, view := range views {
 		plans = append(plans, view.Plan)
 	}
-	writeJSON(w, plans)
-}
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	writeJSON(w, http.StatusOK, plans)
 }

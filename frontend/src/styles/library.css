@@ -1,0 +1,23 @@
+/* Library, a title, History, Tasks: only what the kit doesn't have. */
+.pager { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .75rem 0; font-size: .9rem; }
+.pager .disabled { color: var(--faint); }
+.pager .current { font-weight: 700; }
+.pager .pagesize { margin-left: auto; display: flex; gap: .45rem; align-items: center; color: var(--muted); }
+.pager .pagesize a.active { font-weight: 700; color: var(--text); }
+th a { color: inherit; text-decoration: none; }
+th a:hover { color: var(--text); }
+.trash { min-height: 2rem; padding: .25rem .6rem; }
+.title-head { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.title-head > div:first-child { flex: 1 1 18rem; }
+.title-head h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+.title-head .value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.title-head .actions { display: flex; gap: .5rem; align-items: center; }
+.reasons li { display: block; }
+.file-row + .file-row { margin-top: .6rem; }
+.group-title { margin-top: 1rem; }
+.owner { font-weight: 400; }
+.history-files { margin-top: .4rem; }
+/* Torrent and file names have no spaces: they break anywhere, so the
+   table keeps to the page. */
+.history-object, .history-files { overflow-wrap: anywhere; }
+.history-object { min-width: 14rem; }

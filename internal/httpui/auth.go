@@ -163,119 +163,112 @@ func (server *Server) startSession(w http.ResponseWriter, r *http.Request) error
 	return nil
 }
 
-// authGate enforces Overtide's single-admin login in front of every route.
-// Without a database there are no sessions, so nothing but the assets and
-// /healthz is served.
+// authGate enforces Overtide's single-admin login in front of the API and
+// the live updates. The panel's own files are open (they hold no data, and
+// show the sign-in page); of the API, only what signing in needs is open.
+// Without a database there are no sessions, so nothing else answers.
 func (server *Server) authGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/assets/") || r.URL.Path == "/healthz" {
+		if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/ui/") {
 			next.ServeHTTP(w, r)
 			return
 		}
 		if server.inv == nil || server.inv.Store() == nil {
-			http.Error(w, "Overtide has no database: sign-in is unavailable", http.StatusServiceUnavailable)
+			fail(w, http.StatusServiceUnavailable, "Overtide has no database: sign-in is unavailable")
 			return
 		}
-		cfg := server.inv.Config()
-		if cfg.Auth.Username == "" {
-			if r.URL.Path == "/setup" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			http.Redirect(w, r, "/setup", http.StatusSeeOther)
-			return
-		}
-		if r.URL.Path == "/login" {
+		switch r.URL.Path {
+		case "/api/session", "/api/setup", "/api/login":
 			next.ServeHTTP(w, r)
 			return
 		}
-		if cookie, err := r.Cookie(sessionCookieName); err == nil {
-			if valid, _ := server.inv.Store().SessionValid(cookie.Value); valid {
-				next.ServeHTTP(w, r)
-				return
-			}
+		if server.signedIn(r) {
+			next.ServeHTTP(w, r)
+			return
 		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		fail(w, http.StatusUnauthorized, "signed out")
 	})
 }
 
-type setupPageData struct {
-	Username string
-	Error    string
+// signedIn reports whether r comes with a valid session.
+func (server *Server) signedIn(r *http.Request) bool {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return false
+	}
+	valid, _ := server.inv.Store().SessionValid(cookie.Value)
+	return valid
 }
 
-// setupPage handles Overtide's one-time "create the admin account" screen.
-// Reachable without a session only while no account exists yet — once one
-// does, authGate stops exempting this path and a signed-in visit here just
-// bounces home instead of allowing a second account to overwrite the first.
-func (server *Server) setupPage(w http.ResponseWriter, r *http.Request) {
+// sessionState is where the browser stands: the account to make first,
+// or signed in or not.
+type sessionState struct {
+	NeedsSetup bool   `json:"needsSetup"`
+	SignedIn   bool   `json:"signedIn"`
+	Username   string `json:"username,omitempty"`
+}
+
+func (server *Server) session(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
-	if cfg.Auth.Username != "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+	state := sessionState{NeedsSetup: cfg.Auth.Username == ""}
+	if !state.NeedsSetup && server.signedIn(r) {
+		state.SignedIn, state.Username = true, cfg.Auth.Username
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+type credentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// Confirm is the password again, at setup.
+	Confirm string `json:"confirm"`
+}
+
+// setup makes Overtide's one admin account. It works only while no account
+// exists — once one does, it's refused instead of letting a second account
+// overwrite the first.
+func (server *Server) setup(w http.ResponseWriter, r *http.Request) {
+	if server.inv.Config().Auth.Username != "" {
+		fail(w, http.StatusConflict, "The account exists already: sign in.")
 		return
 	}
-	if r.Method == http.MethodGet {
-		_ = renderTemplate(w, server.setupTpl, setupPageData{})
+	var in credentials
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if in.Password != in.Confirm {
+		fail(w, http.StatusBadRequest, "Passwords do not match.")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
-	if password != r.FormValue("confirm") {
-		_ = renderTemplate(w, server.setupTpl, setupPageData{Username: username, Error: "Passwords do not match."})
-		return
-	}
-	if err := server.inv.CreateAccount(username, password); errors.Is(err, inventory.ErrAccountExists) {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	if err := server.inv.CreateAccount(strings.TrimSpace(in.Username), in.Password); errors.Is(err, inventory.ErrAccountExists) {
+		fail(w, http.StatusConflict, "The account exists already: sign in.")
 		return
 	} else if err != nil {
-		_ = renderTemplate(w, server.setupTpl, setupPageData{Username: username, Error: err.Error()})
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if server.inv.Store() != nil {
-		if err := server.startSession(w, r); err != nil {
-			http.Error(w, "account created, but the session could not be started: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+	if err := server.startSession(w, r); err != nil {
+		fail(w, http.StatusInternalServerError, "The account is made, but the session couldn't start: "+err.Error())
+		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	done(w)
 }
 
-type loginPageData struct {
-	Username string
-	Error    string
-}
-
-func (server *Server) loginPage(w http.ResponseWriter, r *http.Request) {
+func (server *Server) login(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
 	if cfg.Auth.Username == "" {
-		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		fail(w, http.StatusConflict, "There is no account yet: set Overtide up.")
 		return
 	}
-	if r.Method == http.MethodGet {
-		_ = renderTemplate(w, server.loginTpl, loginPageData{})
+	var in credentials
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
 	key := clientLoginKey(r)
 	if remaining, ok := server.loginLimiter.attempt(key); !ok {
-		_ = renderTemplate(w, server.loginTpl, loginPageData{Username: username, Error: fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1)})
+		fail(w, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1))
 		return
 	}
 	// Both checks always run, even when the username is already known to be
@@ -283,28 +276,24 @@ func (server *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	// make a wrong username return near-instantly while a right-username-
 	// wrong-password takes bcrypt's cost — a timing side-channel that
 	// discloses the admin username without ever guessing its password.
-	usernameCorrect := strings.EqualFold(username, cfg.Auth.Username)
-	passwordCorrect := cfg.VerifyPassword(password)
+	usernameCorrect := strings.EqualFold(strings.TrimSpace(in.Username), cfg.Auth.Username)
+	passwordCorrect := cfg.VerifyPassword(in.Password)
 	if !usernameCorrect || !passwordCorrect {
-		_ = renderTemplate(w, server.loginTpl, loginPageData{Username: username, Error: "Incorrect username or password."})
+		fail(w, http.StatusUnauthorized, "Incorrect username or password.")
 		return
 	}
 	server.loginLimiter.recordSuccess(key)
 	if err := server.startSession(w, r); err != nil {
-		http.Error(w, "signed in, but the session could not be started: "+err.Error(), http.StatusInternalServerError)
+		fail(w, http.StatusInternalServerError, "Signed in, but the session couldn't start: "+err.Error())
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	done(w)
 }
 
 func (server *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if cookie, err := r.Cookie(sessionCookieName); err == nil && server.inv.Store() != nil {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		_ = server.inv.Store().DeleteSession(cookie.Value)
 	}
 	clearSessionCookie(w, r)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	done(w)
 }

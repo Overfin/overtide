@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Overtide</title>
+  <defs>
+    <linearGradient id="ot-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1FC8B4"/><stop offset="1" stop-color="#3FA9F5"/></linearGradient>
+    <linearGradient id="ot-water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3FA9F5"/><stop offset="1" stop-color="#2463C9"/></linearGradient>
+    <clipPath id="ot-in"><circle cx="32" cy="32" r="24.5"/></clipPath>
+  </defs>
+  <circle cx="32" cy="32" r="26.5" fill="none" stroke="url(#ot-ring)" stroke-width="5"/>
+  <g clip-path="url(#ot-in)">
+    <path d="M0 22.5 H64" stroke="#1FC8B4" stroke-width="3" stroke-dasharray="5 4" stroke-linecap="round"/>
+    <path d="M0 34 C6 30.5 11 30.5 16 34 S26 37.5 32 34 S42 30.5 48 34 S58 37.5 64 34 V64 H0 Z" fill="url(#ot-water)"/>
+    <path d="M0 44 C6 40.5 11 40.5 16 44 S26 47.5 32 44 S42 40.5 48 44 S58 47.5 64 44" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</svg>

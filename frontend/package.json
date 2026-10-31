@@ -1,0 +1,25 @@
+{
+  "name": "overtide-panel",
+  "private": true,
+  "description": "Overtide's panel, built into internal/httpui/dist",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.7",
+    "typescript": "6.0.3",
+    "vite": "8.3.5"
+  },
+  "dependencies": {
+    "@overfin/ui": "github:overfin/ui#v0.2.0"
+  }
+}

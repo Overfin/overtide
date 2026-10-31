@@ -5,5 +5,7 @@
 config.json
 .env*
 .DS_Store
-internal/httpui/static/src/node_modules
 !.env.example
+
+# The panel's npm packages (frontend/).
+node_modules/

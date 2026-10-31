@@ -2,36 +2,31 @@ package httpui
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/overfin/overtide/internal/config"
 )
 
-type settingsPageData struct {
-	Error   string
-	Success bool
-
-	RemovalError                   string
-	RemovalSuccess                 bool
-	AutoMode                       string
-	AutoRemoveUnassociatedTorrents bool
-	DryRun                         bool
-	PrivateMinSeedingDays          int
-	AutoExcludeFromImportLists     bool
-	AutoRemoveIncompleteTorrents   bool
-	CopiesWithTitles               bool
+// settingsData is what the Settings page shows: the automatic-removal
+// switches and the API key other apps ask Overtide with.
+type settingsData struct {
+	AutoMode                       string `json:"autoMode"`
+	AutoRemoveUnassociatedTorrents bool   `json:"autoRemoveUnassociatedTorrents"`
+	DryRun                         bool   `json:"dryRun"`
+	PrivateMinSeedingDays          int    `json:"privateMinSeedingDays"`
+	AutoExcludeFromImportLists     bool   `json:"autoExcludeFromImportLists"`
+	AutoRemoveIncompleteTorrents   bool   `json:"autoRemoveIncompleteTorrents"`
+	CopiesWithTitles               bool   `json:"copiesWithTitles"`
 	// APIKey is what other apps give to ask Overtide something.
-	APIKey string
+	APIKey string `json:"apiKey"`
 }
 
-func (server *Server) settingsData() settingsPageData {
+func (server *Server) settingsData() settingsData {
 	cfg := server.inv.Config()
 	autoMode := cfg.Removal.AutoMode
 	if autoMode == "" {
 		autoMode = config.RemovalAutoDisabled
 	}
-	return settingsPageData{
+	return settingsData{
 		AutoMode:                       autoMode,
 		AutoRemoveUnassociatedTorrents: cfg.Removal.AutoRemoveUnassociatedTorrents,
 		DryRun:                         cfg.Removal.DryRun,
@@ -43,95 +38,83 @@ func (server *Server) settingsData() settingsPageData {
 	}
 }
 
-func (server *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	_ = renderTemplate(w, server.settingsTpl, server.settingsData())
+// settings answers GET /api/settings.
+func (server *Server) settings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, server.settingsData())
+}
+
+type passwordForm struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+	Confirm string `json:"confirm"`
 }
 
 // changePassword rotates the admin account's password and, since a
 // credential rotation should actually revoke access, signs out every other
-// session before re-establishing one for the browser that made the change.
+// session before re-establishing one for the browser that made the change
+// (PUT /api/settings/password).
 func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
+	var in passwordForm
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	cfg := server.inv.Config()
-	data := server.settingsData()
-	if !cfg.VerifyPassword(r.FormValue("current_password")) {
-		data.Error = "Current password is incorrect."
-		_ = renderTemplate(w, server.settingsTpl, data)
+	if !cfg.VerifyPassword(in.Current) {
+		fail(w, http.StatusBadRequest, "Current password is incorrect.")
 		return
 	}
-	newPassword := r.FormValue("new_password")
-	if newPassword != r.FormValue("confirm") {
-		data.Error = "New passwords do not match."
-		_ = renderTemplate(w, server.settingsTpl, data)
+	if in.New != in.Confirm {
+		fail(w, http.StatusBadRequest, "New passwords do not match.")
 		return
 	}
-	if err := server.inv.SetCredentials(cfg.Auth.Username, newPassword); err != nil {
-		data.Error = err.Error()
-		_ = renderTemplate(w, server.settingsTpl, data)
+	if err := server.inv.SetCredentials(cfg.Auth.Username, in.New); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if server.inv.Store() != nil {
 		_ = server.inv.Store().DeleteAllSessions()
 		_ = server.startSession(w, r)
 	}
-	data = server.settingsData()
-	data.Success = true
-	_ = renderTemplate(w, server.settingsTpl, data)
+	done(w)
 }
 
-// setRemovalSettings saves the global automatic-removal switches. Automatic
-// removal also still requires each service's own "Allow automatic removal"
-// checkbox (see the service edit form) — auto_mode controls whether the
-// evaluation task runs at all (Disabled), runs and applies its filters but
-// never submits anything (Confirm), or runs and submits (Auto);
-// auto_remove_unassociated_torrents/dry_run are unrelated checkboxes that
-// only submit when checked, so an absent field means false.
+// removalForm is the automatic-removal switches as the Settings page sends
+// them: every one, each time.
+type removalForm struct {
+	AutoMode                       string `json:"autoMode"`
+	AutoRemoveUnassociatedTorrents bool   `json:"autoRemoveUnassociatedTorrents"`
+	DryRun                         bool   `json:"dryRun"`
+	AutoExcludeFromImportLists     bool   `json:"autoExcludeFromImportLists"`
+	AutoRemoveIncompleteTorrents   bool   `json:"autoRemoveIncompleteTorrents"`
+	CopiesWithTitles               bool   `json:"copiesWithTitles"`
+	// PrivateMinSeedingDays: 0 is off.
+	PrivateMinSeedingDays int `json:"privateMinSeedingDays"`
+}
+
+// setRemovalSettings saves the global automatic-removal switches (PUT
+// /api/settings/removal). Automatic removal also still requires each
+// service's own "Allow automatic removal" (see the service edit window) —
+// auto mode controls whether the evaluation task runs at all (Disabled),
+// runs and applies its filters but never submits anything (Confirm), or
+// runs and submits (Auto).
 func (server *Server) setRemovalSettings(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
+	var in removalForm
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	removal := config.RemovalConfig{
-		AutoMode:                       r.FormValue("auto_mode"),
-		AutoRemoveUnassociatedTorrents: r.FormValue("auto_remove_unassociated_torrents") == "on",
-		DryRun:                         r.FormValue("dry_run") == "on",
-		AutoExcludeFromImportLists:     r.FormValue("auto_exclude_from_import_lists") == "on",
-		AutoRemoveIncompleteTorrents:   r.FormValue("auto_remove_incomplete_torrents") == "on",
-		CopiesWithTitles:               r.FormValue("copies_with_titles") == "with-titles",
+		AutoMode:                       in.AutoMode,
+		AutoRemoveUnassociatedTorrents: in.AutoRemoveUnassociatedTorrents,
+		DryRun:                         in.DryRun,
+		AutoExcludeFromImportLists:     in.AutoExcludeFromImportLists,
+		AutoRemoveIncompleteTorrents:   in.AutoRemoveIncompleteTorrents,
+		CopiesWithTitles:               in.CopiesWithTitles,
 	}
-	data := server.settingsData()
-	// An empty field means 0, off.
-	privateMinSeedingDays := 0
-	if raw := strings.TrimSpace(r.FormValue("private_min_seeding_days")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			data.RemovalError = "Days of seeding for private torrents must be a whole number"
-			_ = renderTemplate(w, server.settingsTpl, data)
-			return
-		}
-		privateMinSeedingDays = parsed
-	}
-	if err := server.inv.SetRemovalSettings(removal, privateMinSeedingDays); err != nil {
-		data.RemovalError = err.Error()
-		_ = renderTemplate(w, server.settingsTpl, data)
+	if err := server.inv.SetRemovalSettings(removal, in.PrivateMinSeedingDays); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	data = server.settingsData()
-	data.RemovalSuccess = true
-	_ = renderTemplate(w, server.settingsTpl, data)
+	writeJSON(w, http.StatusOK, server.settingsData())
 }

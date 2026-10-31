@@ -2,12 +2,9 @@ package httpui
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/overfin/overtide/internal/cleanup"
@@ -29,38 +26,6 @@ type storageData struct {
 	// unaffected: those describe real disk state, not a removal
 	// suggestion.
 	AutoRemovalDisabled bool
-}
-
-func (server *Server) storagePage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/storage" {
-		http.NotFound(w, r)
-		return
-	}
-	items, _, _ := server.inv.Snapshot()
-	var keptTitles []config.KeptItem
-	for _, m := range items {
-		if model.HasTag(m.Tags, model.TagKeep) {
-			keptTitles = append(keptTitles, config.KeptItem{Key: config.KeptMediaKey(string(m.Type), m.ServiceID, m.SourceID), Name: keptMediaName(m), From: "tag " + model.TagKeep})
-		}
-	}
-	sort.Slice(keptTitles, func(i, j int) bool { return strings.ToLower(keptTitles[i].Name) < strings.ToLower(keptTitles[j].Name) })
-	projection := server.pendingProjection()
-	items = projection.filterMedia(items)
-	ts := projection.filterTorrents(server.inv.TorrentSnapshot())
-	planningReliable := server.planningReliable(server.inv.ReliabilitySnapshot())
-	autoMode := server.inv.Config().Removal.AutoMode
-	data := storageData{
-		Devices:             server.deviceViews(items, ts, planningReliable, nil),
-		Capabilities:        server.inv.StorageCapabilities(),
-		AutoRemovalDisabled: autoMode != config.RemovalAutoConfirm && autoMode != config.RemovalAutoAuto,
-	}
-	data.Kept = keptTitles
-	for i := len(server.inv.Config().Kept) - 1; i >= 0; i-- {
-		data.Kept = append(data.Kept, server.inv.Config().Kept[i])
-	}
-	if err := renderTemplate(w, server.storageTpl, data); err != nil {
-		log.Printf("[http] render storage: %v", err)
-	}
 }
 
 type storageStatsClaim struct {
@@ -144,51 +109,6 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-type deviceSettingsData struct {
-	RepresentativePath      string
-	RootLabels              []string
-	Filesystem              string
-	Name                    string
-	TargetUsagePercent      float64
-	CriticalUsagePercent    float64
-	AutomaticRemovalEnabled bool
-}
-
-// deviceSettingsForm returns the per-device settings overlay fragment
-// (Target and Critical %, the same fields the old inline form
-// on the Storage page collected) — the wrench icon on each device's card
-// opens this, so any future per-device setting has one obvious place to
-// join instead of the card growing a new inline field every time.
-//
-// RepresentativePath is only ever one arbitrarily chosen root among
-// possibly several sharing the same physical device (see
-// inventory.StorageDevice) — showing just that bare path made it look
-// like the settings applied to one path specifically, rather than the
-// whole device. RootLabels/Filesystem let the template show the same
-// identity the Storage page card itself already does, so the modal
-// reads as "here's which device this is" instead of "here's the one
-// path affected."
-func (server *Server) deviceSettingsForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	path := r.URL.Query().Get("path")
-	cfg := server.inv.Config()
-	target, critical := cfg.ThresholdsFor(path)
-	data := deviceSettingsData{RepresentativePath: path, Name: cfg.DeviceName(path), TargetUsagePercent: target, CriticalUsagePercent: critical, AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path)}
-	for _, device := range server.inv.StorageDevices() {
-		if device.RepresentativePath == path {
-			data.RootLabels = device.RootLabels
-			data.Filesystem = device.Filesystem
-			break
-		}
-	}
-	if err := renderTemplate(w, server.deviceSettingsTpl, data); err != nil {
-		log.Printf("[http] render device-settings overlay: %v", err)
-	}
-}
-
 type cleanupPlanData struct {
 	RepresentativePath string
 	RootLabels         []string
@@ -205,8 +125,8 @@ type cleanupPlanData struct {
 
 // planForDevice rebuilds the named device's current cleanup plan fresh,
 // leaving out any action whose key is in excluded (nil/empty for the
-// normal case) — shared by cleanupPlanForm, cleanupPlanClean, and
-// cleanupPlanProtect so Clean/Protect always act against a live
+// normal case) — shared by the plan window, Clean and Protect (see
+// routes_storage.go) so Clean/Protect always act against a live
 // recomputation rather than trusting whatever was true when the modal was
 // first opened, matching every other removal path's "recompute right
 // before acting" convention.
@@ -228,12 +148,11 @@ func (server *Server) planForDevice(path string, excluded map[string]bool) (clea
 	return cleanupPlanData{RepresentativePath: path, Excluded: excludedList}, false
 }
 
-// excludedSetFrom builds the excluded-keys set cleanupPlanForm/Clean/
-// Protect all share from a request's repeated "excluded" values — the
-// same field name whether it arrives as GET query parameters (opening/
-// reopening the modal) or POST form values (Clean, which carries the
-// modal's current hidden inputs forward so it recomputes the identical
-// filtered plan the user is actually looking at).
+// excludedSetFrom builds the excluded-keys set the plan window, Clean and
+// Protect all share from a request's "excluded" values — GET query
+// parameters (opening/reopening the window) or the JSON body (Clean and
+// Protect, which carry the window's current skips forward so they
+// recompute the identical filtered plan the user is actually looking at).
 func excludedSetFrom(values []string) map[string]bool {
 	if len(values) == 0 {
 		return nil
@@ -245,66 +164,6 @@ func excludedSetFrom(values []string) map[string]bool {
 		}
 	}
 	return set
-}
-
-// cleanupPlanForm returns the per-device cleanup-plan overlay fragment — the
-// detailed per-action Torrents/Media lists used to live inline in the
-// device's card, but a device with many candidates made the card
-// uncomfortably long; the card now only shows the aggregate summary
-// ("N action(s) selected"), and this overlay (opened by the 📋 button next
-// to the device's wrench) is where the actual list lives. A repeated
-// ?excluded=<key> query value reopens the same plan with those actions
-// left out of selection — see planForDevice — used by the row-level
-// Exclude/Protect buttons to show the live replacement immediately.
-func (server *Server) cleanupPlanForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	data, _ := server.planForDevice(r.URL.Query().Get("path"), excludedSetFrom(r.URL.Query()["excluded"]))
-	if err := renderTemplate(w, server.cleanupPlanTpl, data); err != nil {
-		log.Printf("[http] render cleanup-plan overlay: %v", err)
-	}
-}
-
-// cleanupPlanClean executes the batch of cleanup-plan actions the user
-// left checked (see actionKey) — available regardless of removal.auto_mode,
-// the same standing as manually removing any single item today, just
-// batched. Deliberately does not apply Auto mode's unattended-only safety
-// gates (actionIsUnassociatedTorrent/actionIsIncompleteTorrent in
-// auto_removal.go) — those substitute for human
-// judgment during *unattended* execution; a human explicitly reviewing
-// this list and clicking Clean already is that judgment. It does still
-// apply removal.dry_run (read live inside queueCleanup's own
-// admission path) and the AutoExcludeFromImportLists config toggle, the
-// same as Auto mode.
-func (server *Server) cleanupPlanClean(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	// The plan is built again, with the rows skipped in the modal left out,
-	// and only the rows the modal showed are acted on (see shownActions):
-	// anything that changed since is left alone and reported.
-	data, found := server.planForDevice(r.FormValue("path"), excludedSetFrom(r.Form["excluded"]))
-	if !found {
-		http.Error(w, "device not found", http.StatusNotFound)
-		return
-	}
-	actions, gone := shownActions(data.Plan.Actions, r.Form["shown"])
-	errs := server.cleanActions(actions, server.inv.Config())
-	if gone > 0 {
-		errs = append(errs, fmt.Sprintf("%d item(s) changed since the plan was opened and were left alone; reopen the plan to see them", gone))
-	}
-	if len(errs) > 0 {
-		http.Error(w, strings.Join(errs, "; "), http.StatusConflict)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // shownKey identifies a plan row as it was shown: its action and every
@@ -349,140 +208,10 @@ func (server *Server) cleanActions(actions []cleanup.Action, cfg config.Config) 
 	return errs
 }
 
-// cleanupPlanProtect keeps one action's title or torrent (see
-// inventory.Keep): on the Storage page's Kept list until taken off it — an immediate,
-// independent action, unlike Clean, since it's meant to be usable one row
-// at a time while still reviewing the rest of the list.
-func (server *Server) cleanupPlanProtect(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	// Same reasoning as cleanupPlanClean: rebuild against the identical
-	// already-excluded set the modal currently shows, so the requested key
-	// is actually findable — a fresh, entirely unexcluded rebuild could
-	// have already chosen a *different* replacement candidate instead of
-	// the one this exact row (and its key) represents on screen.
-	data, found := server.planForDevice(r.FormValue("path"), excludedSetFrom(r.Form["excluded"]))
-	if !found {
-		http.Error(w, "device not found", http.StatusNotFound)
-		return
-	}
-	key := r.FormValue("key")
-	var target *cleanup.Action
-	for i := range data.Plan.Actions {
-		if cleanup.ActionKey(data.Plan.Actions[i]) == key {
-			target = &data.Plan.Actions[i]
-			break
-		}
-	}
-	if target == nil {
-		http.Error(w, "action no longer in the current plan", http.StatusConflict)
-		return
-	}
-	var err error
-	if target.Kind == cleanup.StandaloneTorrent {
-		err = server.inv.Keep(config.KeptTorrentKey(target.Torrents[0].Hash), target.Torrents[0].Name)
-	} else if target.Media.Type == model.Movie || target.Media.Type == model.Series {
-		err = server.inv.Keep(config.KeptMediaKey(string(target.Media.Type), target.Media.ServiceID, target.Media.SourceID), keptMediaName(target.Media))
-	} else {
-		http.Error(w, "unsupported action kind", http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// setDeviceThreshold saves one storage device's reclamation thresholds,
-// edited directly from the Storage page — the natural place for this once
-// a device actually exists, rather than guessing at add-service time
-// before any of its roots are even known (storage roots are discovered by
-// each service's own adapter, never entered by hand).
-func (server *Server) setDeviceThreshold(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	// shell.ts's data-background-submit always sends the body as
-	// multipart/form-data (fetch(url, {body: new FormData(form)})), never
-	// urlencoded — r.ParseForm alone never reads a multipart body, so every
-	// field would come back empty here regardless of what was actually
-	// submitted.
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	path := r.FormValue("representative_path")
-	target, err := strconv.ParseFloat(r.FormValue("target_usage_percent"), 64)
-	if err != nil {
-		http.Error(w, "target_usage_percent must be a number", http.StatusBadRequest)
-		return
-	}
-	critical, err := strconv.ParseFloat(r.FormValue("critical_usage_percent"), 64)
-	if err != nil {
-		http.Error(w, "critical_usage_percent must be a number", http.StatusBadRequest)
-		return
-	}
-	enabled := r.FormValue("enable_automatic_removal") == "on"
-	if err := server.inv.SetDeviceThreshold(path, r.FormValue("name"), target, critical, enabled); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // keptMediaName is how a kept title is listed: its title and year.
 func keptMediaName(m model.Media) string {
 	if m.Year > 0 {
 		return fmt.Sprintf("%s (%d)", m.Title, m.Year)
 	}
 	return m.Title
-}
-
-// keepPost keeps (or, with unkeep=1, takes off the Kept list) the title or
-// torrent named by key, then goes back to the page it came from.
-func (server *Server) keepPost(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	key := strings.TrimSpace(r.FormValue("key"))
-	if key == "" {
-		http.Error(w, "key is required", http.StatusBadRequest)
-		return
-	}
-	var err error
-	if r.FormValue("unkeep") == "1" {
-		err = server.inv.Unkeep(key)
-	} else {
-		err = server.inv.Keep(key, strings.TrimSpace(r.FormValue("name")))
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, localPath(r.FormValue("back"), "/storage"), http.StatusSeeOther)
-}
-
-// localPath returns back when it is a path on this site, fallback otherwise.
-// "//host" and "/\host" are refused: browsers read both as another site.
-// So is any control character or space: browsers drop tabs and line breaks
-// from an address, so "/\t/host" would be "//host".
-func localPath(back, fallback string) string {
-	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, "\\") ||
-		strings.ContainsFunc(back, func(c rune) bool { return c < 0x21 || c == 0x7f }) {
-		return fallback
-	}
-	return back
 }

@@ -140,7 +140,9 @@ type removalData struct {
 	UnmanagedPaths        []string
 	SelectedUnmanaged     []string
 	SelectionModel        string
-	OperationToken        string
+	// Selection is SelectionModel before it's encoded, for the JSON API.
+	Selection      removalSelectionModel
+	OperationToken string
 }
 
 // validateRemovalScope is the coarse server-side command boundary. Exact

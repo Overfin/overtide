@@ -1,72 +1,27 @@
 package httpui
 
 import (
-	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
-
-	"github.com/overfin/overtide/internal/inventory"
 )
 
-func TestServicesTemplateRendersServiceDetailAndRootPaths(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
+// The add-service window's up-front capability disclosure: Overfin never
+// owns removable storage, so it's offered with the other types and the
+// window explains it (frontend/src/parts/services/AddService.svelte).
+func TestAddServiceTypesIncludeOverfin(t *testing.T) {
+	found := false
+	for _, option := range addServiceFormDataFor("").Types {
+		found = found || option.Value == "overfin"
 	}
-	checked := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	data := servicesData{
-		Services: []inventory.ServiceStatus{
-			{Name: "Movies", Configured: true, OK: true, CheckedAt: checked},
-			{Name: "Overfin", Configured: true, OK: false, Message: "dial tcp: connection refused"},
-		},
-		ServiceRoots: map[string][]string{
-			"Movies": {"/data/movies", "/data/movies-4k"},
-		},
-	}
-	recorder := httptest.NewRecorder()
-	if err := renderTemplate(recorder, server.servicesTpl, data); err != nil {
-		t.Fatalf("render services template: %v", err)
-	}
-	body := recorder.Body.String()
-	for _, want := range []string{"Movies", "Connected", "Overfin", "Unavailable", "dial tcp: connection refused", "/data/movies", "/data/movies-4k", "root-icon"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("expected services output to contain %q, got:\n%s", want, body)
-		}
+	if !found {
+		t.Fatal("Overfin isn't offered")
 	}
 }
 
-// TestAddServiceTemplateDisclosesEnrichmentOnlyLimitation guards the
-// add-service overlay's up-front capability disclosure: Overfin never
-// owns removable storage, so the warning explaining that must be
-// present in the markup (client-side JS shows/hides it per the selected
-// type using the same data-service-field mechanism the credential fields
-// already rely on).
-func TestAddServiceTemplateDisclosesEnrichmentOnlyLimitation(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := httptest.NewRecorder()
-	if err := renderTemplate(recorder, server.addServiceTpl, addServiceFormDataFor("")); err != nil {
-		t.Fatalf("render add-service template: %v", err)
-	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, `data-service-field="overfin"`) || !strings.Contains(body, "never owns removable storage") {
-		t.Fatalf("expected the enrichment-only limitation warning, got:\n%s", body)
-	}
-}
-
-func TestServicesTemplateRendersEmptyState(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := httptest.NewRecorder()
-	if err := renderTemplate(recorder, server.servicesTpl, servicesData{}); err != nil {
-		t.Fatalf("render services template: %v", err)
-	}
-	if !strings.Contains(recorder.Body.String(), "No services are configured yet") {
-		t.Fatalf("expected empty-state message, got:\n%s", recorder.Body.String())
+// With nothing configured, the list is empty, not null: the page says
+// "No services are configured yet."
+func TestServicesListEmpty(t *testing.T) {
+	handler, _ := newServiceTestServer(t, nil)
+	if list := decode[servicesData](t, getPath(t, handler, "/api/services", nil)); list.Services == nil || len(list.Services) != 0 {
+		t.Fatalf("%#v", list)
 	}
 }

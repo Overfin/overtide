@@ -1,0 +1,18 @@
+/* The removal window. */
+.removal-summary { margin: .5rem 0 1rem; }
+.removal-summary .big { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.removal-section { margin-top: 1rem; }
+.removal-section h3 { margin-top: 0; }
+.removal-section h4 { margin: .6rem 0 .3rem; font-size: .9rem; }
+.removal-group, .removal-media { margin: .4rem 0; }
+.removal-group .removal-file, .removal-media .removal-group { padding-left: 1.4rem; }
+.removal-file, .removal-row { display: flex; align-items: flex-start; gap: .5rem; padding: .3rem 0; }
+.removal-row { flex-direction: column; gap: .1rem; }
+.removal-file span { min-width: 0; }
+.managed-name { overflow-wrap: anywhere; }
+.group-label { font-weight: 550; }
+.removal-storage { margin-top: 1rem; }
+.removal-storage summary { cursor: pointer; font-weight: 550; }
+.file-path { overflow-wrap: anywhere; }
+.hardlink { color: var(--warn); }
+.operation-error { margin-top: 1rem; }

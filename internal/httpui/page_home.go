@@ -2,8 +2,6 @@ package httpui
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"time"
 
 	"github.com/overfin/overtide/internal/inventory"
@@ -37,17 +35,6 @@ type homeData struct {
 	UnmanagedError       string
 	Services             []inventory.ServiceStatus
 	Stats                store.CleanupStats
-}
-
-func (server *Server) home(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	d := server.dashboardSnapshot()
-	if e := renderTemplate(w, server.homeTpl, d); e != nil {
-		log.Printf("[http] render home: %v", e)
-	}
 }
 
 func (server *Server) dashboardSnapshot() homeData {

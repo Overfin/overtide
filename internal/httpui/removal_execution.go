@@ -3,7 +3,6 @@ package httpui
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -82,9 +81,9 @@ func mapFromValues(values []string) map[string]bool {
 	return m
 }
 
-func selectedTorrentSet(r *http.Request) map[string]bool {
+func selectedTorrentQuery(query url.Values) map[string]bool {
 	m := map[string]bool{}
-	for _, h := range r.URL.Query()["torrent"] {
+	for _, h := range query["torrent"] {
 		m[strings.ToLower(strings.TrimSpace(h))] = true
 	}
 	return m
@@ -101,110 +100,77 @@ func selectedManagedSet(values []string) map[string]bool {
 	return m
 }
 
-func targetSelection(r *http.Request) bool {
-	if r.URL.Query().Get("selection") == "1" {
-		return r.URL.Query().Get("target") == "1"
+func targetQuery(query url.Values) bool {
+	if query.Get("selection") == "1" {
+		return query.Get("target") == "1"
 	}
 	return true
 }
 
-func (server *Server) removalMedia(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
-		return
+// buildRemovalFor builds a removal window's plan from its query: media
+// type, id and service_id; torrent hash and service_id; unmanaged path
+// (repeated). An explicit selection (selection=1 with managed_file,
+// torrent, target, unmanaged_path) is taken as it is.
+func (server *Server) buildRemovalFor(kind string, query url.Values) (removalData, error) {
+	switch kind {
+	case "media":
+		mediaType := model.MediaType(strings.TrimSpace(query.Get("type")))
+		id, _ := strconv.Atoi(query.Get("id"))
+		serviceID := strings.TrimSpace(query.Get("service_id"))
+		return server.buildMediaRemovalPlan(mediaType, id, serviceID, query.Get("selection") == "1", selectedManagedSet(query["managed_file"]), selectedTorrentQuery(query), selectedUnmanagedSet(query["unmanaged_path"]))
+	case "torrent":
+		return server.buildTorrentRemovalPlan(query.Get("hash"), strings.TrimSpace(query.Get("service_id")), targetQuery(query), selectedManagedSet(query["managed_file"]), selectedUnmanagedSet(query["unmanaged_path"]))
+	case "unmanaged":
+		return server.buildUnmanagedRemovalPlan(query["path"], selectedTorrentQuery(query))
 	}
-	kind := model.MediaType(strings.TrimSpace(r.URL.Query().Get("type")))
-	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
-	serviceID := strings.TrimSpace(r.URL.Query().Get("service_id"))
-	d, err := server.buildMediaRemovalPlan(kind, id, serviceID, r.URL.Query().Get("selection") == "1", selectedManagedSet(r.URL.Query()["managed_file"]), selectedTorrentSet(r), selectedUnmanagedSet(r.URL.Query()["unmanaged_path"]))
-	if err != nil {
-		http.Error(w, err.Error(), 404)
-		return
-	}
-	server.renderRemoval(w, d)
-}
-func (server *Server) removalTorrent(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
-		return
-	}
-	d, err := server.buildTorrentRemovalPlan(r.URL.Query().Get("hash"), strings.TrimSpace(r.URL.Query().Get("service_id")), targetSelection(r), selectedManagedSet(r.URL.Query()["managed_file"]), selectedUnmanagedSet(r.URL.Query()["unmanaged_path"]))
-	if err != nil {
-		http.Error(w, err.Error(), 404)
-		return
-	}
-	server.renderRemoval(w, d)
-}
-func (server *Server) removalUnmanaged(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
-		return
-	}
-	d, err := server.buildUnmanagedRemovalPlan(r.URL.Query()["path"], selectedTorrentSet(r))
-	if err != nil {
-		http.Error(w, err.Error(), 404)
-		return
-	}
-	server.renderRemoval(w, d)
+	return removalData{}, fmt.Errorf("unknown removal kind")
 }
 
-func (server *Server) executeRemoval(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
-	}
-	if server.tasks == nil {
-		http.Error(w, "durable scheduler unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	if err := parseRemovalForm(w, r); err != nil {
-		log.Printf("[removal] [operation=0] rejected reason=%q", "invalid removal request: "+err.Error())
-		http.Error(w, "Invalid removal request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	descriptor, err := server.admitRemoval(r.Form)
+// scheduleRemoval admits a removal request (its identifiers only, checked
+// against Overtide's published state) and hands it to the scheduler, which
+// rebuilds and authorizes the plan from current topology inside its
+// exclusive execution boundary. It answers the operation, or the status and
+// text to refuse the request with (empty once accepted). A request whose operation token was
+// already accepted answers that operation again.
+func (server *Server) scheduleRemoval(form url.Values) (int64, bool, int, string) {
+	descriptor, err := server.admitRemoval(form)
 	if err != nil {
-		auditRemovalRejected(0, r.Form, err)
-		http.Error(w, "Removal request is no longer valid: "+err.Error(), http.StatusConflict)
-		return
+		auditRemovalRejected(0, form, err)
+		return 0, false, http.StatusConflict, "Removal request is no longer valid: " + err.Error()
 	}
 	database := server.inv.Store()
 	if database == nil {
-		auditRemovalRejected(0, r.Form, fmt.Errorf("durable operation history unavailable"))
-		http.Error(w, "Removal cannot start without durable operation history", http.StatusServiceUnavailable)
-		return
+		auditRemovalRejected(0, form, fmt.Errorf("durable operation history unavailable"))
+		return 0, false, http.StatusServiceUnavailable, "Removal cannot start without durable operation history"
 	}
 	server.admissionMu.Lock()
 	defer server.admissionMu.Unlock()
-	operationToken := strings.TrimSpace(r.Form.Get("operation_token"))
+	operationToken := strings.TrimSpace(form.Get("operation_token"))
 	if operationToken != "" {
 		if existing, found := existingRemovalByToken(database, operationToken); found {
-			server.writeRemovalAccepted(w, existing.ID, existing.DryRun)
-			return
+			return existing.ID, existing.DryRun, 0, ""
 		}
 	}
-	command := scheduledRemovalCommand{Form: cloneForm(r.Form), DryRun: descriptor.DryRun}
+	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun}
 	queuedPayload, _ := json.Marshal(queuedRemovalPayload{Command: command})
 	historyID, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "queued", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, ServiceName: descriptor.ServiceName, Payload: queuedPayload})
 	if err != nil {
-		auditRemovalRejected(0, r.Form, fmt.Errorf("record operation before scheduling: %w", err))
-		http.Error(w, "Removal could not be recorded before scheduling: "+err.Error(), http.StatusServiceUnavailable)
-		return
+		auditRemovalRejected(0, form, fmt.Errorf("record operation before scheduling: %w", err))
+		return 0, false, http.StatusServiceUnavailable, "Removal could not be recorded before scheduling: " + err.Error()
 	}
 	command.HistoryID = historyID
 	payload, _ := json.Marshal(command)
 	_, err = server.tasks.Submit(tasks.Request{TaskID: removalTaskID, Kind: tasks.TriggerEvent, Priority: tasks.PriorityMutation, Durable: true, CoalescingKey: fmt.Sprintf("operation:%d", historyID), Cause: descriptor.Label, Payload: payload})
 	if err != nil {
-		auditRemovalRejected(historyID, r.Form, fmt.Errorf("scheduler rejected removal: %w", err))
+		auditRemovalRejected(historyID, form, fmt.Errorf("scheduler rejected removal: %w", err))
 		if historyErr := database.UpdateHistoryEvent(store.HistoryEvent{ID: historyID, EventType: "removal", Status: "failed", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, Payload: queuedPayload, Error: "scheduler rejected removal: " + err.Error()}); historyErr != nil {
 			log.Printf("[removal] mark operation %d failed in the history: %v", historyID, historyErr)
 		}
 		server.publishUIChange("removal-failed")
-		http.Error(w, "Removal could not be scheduled: "+err.Error(), http.StatusServiceUnavailable)
-		return
+		return 0, false, http.StatusServiceUnavailable, "Removal could not be scheduled: " + err.Error()
 	}
 	server.publishUIChange("mutation-accepted")
-	server.writeRemovalAccepted(w, historyID, descriptor.DryRun)
+	return historyID, descriptor.DryRun, 0, ""
 }
 
 type removalAdmission struct {
@@ -326,16 +292,6 @@ func (server *Server) writeRemovalAccepted(response http.ResponseWriter, history
 	response.Header().Set("Location", fmt.Sprintf("/history#operation-%d", historyID))
 	response.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(response).Encode(map[string]any{"operationId": historyID, "status": "queued", "dryRun": dryRun})
-}
-
-const maximumRemovalFormBytes = 2 << 20
-
-func parseRemovalForm(response http.ResponseWriter, request *http.Request) error {
-	request.Body = http.MaxBytesReader(response, request.Body, maximumRemovalFormBytes)
-	if err := request.ParseMultipartForm(maximumRemovalFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		return err
-	}
-	return nil
 }
 
 func cloneForm(source url.Values) url.Values {

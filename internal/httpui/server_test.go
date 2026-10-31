@@ -1,12 +1,10 @@
 package httpui
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,49 +23,13 @@ import (
 	"github.com/overfin/overtide/internal/tasks"
 )
 
-// loginForTest drives a server's real first-run setup flow (POST /setup)
-// to create an admin account and returns the session cookie it issues, so
-// a Handler()-level test exercising a server backed by a real store (which
-// authGate now requires a session for) can act as a signed-in browser.
+// loginForTest makes the admin account through the real first-run setup
+// (POST /api/setup) and returns the session it issues, so a
+// Handler()-level test on a server backed by a real store (which authGate
+// requires a session for) can act as a signed-in browser.
 func loginForTest(t *testing.T, handler http.Handler) *http.Cookie {
 	t.Helper()
-	form := url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}, "confirm": {"correct-horse-battery"}}
-	request := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther {
-		t.Fatalf("test setup login failed: status=%d body=%q", response.Code, response.Body.String())
-	}
-	for _, cookie := range response.Result().Cookies() {
-		if cookie.Name == sessionCookieName {
-			return cookie
-		}
-	}
-	t.Fatal("test setup login did not issue a session cookie")
-	return nil
-}
-
-func TestRemovalSubmissionParsesBrowserMultipartForm(t *testing.T) {
-	var body bytes.Buffer
-	formWriter := multipart.NewWriter(&body)
-	for field, value := range map[string]string{"kind": "media", "media_type": "movie", "media_id": "42", "managed_file": "radarr:9"} {
-		if err := formWriter.WriteField(field, value); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := formWriter.Close(); err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "http://overtide.local/removal/execute", &body)
-	request.Header.Set("Content-Type", formWriter.FormDataContentType())
-	response := httptest.NewRecorder()
-	if err := parseRemovalForm(response, request); err != nil {
-		t.Fatal(err)
-	}
-	if request.Form.Get("kind") != "media" || request.Form.Get("media_id") != "42" || request.Form.Get("managed_file") != "radarr:9" {
-		t.Fatalf("multipart removal form was not preserved: %#v", request.Form)
-	}
+	return setUp(t, handler)
 }
 
 func TestTorrentRemovalRejectsInjectedLibraryPath(t *testing.T) {
@@ -147,66 +109,6 @@ func TestUnmanagedRemovalScopeRequiresAtLeastOnePath(t *testing.T) {
 	}
 }
 
-// TestRemovalUnmanagedHandlerIsLive confirms the GET overlay handler is no
-// longer the hardcoded 403 stub it was while this feature was disabled —
-// it now actually calls buildUnmanagedRemovalPlan. A path unknown to this
-// minimal server still fails (nothing is genuinely unmanaged here), but
-// that failure must come from real plan-building, not a blanket rejection.
-func TestRemovalUnmanagedHandlerIsLive(t *testing.T) {
-	server, err := New(inventory.New(config.Config{}, nil), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	server.removalUnmanaged(response, httptest.NewRequest(http.MethodGet, "/removal/unmanaged?path=/data/file", nil))
-	if response.Code == http.StatusForbidden {
-		t.Fatalf("removalUnmanaged is still hardcoded to reject: status=%d body=%q", response.Code, response.Body.String())
-	}
-}
-
-func TestUnmanagedPageExposesRemovalControls(t *testing.T) {
-	content, err := uiFiles.ReadFile("templates/unmanaged.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, required := range []string{"/removal/unmanaged", "unmanagedPick", "unmanagedRemoveButton", "unmanagedAll", `name="path"`, "class=trash", "unmanagedRemovalURL"} {
-		if !bytes.Contains(content, []byte(required)) {
-			t.Fatalf("Unmanaged page missing removal control %q", required)
-		}
-	}
-	for _, required := range []string{"Unmanaged files", "No current service claims these paths"} {
-		if !bytes.Contains(content, []byte(required)) {
-			t.Fatalf("Unmanaged explanation missing %q", required)
-		}
-	}
-}
-
-// TestUnmanagedRemovalURLIncludesEveryHardlinkedPath guards the per-row
-// trash icon: it must target every path in the group, not just the first,
-// so a single-click removal reclaims the same space the bulk
-// checkbox-select flow does rather than leaving a dangling hardlink.
-func TestUnmanagedRemovalURLIncludesEveryHardlinkedPath(t *testing.T) {
-	group := unmanagedFileGroup{Paths: []model.UnmanagedFile{{Path: "/data/a/file.mkv"}, {Path: "/data/b/file.mkv"}}}
-	got := unmanagedRemovalURL(group)
-	parsed, err := url.Parse(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths := parsed.Query()["path"]
-	if len(paths) != 2 || !containsString(paths, "/data/a/file.mkv") || !containsString(paths, "/data/b/file.mkv") {
-		t.Fatalf("expected both hardlinked paths in the removal URL, got %q -> %v", got, paths)
-	}
-}
-
-func containsString(values []string, want string) bool {
-	for _, v := range values {
-		if v == want {
-			return true
-		}
-	}
-	return false
-}
-
 func TestCrossOriginWriteIsRejected(t *testing.T) {
 	h := sameOriginWrites(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	r := httptest.NewRequest(http.MethodPost, "http://overtide.local/removal/execute", nil)
@@ -258,53 +160,6 @@ func TestStorageGuidanceExplainsBlockingAssociatedTorrent(t *testing.T) {
 	}
 }
 
-func TestRemovalTemplateUsesFilenamesAndRelationshipGroups(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := removalData{
-		Plan: removal.RemovalPlan{Kind: removal.MediaObject, RequestedLabel: "Movie", ReclaimableBytes: 1024},
-		FileGroups: []removalPhysicalFileGroup{{Key: "1:2", SizeBytes: 1024, Selectable: true, Selected: true, DisplayPaths: []removalDisplayPath{
-			{Label: "Radarr", Path: "/data/Films/actual-file.mkv", Text: "/actual-file.mkv", ActionLabel: "Remove managed file", Selectable: true, Selected: true},
-			{Label: "qBittorrent", Path: "/data/downloads/actual-file.mkv", Text: "/actual-file.mkv", ActionLabel: "Remove torrent and its complete data set", Selectable: true, Selected: true},
-		}}},
-		ManagedFileCount: 1, ManagedSectionLabel: "Movie files", SelectedActions: 1,
-		ManagedGroups: []managedRemovalGroup{{Label: "Files", Files: []managedRemovalFile{{
-			Ref: model.MediaFileRef{Source: "radarr", SourceFileID: 9}, File: model.File{SizeBytes: 1024},
-			Selected: true, Filename: "actual-file.mkv", Label: "actual-file.mkv", PhysicalKey: "1:2",
-		}}}},
-		Related: []relatedRemovalTorrent{{Torrent: model.Torrent{Hash: "abc", Name: "Current Release", AssociationStatus: model.TorrentCurrent}, Selected: true, Selectable: true}},
-		RelatedGroups: []relatedRemovalTorrentGroup{
-			{Label: "Current", Torrents: []relatedRemovalTorrent{{Torrent: model.Torrent{Hash: "abc", Name: "Current Release", AssociationStatus: model.TorrentCurrent}, Selected: true, Selectable: true, PhysicallyBacks: true, FileCount: 1}}},
-			{Label: "Superseded", Torrents: []relatedRemovalTorrent{{Torrent: model.Torrent{Hash: "old", Name: "Old Release", AssociationStatus: model.TorrentSuperseded}, Selectable: true, FileCount: 1}}},
-		},
-		RelatedTorrentCount: 2, SelectedTorrentCount: 1, PreservedTorrentCount: 1,
-		MediaType: string(model.Movie), MediaID: 1,
-	}
-	var output bytes.Buffer
-	if err := server.removalTpl.Execute(&output, data); err != nil {
-		t.Fatal(err)
-	}
-	html := output.String()
-	for _, expected := range []string{"Movie files", "actual-file.mkv", "Media torrents · 2", "1 selected for removal · 1 preserved", "physically backs this media", "superseded by a later import", "Files and storage", "Remove selected", "data-removal-consequences", "data-removal-storage"} {
-		if !bytes.Contains(output.Bytes(), []byte(expected)) {
-			t.Fatalf("removal template does not contain %q: %s", expected, html)
-		}
-	}
-	if bytes.Contains(output.Bytes(), []byte("Associated torrents")) || bytes.Contains(output.Bytes(), []byte("freed if fully removed")) {
-		t.Fatalf("obsolete removal wording remains: %s", html)
-	}
-	for _, name := range []string{"Current Release", "Old Release"} {
-		if bytes.Count(output.Bytes(), []byte(name)) != 1 {
-			t.Fatalf("torrent %q must appear exactly once: %s", name, html)
-		}
-	}
-	if bytes.Contains(output.Bytes(), []byte("Unassociated")) {
-		t.Fatalf("media removal must not show unassociated torrents: %s", html)
-	}
-}
-
 func selectedTorrent(torrents []relatedRemovalTorrent, hash string) bool {
 	for _, torrent := range torrents {
 		if torrent.Torrent.Hash == hash {
@@ -312,116 +167,6 @@ func selectedTorrent(torrents []relatedRemovalTorrent, hash string) bool {
 		}
 	}
 	return false
-}
-
-func TestTorrentRemovalDisclosesButCannotSelectRelatedLibraryPath(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := removalData{
-		Plan: removal.RemovalPlan{Kind: removal.TorrentObject, RequestedLabel: "Afterburn", Files: []removal.FileState{
-			{Path: "/data/downloads/complete/Afterburn.mkv", Owner: removal.TorrentOwner},
-			{Path: "/data/Films/Afterburn (2025)/Afterburn.mkv", Owner: removal.UnmanagedOwner},
-		}},
-		TorrentTarget: true, TorrentSelected: true, SelectedActions: 1, Hash: "abc",
-		RelatedUnmanaged: []relatedUnmanagedFile{{Path: "/data/Films/Afterburn (2025)/Afterburn.mkv", SizeBytes: 10}},
-		FileGroups:       []removalPhysicalFileGroup{{Paths: []string{"/data/downloads/complete/Afterburn.mkv", "/data/Films/Afterburn (2025)/Afterburn.mkv"}}},
-	}
-	var output bytes.Buffer
-	if err := server.removalTpl.Execute(&output, data); err != nil {
-		t.Fatal(err)
-	}
-	html := output.String()
-	for _, expected := range []string{"Preserved related library paths", "Removing the torrent does not remove them", "1 physical file · 2 paths"} {
-		if !bytes.Contains(output.Bytes(), []byte(expected)) {
-			t.Fatalf("torrent removal disclosure missing %q: %s", expected, html)
-		}
-	}
-	if bytes.Contains(output.Bytes(), []byte(`name="unmanaged_path"`)) || bytes.Contains(output.Bytes(), []byte(`name="managed_file"`)) {
-		t.Fatalf("torrent removal exposed a cross-owner action: %s", html)
-	}
-}
-
-// TestTorrentRemovalDisclosesHardlinkedMediaButCannotSelectIt guards a real
-// gap: removing a torrent that's hardlinked to a service-owned library file
-// (not just an Unmanaged one) frees no space at all until that file is also
-// removed — but the removal plan must never let a torrent-kind submission
-// mutate a media-owned file directly (validateRemovalScope forbids
-// "managed_file" for kind "torrent", since owned objects are only ever
-// manipulated through their own service). The torrent removal view must
-// disclose the hardlink and point at the media, without offering a
-// checkbox that would just get rejected at admission.
-func TestTorrentRemovalDisclosesHardlinkedMediaButCannotSelectIt(t *testing.T) {
-	server, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := removalData{
-		Plan:          removal.RemovalPlan{Kind: removal.TorrentObject, RequestedLabel: "Afterburn", Files: []removal.FileState{{Path: "/data/downloads/complete/Afterburn.mkv", Owner: removal.TorrentOwner}}},
-		TorrentTarget: true, TorrentSelected: true, SelectedActions: 1, Hash: "abc",
-		RelatedManaged: []relatedManagedMedia{{Media: model.MediaRef{Type: model.Movie, ServiceID: "radarr-1", SourceID: 42, Title: "Afterburn", Year: 2025}, FileCount: 1}},
-		FileGroups:     []removalPhysicalFileGroup{{Paths: []string{"/data/downloads/complete/Afterburn.mkv"}}},
-	}
-	var output bytes.Buffer
-	if err := server.removalTpl.Execute(&output, data); err != nil {
-		t.Fatal(err)
-	}
-	html := output.String()
-	for _, expected := range []string{"Hardlinked library files", "will not free this space", "Afterburn (2025)", "/library/movie/42?service_id=radarr-1"} {
-		if !bytes.Contains(output.Bytes(), []byte(expected)) {
-			t.Fatalf("torrent removal missing hardlinked-media disclosure %q: %s", expected, html)
-		}
-	}
-	if bytes.Contains(output.Bytes(), []byte(`name="managed_file"`)) {
-		t.Fatalf("torrent removal exposed a cross-owner managed_file action: %s", html)
-	}
-}
-
-func TestRemovalSelectionCalculationIsLocal(t *testing.T) {
-	script, err := uiFiles.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"selectionChanged(event)", "this.calculate()", "selectedActionKeys()", "syncExecutionInputs(actions)", "actionSelections", "setControlSelection", "[data-physical-pick]"} {
-		if !bytes.Contains(script, []byte(expected)) {
-			t.Fatalf("local removal calculator does not contain %q", expected)
-		}
-	}
-	selectionStart := bytes.Index(script, []byte("selectionChanged(event)"))
-	selectionEnd := bytes.Index(script[selectionStart:], []byte("updateGroupStates()"))
-	if selectionStart < 0 || selectionEnd < 0 || bytes.Contains(script[selectionStart:selectionStart+selectionEnd], []byte("fetch(")) {
-		t.Fatal("selection changes must never make a network request")
-	}
-}
-
-func TestLibraryTemplateRenders(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := libraryData{
-		Rows: []mediaRow{{Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test", Year: 2026, RetentionValue: 12.5, SizeBytes: 1024}}},
-		Page: 1, PageSize: 50, TotalPages: 1, TotalItems: 1, Sort: "title", Order: "asc", HasMediaLibrary: true,
-		SortURLs:  map[string]string{"value": "/library", "title": "/library", "type": "/library", "size": "/library", "torrents": "/library"},
-		SizeLinks: []navLink{{Value: 25, URL: "/library"}, {Value: 50, URL: "/library"}, {Value: 100, URL: "/library"}, {Value: 250, URL: "/library"}},
-	}
-	var b bytes.Buffer
-	if err := s.libraryTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTorrentTemplateRendersPaged(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := torrentData{Torrents: []model.Torrent{{Hash: "abc", Name: "Torrent", AssociationStatus: "ASSOCIATED"}}, TotalItems: 1, Page: 1, PageSize: 50, TotalPages: 1, Sort: "status", Order: "asc", HasTorrentClient: true, SortURLs: map[string]string{"status": "/torrents", "name": "/torrents", "media": "/torrents", "state": "/torrents", "size": "/torrents", "ratio": "/torrents", "upload": "/torrents", "seeds": "/torrents", "leechers": "/torrents", "activity": "/torrents"}, SizeLinks: []navLink{{Value: 50, URL: "/torrents"}}}
-	var b bytes.Buffer
-	if err := s.torrentTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestFilterMedia(t *testing.T) {
@@ -488,21 +233,6 @@ func TestFilterMediaHidesNoFileMediaByDefault(t *testing.T) {
 	}
 }
 
-func TestTasksTemplateRenders(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := tasksData{Groups: []taskGroup{{Name: "Library & Storage", Tasks: []tasks.Status{{
-		ID: "inventory", Name: "Inventory refresh", Description: "Refresh state",
-		Interval: time.Hour, LastDuration: 1500 * time.Millisecond, NextRun: time.Now().Add(time.Hour),
-	}}}}}
-	var b bytes.Buffer
-	if err := s.tasksTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestTaskGroupsHidesUnconfiguredServices(t *testing.T) {
 	all := []tasks.Status{
 		{ID: "inventory", Name: "Base inventory"},
@@ -550,105 +280,6 @@ func TestGroupMediaTorrents(t *testing.T) {
 	}
 	if len(unassociated) != 1 || unassociated[0].Hash != "u1" {
 		t.Fatalf("unexpected unassociated torrents: %#v", unassociated)
-	}
-}
-
-func TestProfileTemplateShowsTorrentNamesAndGroups(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := struct {
-		Media        model.Media
-		Rank         int
-		Total        int
-		Updated      time.Time
-		LastErr      error
-		Refreshing   bool
-		Current      []model.Torrent
-		Superseded   []model.Torrent
-		Orphaned     []model.Torrent
-		Unassociated []model.Torrent
-		Files        []model.File
-		FileCount    int
-		FilesUpdated time.Time
-		FilesErr     error
-		KeptKey      string
-		Kept         bool
-		Ignored      bool
-	}{
-		Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}, Total: 1,
-		Current:    []model.Torrent{{Hash: "a", Name: "Current.Release", AssociationStatus: "ASSOCIATED"}},
-		Superseded: []model.Torrent{{Hash: "b", Name: "Old.Release", AssociationStatus: "SUPERSEDED"}},
-	}
-	var b bytes.Buffer
-	if err := s.profileTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
-	out := b.String()
-	for _, want := range []string{"Current.Release", "Old.Release", "Superseded"} {
-		if !bytes.Contains([]byte(out), []byte(want)) {
-			t.Fatalf("profile missing %q", want)
-		}
-	}
-}
-
-func TestTorrentTemplateShowsHistoricalMediaForSupersededTorrent(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := torrentData{
-		Torrents:   []model.Torrent{{Hash: "old", Name: "Old.Release", AssociationStatus: "SUPERSEDED", FormerMediaItems: []model.MediaRef{{Type: model.Movie, SourceID: 42, Title: "Example", Year: 2025}}}},
-		TotalItems: 1, Page: 1, PageSize: 50, TotalPages: 1, Sort: "status", Order: "asc", HasTorrentClient: true,
-		SortURLs:  map[string]string{"status": "/torrents", "name": "/torrents", "media": "/torrents", "state": "/torrents", "size": "/torrents", "reclaimable": "/torrents", "ratio": "/torrents", "upload": "/torrents", "seeds": "/torrents", "leechers": "/torrents", "activity": "/torrents"},
-		SizeLinks: []navLink{{Value: 50, URL: "/torrents"}},
-	}
-	var b bytes.Buffer
-	if err := s.torrentTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
-	out := b.String()
-	if !bytes.Contains([]byte(out), []byte("Example")) || !bytes.Contains([]byte(out), []byte("historical")) {
-		t.Fatalf("superseded torrent should expose its historical media relationship: %s", out)
-	}
-}
-
-func TestProfileTemplateRendersFileTopology(t *testing.T) {
-	s, err := New(nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := struct {
-		Media                                       model.Media
-		Rank, Total                                 int
-		Updated                                     time.Time
-		LastErr                                     error
-		Refreshing                                  bool
-		Current, Superseded, Orphaned, Unassociated []model.Torrent
-		Files                                       []inventory.FileView
-		FileCount                                   int
-		FilesUpdated                                time.Time
-		FilesErr                                    error
-		KeptKey                                     string
-		Kept                                        bool
-		Ignored                                     bool
-		RemoveMedia                                 inventory.RemovalEstimate
-		RemoveWithCurrent                           inventory.RemovalEstimate
-	}{
-		Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test"}, Total: 1,
-		Files:     []inventory.FileView{{File: model.File{Path: "/media/a.mkv", SizeBytes: 100, Exists: true, IdentityKnown: true, Links: 2}, SharedWith: []inventory.FilePeer{{Path: "/downloads/a.mkv", Torrents: []inventory.TorrentFileOwner{{Hash: "abc", Name: "Release"}}}}}},
-		FileCount: 1, FilesUpdated: time.Now(), RemoveMedia: inventory.RemovalEstimate{Known: true, SharedBytes: 100, Files: 1}, RemoveWithCurrent: inventory.RemovalEstimate{Known: true, ReclaimableBytes: 100, Files: 2},
-	}
-	var b bytes.Buffer
-	if err := s.profileTpl.Execute(&b, data); err != nil {
-		t.Fatal(err)
-	}
-	out := b.String()
-	for _, want := range []string{"hardlinked · 2 paths / 1 physical file", "/media/a.mkv", "/downloads/a.mkv", "Removing media frees <strong>0.0 B</strong>", "Removing media and current torrents frees <strong>100.0 B</strong>"} {
-		if !bytes.Contains([]byte(out), []byte(want)) {
-			t.Fatalf("profile missing %q: %s", want, out)
-		}
 	}
 }
 
@@ -961,151 +592,6 @@ func TestGroupRemovalFilesReportsMissingHardlinks(t *testing.T) {
 	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.TorrentObject, RequestedKey: "abc", Files: states}, inventoryFiles)
 	if len(groups) != 1 || groups[0].MissingLinks != 1 {
 		t.Fatalf("expected one missing hardlink, got %+v", groups)
-	}
-}
-
-// TestUnmanagedListingDoesNotDesyncHardlinkCountWhenOnePathIsPending guards
-// against a real bug: the listing page used to filter out any individual
-// path with a pending removal operation before grouping by device/inode.
-// For a hardlinked file, that hid one of the two known paths while Links
-// (read from the filesystem's real nlink) still said 2, producing a false
-// "1 hardlink outside known topology" even though both real paths were
-// intact. The fix hides the whole group instead of desyncing Links from its
-// remaining Paths.
-func TestUnmanagedListingDoesNotDesyncHardlinkCountWhenOnePathIsPending(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	pathA := "/mnt/media/Series/show/episode.mkv"
-	pathB := "/mnt/media/downloads/complete/show/episode.mkv"
-	unmanaged := []model.UnmanagedFile{
-		{Path: pathA, SizeBytes: 100, Device: 7, Inode: 99, Links: 2, ReclaimableKnown: true},
-		{Path: pathB, SizeBytes: 100, Device: 7, Inode: 99, Links: 2, ReclaimableKnown: true},
-	}
-	if err := database.PublishReconciliation(1, nil, nil, nil, unmanaged, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	form := url.Values{"kind": {"unmanaged"}, "path": {pathA}}
-	queuedPayload, err := json.Marshal(queuedRemovalPayload{Command: scheduledRemovalCommand{Form: form}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "started", RequestedKind: "unmanaged", Payload: queuedPayload}); err != nil {
-		t.Fatal(err)
-	}
-	server, err := New(inventory.New(config.Config{}, database), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	server.unmanagedDownloads(response, httptest.NewRequest(http.MethodGet, "/unmanaged", nil))
-	if bytes.Contains(response.Body.Bytes(), []byte("outside known topology")) {
-		t.Fatalf("listing reported a false missing hardlink while a sibling path removal was pending:\n%s", response.Body.String())
-	}
-}
-
-func TestUnmanagedStatusFilterNarrowsToReclaimableOrSharedOrUnknown(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	unmanaged := []model.UnmanagedFile{
-		{Path: "/mnt/media/reclaimable-one.mkv", SizeBytes: 100, Device: 1, Inode: 1, Links: 1, ReclaimableKnown: true},
-		// Links=2 but only one path is known to this unmanaged scan — the
-		// other hardlink is presumably still held by a managed claim
-		// elsewhere, so this group is "still shared," not fully reclaimable.
-		{Path: "/mnt/media/shared-one.mkv", SizeBytes: 100, Device: 2, Inode: 2, Links: 2, ReclaimableKnown: true},
-		{Path: "/mnt/media/unknown-one.mkv", SizeBytes: 100, Device: 3, Inode: 3, Links: 1, ReclaimableKnown: false},
-	}
-	if err := database.PublishReconciliation(1, nil, nil, nil, unmanaged, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	server, err := New(inventory.New(config.Config{}, database), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		status   string
-		want     string
-		dontWant []string
-	}{
-		{"reclaimable", "reclaimable-one.mkv", []string{"shared-one.mkv", "unknown-one.mkv"}},
-		{"shared", "shared-one.mkv", []string{"reclaimable-one.mkv", "unknown-one.mkv"}},
-		{"unknown", "unknown-one.mkv", []string{"reclaimable-one.mkv", "shared-one.mkv"}},
-	} {
-		response := httptest.NewRecorder()
-		server.unmanagedDownloads(response, httptest.NewRequest(http.MethodGet, "/unmanaged?status="+tc.status, nil))
-		body := response.Body.String()
-		if !strings.Contains(body, tc.want) {
-			t.Fatalf("status=%s: expected %q in body, got:\n%s", tc.status, tc.want, body)
-		}
-		for _, absent := range tc.dontWant {
-			if strings.Contains(body, absent) {
-				t.Fatalf("status=%s: expected %q absent from body, got:\n%s", tc.status, absent, body)
-			}
-		}
-	}
-}
-
-func TestUnmanagedRootFilterNarrowsToSelectedRoot(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	unmanaged := []model.UnmanagedFile{
-		{Path: "/mnt/movies/leftover.mkv", SizeBytes: 100, Device: 1, Inode: 1, Links: 1, ReclaimableKnown: true,
-			StorageContexts: []model.StorageContext{{ServiceName: "Radarr", Root: "/mnt/movies", RootLabel: "movies"}}},
-		{Path: "/mnt/series/leftover.mkv", SizeBytes: 100, Device: 2, Inode: 2, Links: 1, ReclaimableKnown: true,
-			StorageContexts: []model.StorageContext{{ServiceName: "Sonarr", Root: "/mnt/series", RootLabel: "series"}}},
-	}
-	if err := database.PublishReconciliation(1, nil, nil, nil, unmanaged, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	server, err := New(inventory.New(config.Config{}, database), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	server.unmanagedDownloads(response, httptest.NewRequest(http.MethodGet, "/unmanaged?root="+url.QueryEscape("Radarr|/mnt/movies"), nil))
-	body := response.Body.String()
-	if !strings.Contains(body, "leftover.mkv") || !strings.Contains(body, "movies") {
-		t.Fatalf("expected the Radarr-root file present, got:\n%s", body)
-	}
-	if strings.Contains(body, "/mnt/series/leftover.mkv") {
-		t.Fatalf("expected the Sonarr-root file excluded, got:\n%s", body)
-	}
-}
-
-func TestUnmanagedMinSizeFilterExcludesSmallerFiles(t *testing.T) {
-	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	const mib = 1024 * 1024
-	unmanaged := []model.UnmanagedFile{
-		{Path: "/mnt/media/small.mkv", SizeBytes: 1 * mib, Device: 1, Inode: 1, Links: 1, ReclaimableKnown: true},
-		{Path: "/mnt/media/large.mkv", SizeBytes: 500 * mib, Device: 2, Inode: 2, Links: 1, ReclaimableKnown: true},
-	}
-	if err := database.PublishReconciliation(1, nil, nil, nil, unmanaged, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	server, err := New(inventory.New(config.Config{}, database), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	server.unmanagedDownloads(response, httptest.NewRequest(http.MethodGet, "/unmanaged?min_size_mib=100", nil))
-	body := response.Body.String()
-	if !strings.Contains(body, "large.mkv") {
-		t.Fatalf("expected the large file present, got:\n%s", body)
-	}
-	if strings.Contains(body, "small.mkv") {
-		t.Fatalf("expected the small file excluded, got:\n%s", body)
 	}
 }
 

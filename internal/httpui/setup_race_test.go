@@ -3,7 +3,6 @@ package httpui
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"sync"
 	"testing"
 )
@@ -20,7 +19,7 @@ func TestSetupMakesOneAccountWhenSentAtOnce(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			password := fmt.Sprintf("password-number-%02d", i)
-			response := postForm(t, handler, "/setup", url.Values{"username": {"admin"}, "password": {password}, "confirm": {password}}, nil)
+			response := post(t, handler, "/api/setup", credentials{Username: "admin", Password: password, Confirm: password}, nil)
 			if sessionCookieFrom(response) != nil {
 				mu.Lock()
 				signedIn = append(signedIn, password)
@@ -32,8 +31,8 @@ func TestSetupMakesOneAccountWhenSentAtOnce(t *testing.T) {
 	if len(signedIn) != 1 {
 		t.Fatalf("%d setups signed in: %v", len(signedIn), signedIn)
 	}
-	response := postForm(t, handler, "/login", url.Values{"username": {"admin"}, "password": {signedIn[0]}}, nil)
-	if response.Code != http.StatusSeeOther || sessionCookieFrom(response) == nil {
+	response := login(t, handler, "admin", signedIn[0])
+	if response.Code != http.StatusOK || sessionCookieFrom(response) == nil {
 		t.Fatalf("the signed-in setup's password doesn't sign in: %d", response.Code)
 	}
 }

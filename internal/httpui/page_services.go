@@ -1,14 +1,12 @@
 package httpui
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/config"
-	"github.com/overfin/overtide/internal/inventory"
 )
 
 // consistencyWorkflowInstanceID identifies the single global workflow
@@ -16,12 +14,8 @@ import (
 // scheduleServiceConsistency) — the "inventory" step fetches from every
 // configured service in one pass, not just whichever one triggered it, so
 // there's exactly one instance to watch regardless of which service the
-// step-3 progress view was opened for.
+// progress window was opened for.
 const consistencyWorkflowInstanceID = "inventory-and-files-consistency:global"
-
-// maximumAddServiceFormBytes bounds the add-service form body the
-// same way maximumRemovalFormBytes bounds removal forms.
-const maximumAddServiceFormBytes = 2 << 20
 
 // scheduleServiceConsistency runs the same inventory-then-files chain a
 // removal triggers, so adding/editing/removing a service discovers its
@@ -39,14 +33,10 @@ func (server *Server) scheduleServiceConsistency(cause string) {
 	}
 }
 
-type servicesData struct {
-	Services     []inventory.ServiceStatus
-	ServiceRoots map[string][]string
-}
-
-// serviceTypeOption is one entry in the Add-service overlay's Type select.
+// serviceTypeOption is one entry in the Add-service window's Type select.
 type serviceTypeOption struct {
-	Value, Label string
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 // allServiceTypes is every adapter Overtide currently supports, in the
@@ -60,14 +50,14 @@ var allServiceTypes = []serviceTypeOption{
 }
 
 // serviceCategory groups adapter types by the role they fill, purely for
-// presentation — it's never persisted. Opening the overlay from a
+// presentation — it's never persisted. Opening the window from a
 // category-specific empty state (Torrents, Library) narrows the Type
 // select to just that category's adapters and changes the heading, so a
 // future Transmission/Deluge or Lidarr/Readarr adapter only ever needs
-// adding to the relevant category's Types list here, not a new overlay.
+// adding to the relevant category's Types list here, not a new window.
 type serviceCategory struct {
-	Title string
-	Types []serviceTypeOption
+	Title string              `json:"title"`
+	Types []serviceTypeOption `json:"types"`
 }
 
 var serviceCategories = map[string]serviceCategory{
@@ -80,231 +70,181 @@ var serviceCategories = map[string]serviceCategory{
 	}},
 }
 
-type addServiceFormData struct {
-	Title string
-	Types []serviceTypeOption
-}
-
-func addServiceFormDataFor(category string) addServiceFormData {
+func addServiceFormDataFor(category string) serviceCategory {
 	if found, ok := serviceCategories[category]; ok {
-		return addServiceFormData(found)
+		return found
 	}
-	return addServiceFormData{Title: "Add service", Types: allServiceTypes}
+	return serviceCategory{Title: "Add service", Types: allServiceTypes}
 }
 
-func (server *Server) servicesPage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/services" {
-		http.NotFound(w, r)
-		return
-	}
-	data := servicesData{ServiceRoots: server.inv.ServiceRootPaths()}
+// serviceRow is a configured service as the Services page lists it.
+type serviceRow struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	OK        bool      `json:"ok"`
+	Message   string    `json:"message,omitempty"`
+	CheckedAt time.Time `json:"checkedAt,omitzero"`
+	// Roots are the storage paths the service's own adapter reported.
+	Roots []string `json:"roots"`
+}
+
+type servicesData struct {
+	Services []serviceRow `json:"services"`
+}
+
+// servicesList answers GET /api/services: the configured services, whether
+// Overtide can reach them, and their storage roots.
+func (server *Server) servicesList(w http.ResponseWriter, r *http.Request) {
+	data := servicesData{Services: []serviceRow{}}
+	roots := server.inv.ServiceRootPaths()
 	for _, svc := range server.inv.StatusSnapshot() {
-		if svc.Configured {
-			data.Services = append(data.Services, svc)
+		if !svc.Configured {
+			continue
 		}
+		row := serviceRow{ID: svc.ID, Name: svc.Name, OK: svc.OK, Message: svc.Message, CheckedAt: svc.CheckedAt, Roots: roots[svc.Name]}
+		if row.Roots == nil {
+			row.Roots = []string{}
+		}
+		data.Services = append(data.Services, row)
 	}
-	if err := renderTemplate(w, server.servicesTpl, data); err != nil {
-		log.Printf("[http] render services: %v", err)
-	}
+	writeJSON(w, http.StatusOK, data)
 }
 
-// addServiceForm returns the "Add service" overlay fragment, fetched
-// by shell.ts's openOverlay the same way removal overlays are.
-func (server *Server) addServiceForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	data := addServiceFormDataFor(r.URL.Query().Get("category"))
-	if err := renderTemplate(w, server.addServiceTpl, data); err != nil {
-		log.Printf("[http] render add-service overlay: %v", err)
-	}
+// serviceTypes answers GET /api/services/types?category=…: the Add-service
+// window's heading and Type choices.
+func (server *Server) serviceTypes(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, addServiceFormDataFor(r.URL.Query().Get("category")))
 }
 
-// testServiceConnection is step 1 of the service setup overlay: a live
+// serviceForm is a service as the add and edit windows send it.
+type serviceForm struct {
+	// Type is taken only for a new service.
+	Type                  string `json:"type"`
+	Name                  string `json:"name"`
+	URL                   string `json:"url"`
+	APIKey                string `json:"apiKey"`
+	Username              string `json:"username"`
+	Password              string `json:"password"`
+	AllowAutomaticRemoval bool   `json:"allowAutomaticRemoval"`
+}
+
+// testServiceConnection is step 1 of the service setup window: a live
 // connection check against the entered URL/credentials with nothing
-// persisted and no client activated — fast feedback before step 2's extra
-// fields (root path, device thresholds) are even shown. 204 on success,
-// plain-text error body on failure, same convention as addService.
+// persisted and no client activated — fast feedback before the service is
+// saved (POST /api/services/test).
 func (server *Server) testServiceConnection(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	var in serviceForm
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maximumAddServiceFormBytes)
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	candidate := config.Service{
-		Type:     r.FormValue("type"),
-		Name:     r.FormValue("name"),
-		URL:      r.FormValue("url"),
-		APIKey:   r.FormValue("api_key"),
-		Username: r.FormValue("username"),
-		Password: r.FormValue("password"),
-	}
+	candidate := config.Service{Type: in.Type, Name: in.Name, URL: in.URL, APIKey: in.APIKey, Username: in.Username, Password: in.Password}
 	if err := server.inv.TestServiceConnection(r.Context(), candidate); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	done(w)
 }
 
-// addService validates and live-activates one new service. It is
-// only ever submitted via the overlay's [data-background-submit] fetch, so
-// the response is a plain status: 204 on success (the caller closes the
-// modal and refreshes fragments itself), or a plain-text error body shell.ts
-// renders inline in the form.
+// addService validates and live-activates one new service (POST
+// /api/services).
 func (server *Server) addService(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	var in serviceForm
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maximumAddServiceFormBytes)
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	candidate := config.Service{
-		Type:                  r.FormValue("type"),
-		Name:                  r.FormValue("name"),
-		URL:                   r.FormValue("url"),
-		APIKey:                r.FormValue("api_key"),
-		Username:              r.FormValue("username"),
-		Password:              r.FormValue("password"),
-		AllowAutomaticRemoval: r.FormValue("allow_automatic_removal") == "on",
-	}
+	candidate := config.Service{Type: in.Type, Name: in.Name, URL: in.URL, APIKey: in.APIKey, Username: in.Username, Password: in.Password, AllowAutomaticRemoval: in.AllowAutomaticRemoval}
 	if err := server.inv.AddService(r.Context(), candidate); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	server.scheduleServiceConsistency("Service added: " + candidate.Name)
-	w.WriteHeader(http.StatusNoContent)
+	done(w)
 }
 
-type editServiceData struct {
-	ID, Type, Name, URL, APIKey, Username, Password string
-	AllowAutomaticRemoval                           bool
+// serviceDetail is a service as the edit window shows it: never its
+// password or key, only whether it has one.
+type serviceDetail struct {
+	ID                    string `json:"id"`
+	Type                  string `json:"type"`
+	Name                  string `json:"name"`
+	URL                   string `json:"url"`
+	Username              string `json:"username"`
+	HasAPIKey             bool   `json:"hasApiKey"`
+	HasPassword           bool   `json:"hasPassword"`
+	AllowAutomaticRemoval bool   `json:"allowAutomaticRemoval"`
 }
 
-// editServiceForm dispatches by method the same way scheduled removal
-// handlers do: GET returns the pre-filled overlay fragment (also carrying
-// the "Remove service" action, so a plain Edit link is the only trigger
-// the Services page needs), POST saves the changes.
-func (server *Server) editServiceForm(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		server.renderEditServiceForm(w, r)
-	case http.MethodPost:
-		server.submitEditService(w, r)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (server *Server) renderEditServiceForm(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	var found *config.Service
+func (server *Server) configuredService(id string) (config.Service, bool) {
 	for _, service := range server.inv.Config().Services {
 		if service.ID == id {
-			found = &service
-			break
+			return service, true
 		}
 	}
-	if found == nil {
-		http.Error(w, "service not found", http.StatusNotFound)
-		return
-	}
-	data := editServiceData{ID: found.ID, Type: found.Type, Name: found.Name, URL: found.URL, APIKey: found.APIKey, Username: found.Username, Password: found.Password, AllowAutomaticRemoval: found.AllowAutomaticRemoval}
-	if err := renderTemplate(w, server.editServiceTpl, data); err != nil {
-		log.Printf("[http] render edit-service overlay: %v", err)
-	}
+	return config.Service{}, false
 }
 
-func (server *Server) submitEditService(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maximumAddServiceFormBytes)
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
+// serviceGet answers GET /api/services/{id}: the edit window's values.
+func (server *Server) serviceGet(w http.ResponseWriter, r *http.Request) {
+	found, ok := server.configuredService(r.PathValue("id"))
+	if !ok {
+		fail(w, http.StatusNotFound, "service not found")
 		return
 	}
-	id := r.FormValue("id")
-	// The edit form only shows the credential fields relevant to the
+	writeJSON(w, http.StatusOK, serviceDetail{ID: found.ID, Type: found.Type, Name: found.Name, URL: found.URL, Username: found.Username,
+		HasAPIKey: found.APIKey != "", HasPassword: found.Password != "", AllowAutomaticRemoval: found.AllowAutomaticRemoval})
+}
+
+// editService saves a service's changes (PUT /api/services/{id}).
+func (server *Server) editService(w http.ResponseWriter, r *http.Request) {
+	var in serviceForm
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	id := r.PathValue("id")
+	// The edit window only shows the credential fields relevant to the
 	// service's type (API key, or username+password, never both) — the
-	// other side isn't present in the submission at all, so it must be
-	// carried forward from the existing value rather than treated as
-	// cleared, or a save with no real intent to touch it would silently wipe
-	// a credential set outside the UI (e.g. qBittorrent's optional API key).
-	var existing config.Service
-	for _, service := range server.inv.Config().Services {
-		if service.ID == id {
-			existing = service
-			break
-		}
-	}
+	// other side must be carried forward from the existing value rather
+	// than treated as cleared, or a save with no real intent to touch it
+	// would silently wipe a credential set outside the UI (e.g.
+	// qBittorrent's optional API key).
+	existing, _ := server.configuredService(id)
 	updates := config.Service{
-		Name:                  r.FormValue("name"),
-		URL:                   r.FormValue("url"),
+		Name:                  in.Name,
+		URL:                   in.URL,
 		APIKey:                existing.APIKey,
 		Username:              existing.Username,
 		Password:              existing.Password,
-		AllowAutomaticRemoval: r.FormValue("allow_automatic_removal") == "on",
+		AllowAutomaticRemoval: in.AllowAutomaticRemoval,
 	}
-	// The form never shows a saved password or key: left empty, it stays.
+	// The window never shows a saved password or key: left empty, it stays.
 	if strings.EqualFold(existing.Type, "qbittorrent") {
-		updates.Username = r.FormValue("username")
-		if password := r.FormValue("password"); password != "" {
-			updates.Password = password
+		updates.Username = in.Username
+		if in.Password != "" {
+			updates.Password = in.Password
 		}
-	} else if key := r.FormValue("api_key"); key != "" {
-		updates.APIKey = key
+	} else if in.APIKey != "" {
+		updates.APIKey = in.APIKey
 	}
 	if err := server.inv.EditService(r.Context(), id, updates); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	server.scheduleServiceConsistency("Service edited: " + updates.Name)
-	w.WriteHeader(http.StatusNoContent)
+	done(w)
 }
 
-// removeService lets go of a service entirely. It is only ever
-// submitted via the edit overlay's own [data-background-submit] form, so
-// like addService/submitEditService the response is a plain status.
+// removeService lets go of a service entirely (DELETE /api/services/{id}).
 func (server *Server) removeService(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maximumAddServiceFormBytes)
-	if err := r.ParseMultipartForm(maximumAddServiceFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "invalid form", http.StatusBadRequest)
-		return
-	}
-	id := r.FormValue("id")
+	id := r.PathValue("id")
 	if err := server.inv.RemoveService(id); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	server.scheduleServiceConsistency("Service removed: " + id)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// serviceConsistencyProgressForm is step 3 of the service setup overlay,
-// opened automatically once step 2 saves. It shows which stage of the
-// inventory-and-files-consistency workflow is running with an indeterminate
-// (not percentage) progress indicator, since the files stage has no known
-// total ahead of time. A "Close" button (data-overlay-cancel) already just
-// closes the modal without touching server-side state, so leaving the scan
-// running in the background is the existing default — no new endpoint
-// needed for that part.
-func (server *Server) serviceConsistencyProgressForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := renderTemplate(w, server.serviceProgressTpl, nil); err != nil {
-		log.Printf("[http] render service-consistency-progress overlay: %v", err)
-	}
+	done(w)
 }
 
 type consistencyStatusResponse struct {
@@ -314,15 +254,11 @@ type consistencyStatusResponse struct {
 	StepLabel   string `json:"stepLabel"`
 }
 
-// serviceConsistencyStatus backs step 3's polling: the client re-fetches
-// this on every SSE revision (server.tasks.Changes() already publishes one
-// on every workflow step advance — no new push mechanism needed) and
-// updates the label/step text in place.
+// serviceConsistencyStatus backs the setup progress window: the panel
+// asks again on every live revision (server.tasks.Changes() already
+// publishes one on every workflow step advance) and updates the label in
+// place (GET /api/services/consistency).
 func (server *Server) serviceConsistencyStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	response := consistencyStatusResponse{State: "succeeded", TotalSteps: 2}
 	if server.tasks != nil {
 		for _, status := range server.tasks.WorkflowStatuses() {
@@ -333,5 +269,5 @@ func (server *Server) serviceConsistencyStatus(w http.ResponseWriter, r *http.Re
 			break
 		}
 	}
-	writeJSON(w, response)
+	writeJSON(w, http.StatusOK, response)
 }

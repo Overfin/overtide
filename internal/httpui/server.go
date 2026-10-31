@@ -1,11 +1,8 @@
 package httpui
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"hash/fnv"
-	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -20,47 +17,15 @@ import (
 	"github.com/overfin/overtide/internal/tasks"
 )
 
-// elementID turns an arbitrary stable key (a device's representative path)
-// into a short, HTML-id-safe token — templates ranging over storage devices
-// need one DOM id per device, and a raw filesystem path isn't safe to embed
-// directly into an id/selector.
-func elementID(key string) string {
-	digest := fnv.New64a()
-	_, _ = digest.Write([]byte(key))
-	return fmt.Sprintf("%x", digest.Sum64())
-}
-
 type Server struct {
-	inv                *inventory.Service
-	tasks              *tasks.Manager
-	homeTpl            *template.Template
-	storageTpl         *template.Template
-	servicesTpl        *template.Template
-	addServiceTpl      *template.Template
-	editServiceTpl     *template.Template
-	deviceSettingsTpl  *template.Template
-	cleanupPlanTpl     *template.Template
-	serviceProgressTpl *template.Template
-	libraryTpl         *template.Template
-	historyTpl         *template.Template
-	profileTpl         *template.Template
-	torrentTpl         *template.Template
-	torrentDetailTpl   *template.Template
-	unmanagedTpl       *template.Template
-	filesMissingTpl    *template.Template
-	tasksTpl           *template.Template
-	removalTpl         *template.Template
-	operationTpl       *template.Template
-	setupTpl           *template.Template
-	loginTpl           *template.Template
-	settingsTpl        *template.Template
-	staticHandler      http.Handler
-	revisions          *revisionHub
-	startOnce          sync.Once
-	admissionMu        sync.Mutex
-	homeMu             sync.Mutex
-	homeRevision       uint64
-	homeCache          homeData
+	inv          *inventory.Service
+	tasks        *tasks.Manager
+	revisions    *revisionHub
+	startOnce    sync.Once
+	admissionMu  sync.Mutex
+	homeMu       sync.Mutex
+	homeRevision uint64
+	homeCache    homeData
 	// sseMaxLifetime bounds how long any single /ui/events connection is
 	// kept open before the server ends it and lets the client's built-in
 	// EventSource auto-reconnect start a fresh one — see uiEvents. Zero
@@ -71,121 +36,7 @@ type Server struct {
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
-	templateFunctions := template.FuncMap{"appName": func() string { return product.Name }, "appVersion": func() string { return product.Version }, "head": appHead, "chrome": func(active string) template.HTML { return template.HTML(appChrome(active)) }, "human": func(bytes int64) string {
-		if bytes < 0 {
-			bytes = 0
-		}
-		return cleanup.Human(uint64(bytes))
-	}, "humanU": func(bytes uint64) string { return cleanup.Human(bytes) }, "bytePercent": func(part, total uint64) float64 {
-		if total == 0 {
-			return 0
-		}
-		return float64(part) / float64(total) * 100
-	}, "duration": humanDuration, "durationGo": func(duration time.Duration) string { return humanDuration(int64(duration / time.Second)) }, "unixTime": unixTime, "pct": func(ratio float64) string { return fmt.Sprintf("%.1f%%", ratio*100) }, "fmtTime": func(timestamp *time.Time) string {
-		if timestamp == nil {
-			return "Never"
-		}
-		return timestamp.Local().Format("2006-01-02")
-	}, "join": strings.Join, "add": func(first, second int) int { return first + second }, "managedKey": managedFileKey, "elementID": elementID, "shortPath": shortPath, "fileOwner": fileOwnerLabel, "peerOwner": filePeerOwnerLabel, "unmanagedRemovalURL": unmanagedRemovalURL, "torrentCleanupActions": torrentCleanupActions, "mediaCleanupActions": mediaCleanupActions, "actionKey": cleanup.ActionKey, "shownKey": shownKey, "torrentActionContext": torrentActionContext, "relatedTorrentMeta": relatedTorrentMeta, "targetLeft": targetLeft, "widthPct": func(part, total uint64) string {
-		if total == 0 {
-			return "0"
-		}
-		return fmt.Sprintf("%.3f", float64(part)/float64(total)*100)
-	}, "fmtUpdated": func(timestamp time.Time) string {
-		if timestamp.IsZero() {
-			return "Never"
-		}
-		return timestamp.Local().Format("2006-01-02 15:04:05")
-	}}
-	homeTemplate, err := parseUITemplate("home.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	storageTemplate, err := parseUITemplate("storage.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	servicesTemplate, err := parseUITemplate("services.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	addServiceTemplate, err := parseUITemplate("add_service.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	editServiceTemplate, err := parseUITemplate("edit_service.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	deviceSettingsTemplate, err := parseUITemplate("device_settings.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	filesMissingTemplate, err := parseUITemplate("files_missing.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	cleanupPlanTemplate, err := parseUITemplate("cleanup_plan.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	serviceProgressTemplate, err := parseUITemplate("service_progress.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	libraryTemplate, err := parseUITemplate("library.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	historyTemplate, err := parseUITemplate("history.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	profileTemplate, err := parseUITemplate("media.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	torrentTemplate, err := parseUITemplate("torrents.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	torrentDetailTemplate, err := parseUITemplate("torrent.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	unmanagedTemplate, err := parseUITemplate("unmanaged.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	tasksTemplate, err := parseUITemplate("tasks.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	removalTemplate, err := parseUITemplate("removal.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	operationTemplate, err := parseUITemplate("operation.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	setupTemplate, err := parseUITemplate("setup.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	loginTemplate, err := parseUITemplate("login.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	settingsTemplate, err := parseUITemplate("settings.html", templateFunctions)
-	if err != nil {
-		return nil, err
-	}
-	staticHandler, err := uiStaticHandler()
-	if err != nil {
-		return nil, err
-	}
-	server := &Server{inv: inventoryService, tasks: taskManager, homeTpl: homeTemplate, storageTpl: storageTemplate, servicesTpl: servicesTemplate, addServiceTpl: addServiceTemplate, editServiceTpl: editServiceTemplate, deviceSettingsTpl: deviceSettingsTemplate, cleanupPlanTpl: cleanupPlanTemplate, serviceProgressTpl: serviceProgressTemplate, libraryTpl: libraryTemplate, historyTpl: historyTemplate, profileTpl: profileTemplate, torrentTpl: torrentTemplate, torrentDetailTpl: torrentDetailTemplate, unmanagedTpl: unmanagedTemplate, filesMissingTpl: filesMissingTemplate, tasksTpl: tasksTemplate, removalTpl: removalTemplate, operationTpl: operationTemplate, setupTpl: setupTemplate, loginTpl: loginTemplate, settingsTpl: settingsTemplate, staticHandler: staticHandler, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
+	server := &Server{inv: inventoryService, tasks: taskManager, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
@@ -207,7 +58,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 // Handler is every route behind the sign-in (see authGate).
 func (server *Server) Handler() http.Handler {
 	gated := server.authGate(server.routes())
-	return noFraming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Other apps ask with Overtide's API key, not a session.
 		if r.URL.Path == roomPath {
 			server.room(w, r)
@@ -220,40 +71,16 @@ func (server *Server) Handler() http.Handler {
 // routes is every route, without the sign-in: tests use it directly.
 func (server *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/assets/", server.staticHandler)
+	mux.HandleFunc("/", server.page)
+	mux.HandleFunc("/healthz", func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte("ok")) })
 	mux.HandleFunc("/ui/events", server.uiEvents)
 	mux.HandleFunc("/ui/status", server.uiStatus)
-	mux.HandleFunc("/", server.home)
-	mux.HandleFunc("/storage", server.storagePage)
-	mux.HandleFunc("/storage/stats", server.storageStats)
-	mux.HandleFunc("/storage/device-threshold", server.setDeviceThreshold)
-	mux.HandleFunc("/storage/device-settings", server.deviceSettingsForm)
-	mux.HandleFunc("/storage/cleanup-plan", server.cleanupPlanForm)
-	mux.HandleFunc("/storage/cleanup-plan/clean", server.cleanupPlanClean)
-	mux.HandleFunc("/storage/cleanup-plan/protect", server.cleanupPlanProtect)
-	mux.HandleFunc("/storage/keep", server.keepPost)
-	mux.HandleFunc("/torrents/missing", server.filesMissingDialog)
-	mux.HandleFunc("/services", server.servicesPage)
-	mux.HandleFunc("/services/add", server.addServiceForm)
-	mux.HandleFunc("/services/test", server.testServiceConnection)
-	mux.HandleFunc("/services/create", server.addService)
-	mux.HandleFunc("/services/edit", server.editServiceForm)
-	mux.HandleFunc("/services/remove", server.removeService)
-	mux.HandleFunc("/services/consistency-progress", server.serviceConsistencyProgressForm)
-	mux.HandleFunc("/services/consistency-status", server.serviceConsistencyStatus)
-	mux.HandleFunc("/library", server.library)
-	mux.HandleFunc("/library/", server.media)
-	mux.HandleFunc("/media/", server.media)
-	mux.HandleFunc("/torrents", server.torrents)
-	mux.HandleFunc("/torrents/", server.torrentDetail)
-	mux.HandleFunc("/unmanaged", server.unmanagedDownloads)
-	mux.HandleFunc("/history", server.history)
-	mux.HandleFunc("/tasks", server.tasksPage)
-	mux.HandleFunc("/tasks/run", server.runTask)
-	mux.HandleFunc("/removal/media", server.removalMedia)
-	mux.HandleFunc("/removal/torrent", server.removalTorrent)
-	mux.HandleFunc("/removal/unmanaged", server.removalUnmanaged)
-	mux.HandleFunc("/removal/execute", server.executeRemoval)
+
+	mux.HandleFunc("GET /api/session", server.session)
+	mux.HandleFunc("POST /api/setup", server.setup)
+	mux.HandleFunc("POST /api/login", server.login)
+	mux.HandleFunc("POST /api/logout", server.logout)
+
 	mux.HandleFunc("/api/media", server.apiMedia)
 	mux.HandleFunc("/api/dashboard", server.apiDashboard)
 	mux.HandleFunc("/api/torrents", server.apiTorrents)
@@ -261,13 +88,16 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("/api/files", server.apiFiles)
 	mux.HandleFunc("/api/refresh", server.refresh)
 	mux.HandleFunc("/api/plan", server.plan)
-	mux.HandleFunc("/healthz", func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte("ok")) })
-	mux.HandleFunc("/setup", server.setupPage)
-	mux.HandleFunc("/login", server.loginPage)
-	mux.HandleFunc("/logout", server.logout)
-	mux.HandleFunc("/settings", server.settingsPage)
-	mux.HandleFunc("/settings/password", server.changePassword)
-	mux.HandleFunc("/settings/removal", server.setRemovalSettings)
+
+	// Each area's pages ask their own part of the API (routes_*.go).
+	server.homeRoutes(mux)
+	server.storageRoutes(mux)
+	server.libraryRoutes(mux)
+	server.torrentsRoutes(mux)
+	server.removalRoutes(mux)
+	server.servicesRoutes(mux)
+	server.settingsRoutes(mux)
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "no such request") })
 	return sameOriginWrites(mux)
 }
 
@@ -315,16 +145,6 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 	return views
 }
 
-// targetLeft places a cleanup target on a bar drawn to the disk's capacity:
-// the target is a share of what Overtide manages (usable), which sits at
-// the bar's left, before what's used elsewhere.
-func targetLeft(targetPercent float64, usable, capacity uint64) string {
-	if capacity == 0 {
-		return "0"
-	}
-	return fmt.Sprintf("%.3f", targetPercent*float64(usable)/float64(capacity))
-}
-
 // storageViews is deviceViews without the cleanup plans, for a page that
 // only shows the disks (Home).
 func (server *Server) storageViews() []deviceView {
@@ -351,17 +171,6 @@ type deviceView struct {
 	// AutomaticRemovalDisabled) — Plan is a bare, never-built zero plan in
 	// that case, not a real evaluation.
 	Enabled bool
-}
-
-func renderTemplate(w http.ResponseWriter, tpl *template.Template, data any) error {
-	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, data); err != nil {
-		http.Error(w, "template rendering failed", http.StatusInternalServerError)
-		return err
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, err := w.Write(buf.Bytes())
-	return err
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {

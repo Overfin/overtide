@@ -1,0 +1,8 @@
+/* Overtide's own, shared by its pages: only what the kit doesn't have.
+   A page's own styles live in styles/<area>.css, imported by the page. */
+.dry { color: var(--warn); }
+.updates-bar { position: sticky; top: .75rem; z-index: 6; display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.updates-bar .notice { flex: 1; margin: 0; }
+.sidebar-extra a { font-size: .85rem; text-decoration: none; }
+.sidebar-extra .operations { color: var(--accent); }
+.sidebar-extra .failure { color: var(--danger); }

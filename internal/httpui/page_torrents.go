@@ -2,15 +2,12 @@ package httpui
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 )
 
@@ -194,11 +191,9 @@ func filterTorrents(items []model.Torrent, q, status, reclaimable, activity stri
 	return out
 }
 
-func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/torrents" {
-		http.NotFound(w, r)
-		return
-	}
+// torrentListing is the Torrents page's data for a query: the counts, the
+// filters and sort as understood, and the page of torrents asked for.
+func (server *Server) torrentListing(query url.Values) torrentData {
 	_, updated, last := server.inv.Snapshot()
 	all := server.pendingProjection().filterTorrents(server.inv.TorrentSnapshot())
 	allItems := len(all)
@@ -214,22 +209,22 @@ func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	qtext := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-	statusFilter := normalizeTorrentStatusFilter(r.URL.Query().Get("status"))
-	reclaimableFilter := normalizeReclaimableFilter(r.URL.Query().Get("reclaimable"))
-	activityFilter := normalizeActivityFilter(r.URL.Query().Get("activity"))
+	qtext := strings.ToLower(strings.TrimSpace(query.Get("q")))
+	statusFilter := normalizeTorrentStatusFilter(query.Get("status"))
+	reclaimableFilter := normalizeReclaimableFilter(query.Get("reclaimable"))
+	activityFilter := normalizeActivityFilter(query.Get("activity"))
 	all = filterTorrents(all, qtext, statusFilter, reclaimableFilter, activityFilter)
 
-	pageSize := allowedPageSize(queryInt(r, "page_size", 50))
-	page := queryInt(r, "page", 1)
+	pageSize := allowedPageSize(queryValueInt(query, "page_size", 50))
+	page := queryValueInt(query, "page", 1)
 	if page < 1 {
 		page = 1
 	}
-	sortKey := r.URL.Query().Get("sort")
+	sortKey := query.Get("sort")
 	if !validTorrentSort(sortKey) {
 		sortKey = "status"
 	}
-	order := strings.ToLower(r.URL.Query().Get("order"))
+	order := strings.ToLower(query.Get("order"))
 	if order != "asc" && order != "desc" {
 		order = "asc"
 	}
@@ -293,65 +288,14 @@ func (server *Server) torrents(w http.ResponseWriter, r *http.Request) {
 	for pg := maxInt(1, page-2); pg <= minInt(pages, page+2); pg++ {
 		links = append(links, navLink{Value: pg, URL: mk(pg, pageSize, sortKey, order)})
 	}
-	d := torrentData{Torrents: all[from:to], Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), Current: counts[model.TorrentCurrent], Superseded: counts[model.TorrentSuperseded], Orphaned: counts[model.TorrentOrphaned], Unassociated: counts[model.TorrentUnassociated], ObsoleteKnown: obsoleteKnown, ObsoleteReclaimable: obsoleteReclaimable, TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, SortURLs: sortURLs, Query: r.URL.Query().Get("q"), StatusFilter: statusFilter, ReclaimableFilter: reclaimableFilter, ActivityFilter: activityFilter, ClearURL: "/torrents", HasTorrentClient: len(server.inv.Config().ServicesOfType("qbittorrent")) > 0, FilesMissing: filesMissing(server.inv.TorrentSnapshot()), DryRun: server.inv.Config().Removal.DryRun}
+	d := torrentData{Torrents: all[from:to], Updated: updated, LastErr: last, Refreshing: server.inv.IsRefreshing(), Current: counts[model.TorrentCurrent], Superseded: counts[model.TorrentSuperseded], Orphaned: counts[model.TorrentOrphaned], Unassociated: counts[model.TorrentUnassociated], ObsoleteKnown: obsoleteKnown, ObsoleteReclaimable: obsoleteReclaimable, TotalItems: total, AllItems: allItems, Page: page, PageSize: pageSize, TotalPages: pages, HasPrev: page > 1, HasNext: page < pages, PageLinks: links, SizeLinks: sizes, Sort: sortKey, Order: order, SortURLs: sortURLs, Query: query.Get("q"), StatusFilter: statusFilter, ReclaimableFilter: reclaimableFilter, ActivityFilter: activityFilter, ClearURL: "/torrents", HasTorrentClient: len(server.inv.Config().ServicesOfType("qbittorrent")) > 0, FilesMissing: filesMissing(server.inv.TorrentSnapshot()), DryRun: server.inv.Config().Removal.DryRun}
 	if d.HasPrev {
 		d.PrevURL = mk(page-1, pageSize, sortKey, order)
 	}
 	if d.HasNext {
 		d.NextURL = mk(page+1, pageSize, sortKey, order)
 	}
-	if e := renderTemplate(w, server.torrentTpl, d); e != nil {
-		log.Printf("[http] render torrents: %v", e)
-	}
-}
-
-func (server *Server) torrentDetail(w http.ResponseWriter, r *http.Request) {
-	hash := strings.Trim(strings.TrimPrefix(r.URL.Path, "/torrents/"), "/")
-	if hash == "" || strings.Contains(hash, "/") {
-		http.NotFound(w, r)
-		return
-	}
-	serviceID := strings.TrimSpace(r.URL.Query().Get("service_id"))
-	if notice, pending := server.pendingProjection().torrentOperation(hash); pending {
-		server.renderOperation(w, operationPageData{Active: "torrents", FragmentID: "torrent-detail", Label: notice.Label, Notice: notice, BackURL: "/torrents", BackLabel: "Torrents"})
-		return
-	}
-	_, updated, last := server.inv.Snapshot()
-	torrent, detailErr := server.inv.TorrentDetail(hash, serviceID)
-	if serviceID == "" && detailErr != nil && strings.Contains(strings.ToLower(detailErrString(detailErr)), "more than one configured instance") {
-		http.Error(w, detailErr.Error(), http.StatusConflict)
-		return
-	}
-	if strings.Contains(strings.ToLower(detailErrString(detailErr)), "not found") {
-		if notice, found := server.removalHistory("torrent", strings.ToLower(hash)); found {
-			server.renderOperation(w, operationPageData{Active: "torrents", FragmentID: "torrent-detail", Label: notice.Label, Notice: notice, BackURL: "/torrents", BackLabel: "Torrents"})
-			return
-		}
-		http.NotFound(w, r)
-		return
-	}
-	torrent.AssociationStatus = normalizeTorrentStatus(torrent.AssociationStatus)
-	storageView, filesUpdated, filesErr := server.inv.TorrentStorage(hash)
-	files := storageView.Files
-	fileCount := len(files)
-	if len(files) > 50 {
-		files = files[:50]
-	}
-	data := struct {
-		Torrent       model.Torrent
-		Updated       time.Time
-		LastErr       error
-		Refreshing    bool
-		DetailErr     error
-		Files         []inventory.FileView
-		FileCount     int
-		FilesUpdated  time.Time
-		FilesErr      error
-		RemoveTorrent inventory.RemovalEstimate
-	}{torrent, updated, last, server.inv.IsRefreshing(), detailErr, files, fileCount, filesUpdated, filesErr, storageView.RemoveTorrent}
-	if e := renderTemplate(w, server.torrentDetailTpl, data); e != nil {
-		log.Printf("[http] render torrent detail: %v", e)
-	}
+	return d
 }
 
 // reclaimableOnce is what removing t frees, for totals: nothing if its files
@@ -383,34 +327,11 @@ func filesMissing(torrents []model.Torrent) []model.Torrent {
 	return out
 }
 
-// filesMissingDialog shows, in an overlay, the torrents whose files are
-// gone from disk and offers to remove them from qBittorrent, files kept.
-func (server *Server) filesMissingDialog(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		data := struct {
-			Torrents []model.Torrent
-			DryRun   bool
-		}{filesMissing(server.inv.TorrentSnapshot()), server.inv.Config().Removal.DryRun}
-		if err := renderTemplate(w, server.filesMissingTpl, data); err != nil {
-			log.Printf("[http] render files missing: %v", err)
-		}
-	case http.MethodPost:
-		var left []string
-		for _, result := range server.inv.ForgetMissingTorrents(r.Context()) {
-			if result.Removed {
-				log.Printf("[torrents] removed from qBittorrent, files missing (dry run %t): %s", server.inv.Config().Removal.DryRun, result.Torrent.Name)
-				continue
-			}
-			left = append(left, result.Torrent.Name+": "+result.Reason)
-		}
-		server.publishUIChange("torrents")
-		if len(left) > 0 {
-			http.Error(w, "Left alone: "+strings.Join(left, "; "), http.StatusConflict)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+// queryValueInt reads an integer query parameter, or fallback.
+func queryValueInt(query url.Values, key string, fallback int) int {
+	v, err := strconv.Atoi(query.Get(key))
+	if err != nil {
+		return fallback
 	}
+	return v
 }

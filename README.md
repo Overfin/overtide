@@ -104,15 +104,16 @@ go run ./cmd/overtide -config ./config.json
 
 The database and the daily logs always go under `/config` (`/config/state`, `/config/log`), so that folder must exist and be writable, even when the config file is elsewhere.
 
-The web assets are TypeScript, type-checked with `tsc` and bundled with esbuild's Go API; the bundles are committed, so building Overtide needs no Node. After changing `internal/httpui/static/src`:
+The panel is a [Svelte](https://svelte.dev) app in `frontend/`, on [Overfin UI](https://github.com/overfin/ui), the look and components every Overfin panel shares. It's built into `internal/httpui/dist`, which is committed, so building Overtide needs no Node. After changing `frontend/`:
 
 ```bash
-npm --prefix internal/httpui/static/src ci
-npm --prefix internal/httpui/static/src run typecheck
-go run ./tools/buildassets
+cd frontend
+npm ci
+npm run check
+npm run build   # into internal/httpui/dist; commit it
 ```
 
-CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detector, and checks the committed bundles match their sources. Pushing a version tag (`v0.7.0`) publishes the image and a GitHub release. [`config.example.json`](config.example.json) shows the settings file's shape, for debugging or scripted setups.
+CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detector, and checks the committed panel matches its sources. Pushing a version tag (`v0.7.0`) publishes the image and a GitHub release. [`config.example.json`](config.example.json) shows the settings file's shape, for debugging or scripted setups.
 
 ## Further reading
 
