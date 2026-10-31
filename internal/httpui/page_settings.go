@@ -73,7 +73,12 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if server.inv.Store() != nil {
-		_ = server.inv.Store().DeleteAllSessions()
+		// The point of a new password is that other browsers lose access:
+		// if that fails, say so rather than report success.
+		if err := server.inv.Store().DeleteAllSessions(); err != nil {
+			fail(w, http.StatusInternalServerError, "The password changed, but other browsers couldn't be signed out: "+err.Error())
+			return
+		}
 		_ = server.startSession(w, r)
 	}
 	done(w)

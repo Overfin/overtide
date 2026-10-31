@@ -344,3 +344,53 @@ func newFlushRecorder() *flushRecorder {
 }
 
 func (recorder *flushRecorder) Flush() { recorder.flushes.Add(1) }
+
+// A live-update stream ends once its session does (signed out elsewhere, a
+// new password): the session was only checked when the stream opened, so
+// it must be checked again at each heartbeat.
+func TestSSEEndsWhenItsSessionEnds(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"storage":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := inventory.New(cfg, database)
+	inv.SetConfigPath(configPath)
+	server, err := New(inv, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.sseHeartbeat = 20 * time.Millisecond
+	session := setUp(t, server.Handler())
+
+	request := httptest.NewRequest(http.MethodGet, "/ui/events", nil)
+	request.AddCookie(session)
+	response := newFlushRecorder()
+	ended := make(chan struct{})
+	go func() {
+		server.uiEvents(response, request)
+		close(ended)
+	}()
+	// Still signed in: the stream stays open over several heartbeats.
+	select {
+	case <-ended:
+		t.Fatal("the stream ended while its session was still valid")
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := database.DeleteAllSessions(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("the stream outlived its session")
+	}
+}

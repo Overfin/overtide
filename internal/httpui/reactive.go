@@ -211,7 +211,7 @@ func (server *Server) uiEvents(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	flusher.Flush()
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeat := time.NewTicker(server.sseHeartbeat)
 	defer heartbeat.Stop()
 	// A connection can go silently dead — a NAT mapping timing out, a
 	// network path change — without either side ever seeing an error: the
@@ -238,6 +238,11 @@ func (server *Server) uiEvents(response http.ResponseWriter, request *http.Reque
 			}
 			flusher.Flush()
 		case <-heartbeat.C:
+			// A session ended meanwhile (signed out, password changed)
+			// ends the stream: it was only checked when the stream opened.
+			if server.inv != nil && server.inv.Store() != nil && !server.signedIn(request) {
+				return
+			}
 			if _, err := fmt.Fprint(response, ": keepalive\n\n"); err != nil {
 				return
 			}

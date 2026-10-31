@@ -32,11 +32,14 @@ type Server struct {
 	// value in New() is replaced with the real default; tests override it
 	// directly to verify the rotation fires without waiting minutes.
 	sseMaxLifetime time.Duration
-	loginLimiter   *loginLimiter
+	// sseHeartbeat is how often an open stream sends a keepalive and checks
+	// its session is still valid; tests shorten it.
+	sseHeartbeat time.Duration
+	loginLimiter *loginLimiter
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
-	server := &Server{inv: inventoryService, tasks: taskManager, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, loginLimiter: newLoginLimiter()}
+	server := &Server{inv: inventoryService, tasks: taskManager, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, sseHeartbeat: 15 * time.Second, loginLimiter: newLoginLimiter()}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
