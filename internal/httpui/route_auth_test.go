@@ -17,7 +17,7 @@ import (
 func TestEveryRouteNeedsASession(t *testing.T) {
 	handler, _ := newAuthTestServer(t)
 	setUp(t, handler) // an account exists: nothing is open for setup any more
-	open := map[string]bool{"/": true, "/healthz": true, "GET /api/session": true, "POST /api/setup": true, "POST /api/login": true}
+	open := map[string]bool{"/": true, "GET /healthz": true, "GET /api/session": true, "POST /api/setup": true, "POST /api/login": true}
 	files, _ := filepath.Glob("*.go")
 	pattern := regexp.MustCompile(`mux\.HandleFunc\("([^"]+)"`)
 	param := regexp.MustCompile(`\{[^}]+\}`)

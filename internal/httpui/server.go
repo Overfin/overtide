@@ -75,22 +75,22 @@ func (server *Server) Handler() http.Handler {
 func (server *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", server.page)
-	mux.HandleFunc("/healthz", func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte("ok")) })
-	mux.HandleFunc("/ui/events", server.uiEvents)
-	mux.HandleFunc("/ui/status", server.uiStatus)
+	mux.HandleFunc("GET /healthz", func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte("ok")) })
+	mux.HandleFunc("GET /ui/events", server.uiEvents)
+	mux.HandleFunc("GET /ui/status", server.uiStatus)
 
 	mux.HandleFunc("GET /api/session", server.session)
 	mux.HandleFunc("POST /api/setup", server.setup)
 	mux.HandleFunc("POST /api/login", server.login)
 	mux.HandleFunc("POST /api/logout", server.logout)
 
-	mux.HandleFunc("/api/media", server.apiMedia)
-	mux.HandleFunc("/api/dashboard", server.apiDashboard)
-	mux.HandleFunc("/api/torrents", server.apiTorrents)
-	mux.HandleFunc("/api/unmanaged", server.apiUnmanaged)
-	mux.HandleFunc("/api/files", server.apiFiles)
-	mux.HandleFunc("/api/refresh", server.refresh)
-	mux.HandleFunc("/api/plan", server.plan)
+	mux.HandleFunc("GET /api/media", server.apiMedia)
+	mux.HandleFunc("GET /api/dashboard", server.apiDashboard)
+	mux.HandleFunc("GET /api/torrents", server.apiTorrents)
+	mux.HandleFunc("GET /api/unmanaged", server.apiUnmanaged)
+	mux.HandleFunc("GET /api/files", server.apiFiles)
+	mux.HandleFunc("POST /api/refresh", server.refresh)
+	mux.HandleFunc("GET /api/plan", server.plan)
 
 	// Each area's pages ask their own part of the API (routes_*.go).
 	server.homeRoutes(mux)

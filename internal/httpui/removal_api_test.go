@@ -67,6 +67,7 @@ func TestRemovalExecuteRejectsCrossOwnerAndInjectedPaths(t *testing.T) {
 		"unmanaged with torrent":             {Kind: "unmanaged", Paths: []string{fx.movie.Path}, Torrents: []string{scheduledHash}},
 		"unmanaged without a path":           {Kind: "unmanaged"},
 	} {
+		request.OperationToken = "token-" + name
 		t.Run(name, func(t *testing.T) {
 			if err := validateRemovalScope(request.form()); err == nil {
 				t.Fatalf("scope accepted %+v", request)
@@ -204,5 +205,20 @@ func TestRemovalConsequencesAreCalculatedLocally(t *testing.T) {
 		if bytes.Contains(source, []byte(forbidden)) {
 			t.Fatalf("the removal calculator asks the network (%q)", forbidden)
 		}
+	}
+}
+
+// A removal sent without the window's one-time token is refused, with
+// nothing recorded or scheduled: the token is what keeps a request sent
+// twice from removing twice.
+func TestRemovalExecuteRequiresItsToken(t *testing.T) {
+	fx := newRemovalFixture(t)
+	request := removalRequest{Kind: "media", MediaType: "movie", MediaID: 1, ServiceID: "radarr-1", ManagedFiles: []string{"radarr:10"}}
+	response := post(t, fx.handler, "/api/removal/execute", request, fx.session)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "no operation token") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+	if events, _ := fx.database.HistoryEvents(10); len(events) != 0 {
+		t.Fatalf("a request without a token was recorded: %+v", events)
 	}
 }

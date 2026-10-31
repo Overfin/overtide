@@ -1,9 +1,11 @@
 package httpui
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/model"
@@ -102,6 +104,14 @@ func (server *Server) executeRemovalJSON(w http.ResponseWriter, r *http.Request)
 	if err := readJSON(r, &request); err != nil {
 		auditRemovalRejected(0, url.Values{}, err)
 		fail(w, http.StatusBadRequest, "Invalid removal request: "+err.Error())
+		return
+	}
+	// The window's one-time token is what makes a double click, or a
+	// request sent again, the same operation rather than a second one: a
+	// request without it is refused.
+	if strings.TrimSpace(request.OperationToken) == "" {
+		auditRemovalRejected(0, request.form(), errors.New("no operation token"))
+		fail(w, http.StatusBadRequest, "This removal has no operation token: open its window again.")
 		return
 	}
 	historyID, dryRun, status, refusal := server.scheduleRemoval(request.form())
