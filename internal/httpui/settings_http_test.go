@@ -113,7 +113,7 @@ func TestSetRemovalSettingsRefusesAForm(t *testing.T) {
 	request.AddCookie(session)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("a form: status=%d", response.Code)
 	}
 	if saved := decode[settingsData](t, getPath(t, handler, "/api/settings", session)); saved.AutoMode != "disabled" {

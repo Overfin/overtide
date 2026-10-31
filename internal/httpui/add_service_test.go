@@ -97,7 +97,7 @@ func TestAddServiceRefusesAForm(t *testing.T) {
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("a multipart form: status=%d", response.Code)
 	}
 	if services := reloadConfig(t, configPath).Services; len(services) != 0 {

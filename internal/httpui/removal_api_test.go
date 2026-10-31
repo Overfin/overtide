@@ -41,7 +41,7 @@ func TestRemovalRequestKeepsTheFormFields(t *testing.T) {
 func TestRemovalExecuteRefusesAForm(t *testing.T) {
 	fx := newRemovalFixture(t)
 	form := url.Values{"kind": {"media"}, "media_type": {"movie"}, "media_id": {"1"}, "service_id": {"radarr-1"}, "managed_file": {"radarr:10"}}
-	if response := postForm(t, fx.handler, "/api/removal/execute", form, fx.session); response.Code != http.StatusBadRequest {
+	if response := postForm(t, fx.handler, "/api/removal/execute", form, fx.session); response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("a form: %d %s", response.Code, response.Body)
 	}
 	unknown := send(t, fx.handler, http.MethodPost, "/api/removal/execute", map[string]any{"kind": "media", "mediaType": "movie", "mediaId": 1, "managedFiles": []string{"radarr:10"}, "deleteEverything": true}, fx.session)

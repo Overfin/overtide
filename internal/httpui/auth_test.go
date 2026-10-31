@@ -210,7 +210,7 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 func TestWritesMustBeJSON(t *testing.T) {
 	handler, _ := newAuthTestServer(t)
 	response := postForm(t, handler, "/api/setup", url.Values{"username": {"admin"}, "password": {"correct-horse-battery"}, "confirm": {"correct-horse-battery"}}, nil)
-	if response.Code != http.StatusBadRequest || sessionCookieFrom(response) != nil {
+	if response.Code != http.StatusUnsupportedMediaType || sessionCookieFrom(response) != nil {
 		t.Fatalf("a form setup: status=%d", response.Code)
 	}
 	if state := decode[sessionState](t, getPath(t, handler, "/api/session", nil)); !state.NeedsSetup {
@@ -300,5 +300,30 @@ func TestPanelFiles(t *testing.T) {
 	session := setUp(t, handler)
 	if response := getPath(t, handler, "/api/nothing", session); response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), `"error"`) {
 		t.Errorf("unknown API: %d %q", response.Code, response.Body.String())
+	}
+}
+
+// Every write with a body must be JSON, even without an Origin header (a
+// client or extension that strips it): a plain-text or form POST to a
+// route that changes something is refused before the handler runs.
+func TestEveryWriteMustBeJSONWithoutOrigin(t *testing.T) {
+	handler, _ := newAuthTestServer(t)
+	session := setUp(t, handler)
+	for _, path := range []string{"/api/torrents-missing", "/api/refresh", "/api/logout", "/api/removal/execute", "/api/storage/plan/clean", "/api/storage/keep", "/api/tasks/run", "/api/services"} {
+		for _, kind := range []string{"text/plain", "application/x-www-form-urlencoded", ""} {
+			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("x=1"))
+			if kind != "" {
+				request.Header.Set("Content-Type", kind)
+			}
+			request.AddCookie(session)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusUnsupportedMediaType {
+				t.Errorf("%s as %q: %d, want 415", path, kind, response.Code)
+			}
+		}
+	}
+	if response := getPath(t, handler, "/api/dashboard", session); response.Code != http.StatusOK {
+		t.Fatalf("the session ended: %d", response.Code)
 	}
 }

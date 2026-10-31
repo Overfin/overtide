@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,7 +9,11 @@ import (
 
 // sameOriginWrites is a CSRF-style deployment-safety guard, layered
 // underneath — not instead of — the session-based login enforced by
-// authGate (see auth.go).
+// authGate (see auth.go). A write must come from this site (its Origin, when
+// sent) and, when it has a body (POST, PUT, PATCH), be JSON: a page of
+// another site can't send JSON without the browser asking first, even when
+// Origin is missing. DELETE can't be sent from another origin either, for
+// the same reason.
 func sameOriginWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
@@ -18,6 +23,12 @@ func sameOriginWrites(next http.Handler) http.Handler {
 					fail(w, http.StatusForbidden, "cross-origin write rejected")
 					return
 				}
+			}
+		}
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
+			if kind, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); kind != "application/json" {
+				fail(w, http.StatusUnsupportedMediaType, "the request must be JSON")
+				return
 			}
 		}
 		next.ServeHTTP(w, r)
