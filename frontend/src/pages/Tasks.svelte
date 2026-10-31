@@ -41,7 +41,7 @@
     <h2>{g.name}</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Task</th><th>Schedule</th><th>Last run</th><th>Duration</th><th>Next run</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Task</th><th>Schedule</th><th>Last run</th><th>Duration</th><th>Next run</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
         <tbody>
           {#each g.tasks as t (t.id)}
             <tr>

@@ -160,7 +160,7 @@
           {#each columns as [key, label] (key)}
             <th><a class:on={data.paging.sort === key} href={sortURL(key)}>{label}</a></th>
           {/each}
-          <th></th>
+          <th><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>

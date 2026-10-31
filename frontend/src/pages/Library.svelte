@@ -135,7 +135,7 @@
           <th><a href={sortURL('type')}>Type</a></th>
           <th><a href={sortURL('size')}>Size</a></th>
           <th><a href={sortURL('torrents')}>Torrents</a></th>
-          <th></th>
+          <th><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
