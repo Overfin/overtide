@@ -69,6 +69,25 @@ func (limiter *loginLimiter) attempt(key string) (time.Duration, bool) {
 				}
 			}
 		}
+		// Still full (a burst from many addresses): the one heard from
+		// longest ago makes room, one not locked out if there is one, so
+		// the map never grows past its size.
+		for len(limiter.state) >= loginLimiterSize {
+			oldest, oldestLocked := "", ""
+			for k, st := range limiter.state {
+				if now.Before(st.lockedUntil) {
+					if oldestLocked == "" || st.last.Before(limiter.state[oldestLocked].last) {
+						oldestLocked = k
+					}
+				} else if oldest == "" || st.last.Before(limiter.state[oldest].last) {
+					oldest = k
+				}
+			}
+			if oldest == "" {
+				oldest = oldestLocked
+			}
+			delete(limiter.state, oldest)
+		}
 		state = &loginAttemptState{}
 		limiter.state[key] = state
 	}

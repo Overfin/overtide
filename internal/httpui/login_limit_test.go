@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -54,5 +55,19 @@ func TestLoginLimiterForgetsOldAddresses(t *testing.T) {
 	defer limiter.mu.Unlock()
 	if len(limiter.state) != 1 {
 		t.Fatalf("%d addresses kept, want only the new one", len(limiter.state))
+	}
+}
+
+// A burst from many addresses, all recent, never grows the limiter past
+// its size.
+func TestLoginLimiterNeverGrowsPastItsSize(t *testing.T) {
+	limiter := newLoginLimiter()
+	for i := range 5 * loginLimiterSize {
+		limiter.attempt(fmt.Sprintf("2001:db8::%x", i))
+	}
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	if len(limiter.state) > loginLimiterSize {
+		t.Fatalf("%d addresses kept, want at most %d", len(limiter.state), loginLimiterSize)
 	}
 }
