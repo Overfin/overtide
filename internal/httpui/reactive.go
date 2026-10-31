@@ -240,8 +240,14 @@ func (server *Server) uiEvents(response http.ResponseWriter, request *http.Reque
 		case <-heartbeat.C:
 			// A session ended meanwhile (signed out, password changed)
 			// ends the stream: it was only checked when the stream opened.
-			if server.inv != nil && server.inv.Store() != nil && !server.signedIn(request) {
-				return
+			// A store error (busy, a passing failure) isn't an ended
+			// session: only a session the store says is gone ends it.
+			if server.inv != nil && server.inv.Store() != nil {
+				if cookie, err := request.Cookie(sessionCookieName); err != nil {
+					return
+				} else if valid, err := server.inv.Store().SessionValid(cookie.Value); err == nil && !valid {
+					return
+				}
 			}
 			if _, err := fmt.Fprint(response, ": keepalive\n\n"); err != nil {
 				return

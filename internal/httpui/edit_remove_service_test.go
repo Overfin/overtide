@@ -137,9 +137,10 @@ func TestEditServiceNeverSendsTheSavedKeyToANewAddress(t *testing.T) {
 		t.Fatalf("a refused move changed the service: %+v", saved)
 	}
 
-	// The same server, written differently: the key stays.
-	same := strings.Replace(radarr.URL, "127.0.0.1", "127.0.0.1", 1) + "/"
-	if response := send(t, handler, http.MethodPut, "/api/services/"+id, serviceForm{Name: "Movies", URL: strings.ToUpper(same[:4]) + same[4:]}, nil); response.Code != http.StatusOK {
+	// The same server, written differently (the scheme's case, a trailing
+	// slash): the key stays. TestSameServer covers the other spellings.
+	same := strings.ToUpper(radarr.URL[:4]) + radarr.URL[4:] + "/"
+	if response := send(t, handler, http.MethodPut, "/api/services/"+id, serviceForm{Name: "Movies", URL: same}, nil); response.Code != http.StatusOK {
 		t.Fatalf("the same server: %d %q", response.Code, response.Body.String())
 	}
 	if key := reloadConfig(t, configPath).Services[0].APIKey; key != "secret-key" {
