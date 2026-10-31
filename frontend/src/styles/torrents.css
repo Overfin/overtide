@@ -9,7 +9,4 @@
 .title-row { display: flex; align-items: center; gap: .75rem; }
 .title-row h1 { flex: 1; }
 .selection-bar { display: flex; justify-content: flex-end; margin-top: .75rem; }
-/* Long names without spaces (torrent and file names) break anywhere, so a
-   table keeps to the page instead of pushing its last columns out. */
-.breakable { overflow-wrap: anywhere; min-width: 6rem; }
 .breakable.name-col { min-width: 11rem; }

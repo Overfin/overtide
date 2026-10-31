@@ -156,7 +156,7 @@
         {#each rows as t (t.hash)}
           <li>
             <div>
-              <div class="name">{t.name}</div>
+              <div class="name breakable">{t.name}</div>
               <div class="hint">{t.size} · ratio {t.ratio.toFixed(2)} · {t.seeds} seeds · {t.leechers} leechers{#if t.reclaimable} · {t.reclaimable} reclaimable{/if}</div>
             </div>
             <a href={`/torrents/${t.hash}`}>View →</a>

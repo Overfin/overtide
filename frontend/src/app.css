@@ -13,3 +13,6 @@
 .pager .disabled { color: var(--faint); }
 .pager .pagesize { margin-left: auto; display: flex; gap: .4rem; align-items: center; }
 .pager .pagesize a.active { font-weight: 700; color: var(--text); text-decoration: none; }
+/* Long names without spaces (torrent and file names) break anywhere, so a
+   table or a card keeps to the page instead of pushing out of it. */
+.breakable { overflow-wrap: anywhere; min-width: 6rem; }
