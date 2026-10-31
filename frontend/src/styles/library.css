@@ -1,12 +1,4 @@
 /* Library, a title, History, Tasks: only what the kit doesn't have. */
-.pager { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .75rem 0; font-size: .9rem; }
-.pager .disabled { color: var(--faint); }
-.pager .current { font-weight: 700; }
-.pager .pagesize { margin-left: auto; display: flex; gap: .45rem; align-items: center; color: var(--muted); }
-.pager .pagesize a.active { font-weight: 700; color: var(--text); }
-th a { color: inherit; text-decoration: none; }
-th a:hover { color: var(--text); }
-.trash { min-height: 2rem; padding: .25rem .6rem; }
 .title-head { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
 .title-head > div:first-child { flex: 1 1 18rem; }
 .title-head h1 { margin: 0 0 .25rem; font-size: 1.6rem; }

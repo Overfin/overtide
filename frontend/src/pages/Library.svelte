@@ -109,7 +109,7 @@
     <a href="/library">Clear</a>
   </div>
 
-  <p class="muted"><b>{data.total}</b>{#if data.total !== data.all} of {data.all}{/if} media</p>
+  <p class="muted"><b>{data.total}</b>{#if data.total !== data.all}{' of '}{data.all}{/if} media</p>
 
   {#snippet pager(withSizes: boolean)}
     <div class="pager">
@@ -148,10 +148,10 @@
             <td class="num">{m.torrents}</td>
             <td class="row-actions">
               {#if m.removable}
-                <button type="button" class="small danger trash" title="Remove" aria-label={`Remove ${m.title}`}
-                  onclick={() => openRemoval('media', { type: m.type, id: String(m.sourceId), service_id: m.serviceId })}>🗑</button>
+                <button type="button" class="small danger" title="Remove" aria-label={`Remove ${m.title}`}
+                  onclick={() => openRemoval('media', { type: m.type, id: String(m.sourceId), service_id: m.serviceId })}>Remove</button>
               {:else}
-                <button type="button" class="small trash" disabled title="No files to remove">🗑</button>
+                <button type="button" class="small" disabled title="No files to remove">Remove</button>
               {/if}
             </td>
           </tr>

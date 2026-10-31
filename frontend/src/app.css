@@ -6,3 +6,10 @@
 .sidebar-extra a { font-size: .85rem; text-decoration: none; }
 .sidebar-extra .operations { color: var(--accent); }
 .sidebar-extra .failure { color: var(--danger); }
+/* The pager over long lists (Library, Torrents, Unmanaged files). */
+.pager { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .75rem 0; font-size: .9rem; color: var(--muted); }
+.pager a { color: var(--accent); }
+.pager .current { font-weight: 700; color: var(--text); }
+.pager .disabled { color: var(--faint); }
+.pager .pagesize { margin-left: auto; display: flex; gap: .4rem; align-items: center; }
+.pager .pagesize a.active { font-weight: 700; color: var(--text); text-decoration: none; }

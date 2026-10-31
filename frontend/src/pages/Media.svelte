@@ -87,9 +87,9 @@
         <Busy kind="ghost" title="Never plan it for removal" action={keep}>Keep</Busy>
       {/if}
       {#if data.removable}
-        <button type="button" class="danger trash" title="Remove" aria-label={`Remove ${m.title}`} onclick={remove}>🗑</button>
+        <button type="button" class="danger" title="Remove" aria-label={`Remove ${m.title}`} onclick={remove}>Remove</button>
       {:else}
-        <button type="button" class="trash" title="Nothing to remove" disabled>🗑</button>
+        <button type="button" title="Nothing to remove" disabled>Remove</button>
       {/if}
     </div>
   </div>
