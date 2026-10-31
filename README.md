@@ -125,9 +125,9 @@ CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detec
 
 Overtide is built from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, with its full history. Stewarr began as a storage-pressure cleanup experiment called **Spartarr** (first proposed as the regrettable **Shovitupyoarr**), then became **Togetharr**, **Connarr** and **Stewarr**. Stewarr stays a standalone tool for any *arr stack; Overtide is the one made to work with Overfin.
 
-## AI-assisted development
+## How it's made
 
-Said plainly, as for Overfin: Overtide is written by Claude (Anthropic's AI): its code, its tests and its documentation. The maintainer gives directions (what it should do, how, what to change) and runs it on a real server, but doesn't write the code or review it line by line. Commits Claude wrote carry a `Co-Authored-By: Claude` trailer. What checks the code is what runs before every push (the tests with the race detector, vet, staticcheck, govulncheck), and the dry run, on by default, before anything is removed or added for real.
+Overtide is designed by its maintainer, who makes the architecture, security and product decisions, and written by Claude (Anthropic's AI); Claude's commits carry a `Co-Authored-By: Claude` trailer. The code is checked by its tests, linters and the dry run, on by default; it hasn't had an independent security review yet.
 
 ## License
 

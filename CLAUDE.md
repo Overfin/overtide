@@ -17,8 +17,8 @@ part of the Overfin project: it works the way Overfin's server does.
   domains, IPs, hostnames, usernames, emails, network layout or secrets. Use
   `example.org` and documentation IPs (192.0.2.0/24, 198.51.100.0/24) in
   examples.
-- AI assistance is always disclosed: keep the README's "AI-assisted
-  development" section accurate, and end commits Claude contributed to with a
+- AI assistance is always disclosed: keep the README's "How it's made"
+  section accurate, and end commits Claude contributed to with a
   `Co-Authored-By: Claude ...` trailer.
 - Nobody reviews your code after you: the maintainer gives directions and
   uses the result, but doesn't read the code line by line. So check your
