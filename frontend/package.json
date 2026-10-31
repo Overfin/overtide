@@ -20,6 +20,6 @@
     "vite": "8.3.5"
   },
   "dependencies": {
-    "@overfin/ui": "github:overfin/ui#v0.3.0"
+    "@overfin/ui": "github:overfin/ui#v0.4.2"
   }
 }
