@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -101,5 +102,67 @@ func TestRemoveServiceEndToEndOverHTTP(t *testing.T) {
 	}
 	if response := getPath(t, handler, "/api/services/"+id, nil); response.Code != http.StatusNotFound {
 		t.Fatalf("a removed service's window: status=%d", response.Code)
+	}
+}
+
+// A saved key is never sent to another server: moving a service to a new
+// address with the key left empty is refused, and the new address hears
+// nothing; the same server under another spelling (case, default port)
+// still keeps the key.
+func TestEditServiceNeverSendsTheSavedKeyToANewAddress(t *testing.T) {
+	radarr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) }))
+	defer radarr.Close()
+	var leaked atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "" || strings.Contains(r.URL.RawQuery, "secret-key") {
+			leaked.Store(true)
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer elsewhere.Close()
+	handler, configPath := newServiceTestServer(t, nil)
+	if response := post(t, handler, "/api/services", serviceForm{Type: "radarr", Name: "Movies", URL: radarr.URL, APIKey: "secret-key"}, nil); response.Code != http.StatusOK {
+		t.Fatalf("setup: %d %q", response.Code, response.Body.String())
+	}
+	id := reloadConfig(t, configPath).Services[0].ID
+
+	response := send(t, handler, http.MethodPut, "/api/services/"+id, serviceForm{Name: "Movies", URL: elsewhere.URL}, nil)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "enter the API key again") {
+		t.Fatalf("moving without the key: %d %q", response.Code, response.Body.String())
+	}
+	if leaked.Load() {
+		t.Fatal("the saved key reached the new address")
+	}
+	if saved := reloadConfig(t, configPath).Services[0]; saved.URL != radarr.URL || saved.APIKey != "secret-key" {
+		t.Fatalf("a refused move changed the service: %+v", saved)
+	}
+
+	// The same server, written differently: the key stays.
+	same := strings.Replace(radarr.URL, "127.0.0.1", "127.0.0.1", 1) + "/"
+	if response := send(t, handler, http.MethodPut, "/api/services/"+id, serviceForm{Name: "Movies", URL: strings.ToUpper(same[:4]) + same[4:]}, nil); response.Code != http.StatusOK {
+		t.Fatalf("the same server: %d %q", response.Code, response.Body.String())
+	}
+	if key := reloadConfig(t, configPath).Services[0].APIKey; key != "secret-key" {
+		t.Fatalf("the key was dropped for the same server: %q", key)
+	}
+}
+
+func TestSameServer(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"http://radarr:7878", "http://RADARR:7878/", true},
+		{"https://example.org", "https://example.org:443/radarr", true},
+		{"http://example.org", "http://example.org:80", true},
+		{"http://radarr:7878", "http://radarr:7879", false},
+		{"http://radarr:7878", "https://radarr:7878", false},
+		{"http://radarr:7878", "http://evil.example.org:7878", false},
+		{"http://radarr:7878", "not a url", false},
+		{"", "http://radarr:7878", false},
+	} {
+		if got := sameServer(c.a, c.b); got != c.want {
+			t.Errorf("sameServer(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package httpui
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -219,14 +220,31 @@ func (server *Server) editService(w http.ResponseWriter, r *http.Request) {
 		Password:              existing.Password,
 		AllowAutomaticRemoval: in.AllowAutomaticRemoval,
 	}
-	// The window never shows a saved password or key: left empty, it stays.
+	// The window never shows a saved password or key: left empty, it stays,
+	// but only while the address still points at the same server. Moved to
+	// another one, a saved secret is never sent there: it must be given
+	// again (a mistyped or hostile address would otherwise receive it at
+	// the very next connection check).
+	moved := !sameServer(existing.URL, in.URL)
+	if moved {
+		updates.APIKey, updates.Password = "", ""
+	}
 	if strings.EqualFold(existing.Type, "qbittorrent") {
 		updates.Username = in.Username
 		if in.Password != "" {
 			updates.Password = in.Password
+		} else if moved && existing.Password != "" {
+			fail(w, http.StatusBadRequest, "The address changed: enter the password again.")
+			return
+		}
+		if in.APIKey != "" {
+			updates.APIKey = in.APIKey
 		}
 	} else if in.APIKey != "" {
 		updates.APIKey = in.APIKey
+	} else if moved && existing.APIKey != "" {
+		fail(w, http.StatusBadRequest, "The address changed: enter the API key again.")
+		return
 	}
 	if err := server.inv.EditService(r.Context(), id, updates); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
@@ -270,4 +288,24 @@ func (server *Server) serviceConsistencyStatus(w http.ResponseWriter, r *http.Re
 		}
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// sameServer reports whether two service addresses reach the same server:
+// the same scheme, host and port (a missing port is the scheme's own).
+func sameServer(a, b string) bool {
+	ua, errA := url.Parse(strings.TrimSpace(a))
+	ub, errB := url.Parse(strings.TrimSpace(b))
+	if errA != nil || errB != nil || ua.Host == "" || ub.Host == "" {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if p := u.Port(); p != "" {
+			return p
+		}
+		if strings.EqualFold(u.Scheme, "https") {
+			return "443"
+		}
+		return "80"
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Hostname(), ub.Hostname()) && port(ua) == port(ub)
 }
