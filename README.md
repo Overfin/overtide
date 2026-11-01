@@ -1,6 +1,6 @@
 # Overtide
 
-**The storage side of [Overfin](https://github.com/Overfin/server): it fills your disks with what your people want, and keeps the library rolling.**
+**The storage side of [Overfin](https://github.com/Overfin/server): it makes room on your disks, removing what your people want least, and keeps the library rolling.**
 
 > This page describes the next release, 0.7.0, not out yet. The latest release is [0.6.0](https://github.com/overfin/overtide/releases/tag/v0.6.0), which `deploy/compose.yaml` installs; it still adds titles itself.
 
