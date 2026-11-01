@@ -11,10 +11,7 @@ div.kv > :nth-child(odd) { color: var(--muted); }
    their look. */
 .warn:not(.notice):not(.badge) { color: var(--warn); }
 .current-status { color: var(--ok); }
-.superseded { color: #a35ff0; }
-/* On light pages, a darker purple keeps the text readable (WCAG AA). */
-:root[data-theme="light"] .superseded { color: #8a4ad8; }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .superseded { color: #8a4ad8; } }
+.superseded { color: var(--violet); }
 .orphaned { color: var(--warn); }
 .unassociated { color: var(--danger); }
 
@@ -22,8 +19,8 @@ div.kv > :nth-child(odd) { color: var(--muted); }
 svg.storage-bar { display: block; width: 100%; height: 30px; margin: 10px 0 6px; border-radius: var(--radius-s); background: var(--panel-3); }
 .storage-bar .segment.used, .storage-bar .segment.c0, .storage-legend .c0 .swatch { fill: var(--accent); background: var(--accent); }
 .storage-bar .segment.c1, .storage-legend .c1 .swatch { fill: var(--ok); background: var(--ok); }
-.storage-bar .segment.c2, .storage-legend .c2 .swatch { fill: #a35ff0; background: #a35ff0; }
-.storage-bar .segment.c3, .storage-legend .c3 .swatch { fill: #e5843a; background: #e5843a; }
+.storage-bar .segment.c2, .storage-legend .c2 .swatch { fill: var(--violet); background: var(--violet); }
+.storage-bar .segment.c3, .storage-legend .c3 .swatch { fill: var(--orange); background: var(--orange); }
 .storage-bar .segment.unmanaged { fill: var(--warn); }
 .storage-bar .segment.free { fill: transparent; }
 .storage-bar .segment.elsewhere { fill: rgba(var(--text-rgb), .25); }
