@@ -1,9 +1,9 @@
 /* Torrents, a torrent, Unmanaged files. */
 .list-summary { margin: 0 0 1rem; color: var(--muted); }
 .list-summary b { color: var(--text); }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0; font-size: .9rem; }
-.kv dt { color: var(--muted); }
-.kv dd { margin: 0; overflow-wrap: anywhere; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0; font-size: .9rem; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; overflow-wrap: anywhere; }
 .file-row { padding: .5rem 0; border-top: 1px solid var(--border); }
 .file-row:first-of-type { border-top: none; }
 .title-row { display: flex; align-items: center; gap: .75rem; }

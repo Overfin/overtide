@@ -50,7 +50,7 @@
     {#if enabled}
       <Field label="Target %"><input type="number" min="1" max="99" step="1" bind:value={target} /></Field>
     {/if}
-    <Field label="Critical %" hint="Overtide steers toward the target: it adds first, then removal makes room. Past critical, nothing more is added until removal catches up. Must be above the target.">
+    <Field label="Critical %" hint="Removal steers toward the target. Past critical, Overswell (when connected) adds nothing more there until removal catches up. Must be above the target.">
       <input type="number" min="2" max="99" step="1" bind:value={critical} />
     </Field>
   {/if}

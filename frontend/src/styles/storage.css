@@ -3,11 +3,13 @@
 .home-grid > section { margin: 0; }
 .card-link { font-size: .85rem; text-decoration: none; }
 .big { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; font-size: .9rem; margin-top: .4rem; }
-.kv > :nth-child(odd) { color: var(--muted); }
+div.kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; font-size: .9rem; margin-top: .4rem; }
+div.kv > :nth-child(odd) { color: var(--muted); }
 .good { color: var(--ok); }
 .bad { color: var(--danger); }
-.warn { color: var(--warn); }
+/* Warning text on the pages; the kit's own warn notices and badges keep
+   their look. */
+.warn:not(.notice):not(.badge) { color: var(--warn); }
 .current-status { color: var(--ok); }
 .superseded { color: #a35ff0; }
 /* On light pages, a darker purple keeps the text readable (WCAG AA). */
