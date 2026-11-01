@@ -42,13 +42,17 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 	if cfg.Removal.AutoMode != config.RemovalAutoConfirm && cfg.Removal.AutoMode != config.RemovalAutoAuto {
 		return nil
 	}
+	if !server.overTarget(cfg) {
+		return nil
+	}
+	if err := server.refreshScores(ctx, "Automatic removal plans"); err != nil {
+		log.Printf("[auto-removal] skipped this cycle: Overfin's scores: %v", err)
+		return nil
+	}
 	items, _, err := server.inv.Snapshot()
 	if err != nil {
 		log.Printf("[auto-removal] skipped this cycle: snapshot unavailable: %v", err)
 		return nil
-	}
-	if server.askOverfinIfNeeded(cfg, items) {
-		return nil // planned at the next cycle, with Overfin's answer
 	}
 	torrents := server.inv.TorrentSnapshot()
 	reliable := server.planningReliable(server.inv.ReliabilitySnapshot())
@@ -95,20 +99,31 @@ func autoActions(actions []cleanup.Action, cfg config.Config) []cleanup.Action {
 	return out
 }
 
-// overfinValuesFresh is how old Overfin's values may be when a disk needs
-// room before Overfin is asked again.
-const overfinValuesFresh = 15 * time.Minute
+// scoresWait is how long a plan waits for Overfin's scores: a full read
+// takes seconds.
+const scoresWait = 2 * time.Minute
 
-// askOverfinIfNeeded asks Overfin for the titles' values (its task, run
-// now) when a disk with automatic removal is over its target and the
-// values it gave are older than overfinValuesFresh: Overtide asks what to
-// remove when it needs space, not on a schedule. It reports whether it
-// asked.
-func (server *Server) askOverfinIfNeeded(cfg config.Config, items []model.Media) bool {
-	if cfg.Overfin.URL == "" {
-		return false
+// refreshScores asks Overfin for every title's score (its task, run now)
+// and waits for the answer: a plan is made on current scores. Without
+// Overfin there's nothing to ask. When it fails, Overtide's reliability
+// says so, and no plan is made until Overfin answers.
+func (server *Server) refreshScores(ctx context.Context, cause string) error {
+	if server.inv.Config().Overfin.URL == "" {
+		return nil
 	}
-	over := false
+	receipt, err := server.tasks.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: cause})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, scoresWait)
+	defer cancel()
+	_, err = server.tasks.Await(ctx, receipt.TriggerID)
+	return err
+}
+
+// overTarget reports whether a disk with automatic removal is over its
+// target: only then does automatic removal plan.
+func (server *Server) overTarget(cfg config.Config) bool {
 	for _, device := range server.inv.StorageDevices() {
 		usable := device.UsableBytes()
 		if !cfg.AutomaticRemovalEnabledFor(device.RepresentativePath) || usable == 0 {
@@ -116,26 +131,10 @@ func (server *Server) askOverfinIfNeeded(cfg config.Config, items []model.Media)
 		}
 		target, _ := cfg.ThresholdsFor(device.RepresentativePath)
 		if float64(device.OvertideUsedBytes())/float64(usable)*100 >= target {
-			over = true
+			return true
 		}
 	}
-	if !over {
-		return false
-	}
-	var newest time.Time
-	for _, m := range items {
-		if m.OverfinEnrichedAt.After(newest) {
-			newest = m.OverfinEnrichedAt
-		}
-	}
-	if time.Since(newest) < overfinValuesFresh {
-		return false
-	}
-	if _, err := server.tasks.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: "A disk is over its target"}); err != nil {
-		log.Printf("[auto-removal] asking Overfin for values: %v", err)
-		return false
-	}
-	return true
+	return false
 }
 
 // actionIsUnassociatedTorrent reports whether action is a StandaloneTorrent

@@ -2,6 +2,7 @@ package httpui
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -314,9 +315,17 @@ func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
 
 // apiCleanupPlan is a device's cleanup plan, built fresh, with the actions
 // skipped in the window (excluded=…) left out: a replacement takes their
-// place. A device no longer known answers the empty plan.
+// place. Opening it (nothing skipped yet) reads Overfin's scores first, so
+// the plan is made on current ones. A device no longer known answers the
+// empty plan.
 func (server *Server) apiCleanupPlan(w http.ResponseWriter, r *http.Request) {
-	data, _ := server.planForDevice(r.URL.Query().Get("path"), excludedSetFrom(r.URL.Query()["excluded"]))
+	excluded := excludedSetFrom(r.URL.Query()["excluded"])
+	if excluded == nil && server.tasks != nil {
+		if err := server.refreshScores(r.Context(), "A cleanup plan was opened"); err != nil {
+			log.Printf("[cleanup-plan] Overfin's scores: %v", err)
+		}
+	}
+	data, _ := server.planForDevice(r.URL.Query().Get("path"), excluded)
 	writeJSON(w, http.StatusOK, cleanupPlanJSONFrom(data))
 }
 

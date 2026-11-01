@@ -146,7 +146,7 @@ succeeds. Reading Overfin's scores is not a workflow step.
 Current tasks:
 
 - Base inventory — Radarr/Sonarr/qBittorrent plus incremental provenance, every `server.refresh_interval` (30 minutes by default).
-- Overfin values — each title's value, at startup and when a disk with automatic removal is over its target and the last answer is older than 15 minutes; removal-isolated.
+- Overfin values — each title's value, at startup and before every cleanup plan (opened by hand, or automatic removal's when a disk is over its target); removal-isolated.
 - File reconciliation — service/file-identity reconciliation, sparse (currently 12h).
 - Automatic removal — evaluates each device's cleanup plan every 15 minutes, in confirm or automatic mode.
 - Removal operations — confirmed removals, run as exclusive mutation tasks.

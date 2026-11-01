@@ -23,7 +23,7 @@ This file separates implemented behavior from intended direction. It is not a pr
 - **The target is soft:** Overswell adds first, and removal brings the disk back under its target. Only the critical threshold stops adding, until removal catches up.
 - **Import lists are the operator's business:** neither Overfin nor Overtide reads them or works around them. An operator may keep them inside Radarr and Sonarr; the removal form's optional import-list exclusion stays for them.
 - **Thresholds** (built 2026-10-25): each disk's target and critical are set in its settings on the Storage page; critical must be above the target.
-- **Removing** (built 2026-10-25): files deleted through Radarr or Sonarr, the entry kept, always unmonitored (a series, its removed episodes), untagged. Overfin's values are asked when a disk with automatic removal is over its target and the last answer is older than 15 minutes (and at startup).
+- **Removing** (built 2026-10-25): files deleted through Radarr or Sonarr, the entry kept, always unmonitored (a series, its removed episodes), untagged. Overfin's scores are read again before every plan, opened by hand or made by automatic removal (and at startup).
 
 **Safety.** Dry run first and by default ("would remove Y and Z, 12 GB"); then confirm (proposals approved by hand) and automatic.
 

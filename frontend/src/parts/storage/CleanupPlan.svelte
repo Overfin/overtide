@@ -73,7 +73,7 @@
 <Modal title="Cleanup plan" description={plan ? identity(plan) : ''} size="wide" {busy} {close}>
   {#if plan?.dryRun}<p><span class="badge warn">DRY RUN</span></p>{/if}
   {#if !plan}
-    {#if failure}<Notice warn>{failure}</Notice>{:else}<Loading />{/if}
+    {#if failure}<Notice warn>{failure}</Notice>{:else}<Loading text="Asking Overfin for current scores…" />{/if}
   {:else if rows.length}
     {#if plan.dryRun}<Notice warn>Dry run — nothing will be removed.</Notice>{/if}
     <p class="bad"><b>Cleanup active.</b><br />{plan.message}<br />{rows.length} action(s) selected · {human(plan.selectedBytes)} planned.</p>
