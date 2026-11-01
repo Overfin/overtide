@@ -2,6 +2,8 @@
 
 **The storage side of [Overfin](https://github.com/Overfin/server): it fills your disks with what your people want, and keeps the library rolling.**
 
+> This page describes the next release, 0.7.0, not out yet. The latest release is [0.6.0](https://github.com/overfin/overtide/releases/tag/v0.6.0), which `deploy/compose.yaml` installs; it still adds titles itself.
+
 Overfin knows your titles and your people: what they watch, ask for and like, and what's worth having that you don't have yet. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. Together they keep a library that evolves toward the people using it:
 
 - **Removing.** When a disk goes over its target, Overtide removes the titles Overfin values least, with every torrent that shares their files.
