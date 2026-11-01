@@ -65,8 +65,8 @@ Space used by things outside Overtide's view is set aside, not counted against i
 
 - **Home**: each disk's state, the library and torrent totals, services' health, what cleanup has done so far.
 - **Library**: your films and series, searchable, with Overfin's value.
-- **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds.
-- **Unmanaged files**: files on disk no service claims, removed by hand only; and torrents qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
+- **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds; and those qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
+- **Unmanaged files**: files on disk no service claims, removed by hand only.
 - **Storage**: each disk with its target and its cleanup plan, and the Kept list.
 - **Services**, **Tasks** (the background work, with **Run now**), **History** (every removal, simulated or real), **Settings**.
 

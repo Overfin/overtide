@@ -8,8 +8,8 @@ title is rated, which it turns into a value per title. Overtide knows the
 storage: the files on disk and their physical identity, the torrents and
 their history, the space and traffic each device and connection allows. It
 combines attributable facts and authoritative actions across the *arr stack
-to decide what the server gets and what it keeps, which no application can
-decide on its own.
+to decide what the server keeps, which no application can decide on its
+own. What it gets is Overswell's, a separate app.
 
 Overtide was built from Stewarr 0.5.0, a standalone coordination layer for
 the *arr stack, and keeps its model: file and storage management first,
@@ -240,9 +240,8 @@ subscribe to the File management layer to contribute value, request,
 catalog, diagnostic or future domain facts. Conversely, a feature may consume
 an adapter only when the adapter satisfies that feature's complete capability
 contract. Overfin never joins the filesystem namespace: it contributes title
-values and suggestions of what to add. Later it will also contribute
-approved requests and their counts, and receive request statuses and what's
-leaving soon.
+values. Later it may also receive what's leaving soon. Suggestions of what
+to add, and requests, are Overswell's.
 
 Root discovery does not by itself establish ownership. A future adapter that
 declares an exhaustive filesystem root must claim every regular File under it;
@@ -354,7 +353,7 @@ and their triggers cannot attach to an in-progress targeted execution.
 
 ## Shared UI shell
 
-All primary pages use a single application chrome driven by the centralized `product` identity (`Name`, `Slug`, `Version`). Server-rendered HTML remains authoritative; pinned htmx and Stimulus assets provide bounded interaction and ship inside the binary. Browser history is reserved for real page navigation. RemovalPlan is transient modal state: opening it, changing selections, cancelling it, and recalculating it do not create navigation entries.
+All primary pages use a single application chrome driven by the centralized `product` identity (`Name`, `Slug`, `Version`). The pages are a Svelte app on Overfin UI, built into the binary (`internal/httpui/dist`); the server answers JSON (`/api/…`) and pushes live revisions on `/ui/events`. Browser history is reserved for real page navigation. RemovalPlan is transient modal state: opening it, changing selections, cancelling it, and recalculating it do not create navigation entries.
 
 The UI consumes published/cached application facts only. A versioned dashboard
 snapshot is invalidated by inventory, storage samples, database commits, task
@@ -381,7 +380,7 @@ Names must describe the domain concept they hold. Single-letter and cryptic abbr
 
 A Media-originated plan may expose any subset of its managed files and related qBittorrent actions whose correspondence is proven from authoritative physical identity. The plan may disclose other owners affected by a multi-file Torrent, but those other Media actions are preserved and cannot be selected through the initiating Media. A Torrent-originated plan may expose only managed files whose correspondence to a torrent file is proven from authoritative physical identity or future authoritative provenance. Filename/path similarity is never sufficient evidence for a destructive linked action.
 
-Owner state changes follow managed-file removal. A removed title stays in Radarr or Sonarr, always unmonitored (a Radarr movie, or the affected Sonarr episodes) and tagged `overtide`. Only successfully removed managed files contribute to those follow-up updates.
+Owner state changes follow managed-file removal. A removed title stays in Radarr or Sonarr, always unmonitored (a Radarr movie, or the affected Sonarr episodes), so it doesn't come back on its own. Only successfully removed managed files contribute to those follow-up updates.
 
 The same boundary supports optional import-list exclusions. Radarr exclusions
 require the media's authoritative TMDB ID; Sonarr exclusions require its TVDB
