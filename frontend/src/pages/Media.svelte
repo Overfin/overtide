@@ -96,7 +96,7 @@
 
   <div class="cards">
     <Card title="Value">
-      <ul class="list reasons">
+      <ul class="list stack">
         {#each m.reasons as r, i (i)}
           <li>
             <strong>{r.label}</strong><br /><span class="muted">{r.value}</span>

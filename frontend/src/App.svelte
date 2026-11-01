@@ -124,7 +124,7 @@
       {/each}
     {/snippet}
     {#if live.updates}
-      <div class="updates-bar">
+      <div class="notice-bar updates-bar">
         <Notice>This page has changed since you opened it.</Notice>
         <button type="button" class="primary" onclick={applyUpdates}>Updates available</button>
       </div>

@@ -2,7 +2,6 @@
 .removal-summary { margin: .5rem 0 1rem; }
 .removal-summary .big { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .removal-section { margin-top: 1rem; }
-.removal-section h3 { margin-top: 0; }
 .removal-section h4 { margin: .6rem 0 .3rem; font-size: .9rem; }
 .removal-group, .removal-media { margin: .4rem 0; }
 .removal-group .removal-file, .removal-media .removal-group { padding-left: 1.4rem; }

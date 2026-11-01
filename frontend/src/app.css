@@ -1,8 +1,7 @@
 /* Overtide's own, shared by its pages: only what the kit doesn't have.
    A page's own styles live in styles/<area>.css, imported by the page. */
 .dry { color: var(--warn); }
-.updates-bar { position: sticky; top: .75rem; z-index: 6; display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
-.updates-bar .notice { flex: 1; margin: 0; }
+.updates-bar { position: sticky; top: .75rem; z-index: 6; }
 /* The pager over long lists (Library, Torrents, Unmanaged files). */
 .pager { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .75rem 0; font-size: .9rem; color: var(--muted); }
 .pager a { color: var(--accent); }

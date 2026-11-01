@@ -4,7 +4,6 @@
 .title-head h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
 .title-head .value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
 .title-head .actions { display: flex; gap: .5rem; align-items: center; }
-.reasons li { display: block; }
 .file-row + .file-row { margin-top: .6rem; }
 .group-title { margin-top: 1rem; }
 .owner { font-weight: 400; }
