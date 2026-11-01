@@ -94,7 +94,7 @@
     <Setting label="Also remove torrents with no known owner" hint="Off by default: Overtide has no relationship to judge these safe to delete unattended.">
       {#snippet children(ids)}<input type="checkbox" bind:checked={unassociated} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
     </Setting>
-    <Setting label="Allow removal of incomplete torrents" hint="Off by default: only controls whether an incomplete download can be a candidate at all. A torrent added in the last 7 days is never picked on its own.">
+    <Setting label="Allow automatic removal of incomplete torrents" hint="Off by default: whether automatic removal may pick an incomplete download. The cleanup plan still lists them, to remove by hand. A torrent added in the last 7 days is never picked on its own.">
       {#snippet children(ids)}<input type="checkbox" bind:checked={incomplete} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
     </Setting>
     <Setting label="Torrents that are copies of a title" hint={'A torrent whose files were copied to the library, not hardlinked: removing it frees its whole size and the library loses nothing, so by default copies go before any title. "Ordered with their title" places each one by its title\'s Overfin score instead, so seeding goes with the titles that matter least. Torrents that back nothing at all always go first.'}>

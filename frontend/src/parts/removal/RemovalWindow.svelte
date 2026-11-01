@@ -256,7 +256,7 @@
     {#if v.canUnmonitorMovies || v.canUnmonitorEpisodes || v.canExcludeMovies || v.canExcludeSeries}
       <section class="removal-section">
         <h3>After removal</h3>
-        {#if v.canUnmonitorMovies || v.canUnmonitorEpisodes}<p class="muted">The titles stay in Radarr and Sonarr, unmonitored (a series, its removed episodes), tagged "overtide".</p>{/if}
+        {#if v.canUnmonitorMovies || v.canUnmonitorEpisodes}<p class="muted">The titles stay in Radarr and Sonarr, unmonitored (a series, its removed episodes), so they don't come back on their own.</p>{/if}
         {#if v.canExcludeMovies}<label class="inline"><input type="checkbox" bind:checked={excludeMovies} /> Add affected movies to import list exclusions</label>{/if}
         {#if v.canExcludeSeries}<label class="inline"><input type="checkbox" bind:checked={excludeSeries} /> Add affected series to import list exclusions</label>{/if}
       </section>
