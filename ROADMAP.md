@@ -40,7 +40,7 @@ This file separates implemented behavior from intended direction. It is not a pr
 5. ~~**No valuation of its own.**~~ Done (0.7.0): the Jellyfin, Seerr, TMDB and IMDb adapters, their tasks and settings, the IMDb table and the Retention Value weights are gone. A title's value is Overfin's score, unchanged; what Overfin didn't score is protected, and without Overfin nothing is removed automatically. Overtide keeps a copy of Overfin's scores between reads (decided 2026-11-01): its pages show them, and asking only the least valuable titles couldn't fill those.
 6. ~~**The removal planner.**~~ Done (0.7.0): lone torrents first, then titles by Overfin's score with their hardlinked torrents; no torrent care and no share per service; the Kept list replaces keep tags; private torrents recognized, with an optional seeding time.
 7. **Adding** (moved to Overswell, 2026-10-30), in dry run: following titles through the stack (states); trying a title (monitor, search, keep it monitored if a download started, else unmonitor it and retry later: monitor, never delete); Overfin's suggestions as the only source; pace; every action covered by dry run (built 2026-10-25). Then the gap. Download limits come after.
-8. **Requests from Overfin** (moved to Overswell, 2026-11-01): they're added, so Overswell takes them, first; Overtide only sees them in Overfin's scores.
+8. **Requests from Overfin** (moved to Overswell, 2026-11-01; to become Overfin's wishlists, in turns Overfin decides): they're added, so Overswell takes them, first; Overtide only sees them in Overfin's scores.
 9. **Leaving soon**, told to Overfin before a removal, so people get a last chance to watch.
 
 ## Implemented through 0.4.8
