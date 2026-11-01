@@ -82,7 +82,7 @@
   </Card>
 
   <Card title="Automatic removal">
-    <Setting label="Automatic removal" hint={'Disabled: the evaluation never runs. Confirm: it evaluates candidates on schedule but never submits anything — review and remove them yourself. Auto: it submits them on its own. Each service also needs "Allow automatic removal" checked in its own settings before anything it owns is touched.'}>
+    <Setting label="Automatic removal" hint={'Disabled: the evaluation never runs. Confirm: it evaluates candidates on schedule but never submits anything — review and remove them yourself. Auto: it submits them on its own. Each service also needs "Include in cleanup plans" ticked in its own settings before anything it owns is planned.'}>
       {#snippet children(ids)}
         <select bind:value={autoMode} aria-labelledby={ids.label} aria-describedby={ids.hint}>
           <option value="disabled">Disabled</option>

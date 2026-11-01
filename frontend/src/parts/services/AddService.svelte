@@ -95,8 +95,8 @@
       <Field label="Password"><input type="password" bind:value={password} autocomplete="off" /></Field>
     {/if}
     {#if shows('radarr sonarr qbittorrent')}
-      <label class="inline"><input type="checkbox" bind:checked={allowAutomaticRemoval} /> Allow automatic removal</label>
-      <p class="hint">Lets unattended cleanup remove what this service owns, once automatic removal is enabled in Settings.</p>
+      <label class="inline"><input type="checkbox" bind:checked={allowAutomaticRemoval} /> Include in cleanup plans</label>
+      <p class="hint">Off: cleanup plans, by hand or automatic, never include what this service owns. Removing a title from its own page still works.</p>
     {/if}
   </form>
   {#snippet foot()}

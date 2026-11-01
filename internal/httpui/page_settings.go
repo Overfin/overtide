@@ -98,8 +98,8 @@ type removalForm struct {
 }
 
 // setRemovalSettings saves the global automatic-removal switches (PUT
-// /api/settings/removal). Automatic removal also still requires each
-// service's own "Allow automatic removal" (see the service edit window) —
+// /api/settings/removal). Every cleanup plan also still requires each
+// service's own "Include in cleanup plans" (see the service edit window) —
 // auto mode controls whether the evaluation task runs at all (Disabled),
 // runs and applies its filters but never submits anything (Confirm), or
 // runs and submits (Auto).

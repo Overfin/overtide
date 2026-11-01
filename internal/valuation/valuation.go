@@ -9,7 +9,7 @@ import (
 )
 
 // serviceAllowsRemoval reports whether serviceID's own service has checked
-// "Allow automatic removal" — an unknown or empty serviceID fails closed,
+// "Include in cleanup plans" — an unknown or empty serviceID fails closed,
 // the same as a removed/never-configured service would.
 func serviceAllowsRemoval(configuration config.Config, serviceID string) bool {
 	for _, service := range configuration.Services {

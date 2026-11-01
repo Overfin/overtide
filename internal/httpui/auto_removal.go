@@ -192,7 +192,7 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 		case !ok:
 			return fmt.Errorf("torrent %s is gone", hash)
 		case t.RemovalRestricted:
-			return fmt.Errorf("%s: its service no longer allows removal", t.Name)
+			return fmt.Errorf("%s: its service is no longer included in cleanup plans", t.Name)
 		case t.Obligation != "":
 			return fmt.Errorf("%s: %s", t.Name, t.Obligation)
 		case lone && t.Protected:
@@ -209,7 +209,7 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 		case !ok:
 			return fmt.Errorf("the title is gone")
 		case m.RemovalRestricted:
-			return fmt.Errorf("%s: its service no longer allows removal", m.Title)
+			return fmt.Errorf("%s: its service is no longer included in cleanup plans", m.Title)
 		case m.Protected:
 			return fmt.Errorf("%s: %s", m.Title, m.ProtectionReason)
 		}

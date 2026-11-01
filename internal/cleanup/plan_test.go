@@ -227,7 +227,7 @@ func TestBuildDoesNotBlockBundleForATorrentMerelyTooNew(t *testing.T) {
 
 // TestBuildExcludesMediaAndTorrentsFromNonOptedInServices guards a real
 // bug: a standalone Media/Torrent item's own service not having checked
-// "Allow automatic removal" must exclude it from the plan entirely — for
+// "Include in cleanup plans" must exclude it from the plan entirely — for
 // manual review on the Storage page just as much as automatic execution,
 // since both read the same Plan.Actions. RemovalRestricted is deliberately
 // a separate field from Protected (see model.Media) so this isn't shown as

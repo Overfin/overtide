@@ -65,8 +65,8 @@
       <Field label="API key"><input type="password" bind:value={apiKey} placeholder={detail.hasApiKey ? 'Unchanged; type to replace' : ''} autocomplete="new-password" /></Field>
     {/if}
     {#if removable}
-      <label class="inline"><input type="checkbox" bind:checked={allowAutomaticRemoval} /> Allow automatic removal</label>
-      <p class="hint">Lets unattended cleanup remove what this service owns, once automatic removal is enabled in Settings.</p>
+      <label class="inline"><input type="checkbox" bind:checked={allowAutomaticRemoval} /> Include in cleanup plans</label>
+      <p class="hint">Off: cleanup plans, by hand or automatic, never include what this service owns. Removing a title from its own page still works.</p>
     {/if}
     <div class="danger-zone">
       <p class="hint">Removing this service lets go of everything it currently owns — those files become Unmanaged.</p>

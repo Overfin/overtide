@@ -78,7 +78,7 @@ type Torrent struct {
 	// obligation also holds back the title it's hardlinked to.
 	Obligation string `json:"obligation,omitempty"`
 	// RemovalRestricted is true when this torrent's own service has not
-	// checked "Allow automatic removal" — distinct from Protected (a
+	// ticked "Include in cleanup plans" — distinct from Protected (a
 	// keep/ratio/etc. judgment the item earns on its own merits, shown
 	// as such throughout the UI). This is a plain administrative
 	// permission: the owning service simply hasn't been opted in, so the
