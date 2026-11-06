@@ -1,9 +1,12 @@
 package inventory
 
 import (
+	"context"
 	"fmt"
+	"slices"
 
 	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/services/arr"
 	"github.com/overfin/overtide/internal/services/prowlarr"
 )
 
@@ -67,9 +70,41 @@ func (service *Service) SetAdding(mode, manage string, searches, titlesPerDay, u
 	})
 }
 
-// SetDestination adds a destination (index -1) or replaces one; the
-// caller checked its folder and profile with the service.
-func (service *Service) SetDestination(index int, d config.Destination) error {
+// DestinationOptions are a Radarr's or a Sonarr's root folders and
+// quality profiles.
+type DestinationOptions struct {
+	Folders  []string
+	Profiles []arr.QualityProfile
+}
+
+// Options asks a Radarr or Sonarr for its root folders and quality
+// profiles.
+func (service *Service) Options(ctx context.Context, serviceID string) (DestinationOptions, error) {
+	var client *arr.Client
+	if r, err := service.RadarrClient(serviceID); err == nil {
+		client = r.Client
+	} else if s, err := service.SonarrClient(serviceID); err == nil {
+		client = s.Client
+	} else {
+		return DestinationOptions{}, fmt.Errorf("no Radarr or Sonarr %q", serviceID)
+	}
+	folders, profiles, err := client.WithContext(ctx).Options()
+	return DestinationOptions{Folders: folders, Profiles: profiles}, err
+}
+
+// SetDestination adds a destination (index -1) or replaces one, once its
+// service says it has that root folder and quality profile.
+func (service *Service) SetDestination(ctx context.Context, index int, d config.Destination) error {
+	options, err := service.Options(ctx, d.ServiceID)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(options.Folders, d.RootFolder) {
+		return fmt.Errorf("that service has no root folder %q", d.RootFolder)
+	}
+	if !slices.ContainsFunc(options.Profiles, func(p arr.QualityProfile) bool { return p.ID == d.QualityProfileID }) {
+		return fmt.Errorf("that service has no quality profile %d", d.QualityProfileID)
+	}
 	return service.changeAdding(func(c config.Config) (config.Config, error) { return config.SetDestination(c, index, d) })
 }
 

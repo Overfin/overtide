@@ -48,6 +48,7 @@ var allServiceTypes = []serviceTypeOption{
 	{"sonarr", "Sonarr"},
 	{"qbittorrent", "qBittorrent"},
 	{"overfin", "Overfin"},
+	{"prowlarr", "Prowlarr"},
 }
 
 // serviceCategory groups adapter types by the role they fill, purely for

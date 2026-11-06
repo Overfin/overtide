@@ -2,12 +2,13 @@ package httpui
 
 import (
 	"fmt"
-	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/removal"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
 )
 
 type relatedRemovalTorrent struct {
