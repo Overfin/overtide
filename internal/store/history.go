@@ -30,6 +30,8 @@ type HistoryEvent struct {
 	// breakdown stays inspectable regardless of how its status changed
 	// afterward.
 	ServiceName string `json:"serviceName,omitempty"`
+	// Dismissed: the operator said a failed operation needs nothing more.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 func (s *Store) SaveHistoryEvent(e HistoryEvent) (int64, error) {
@@ -81,19 +83,20 @@ func (s *Store) InterruptStartedHistoryEvents() error {
 	return s.exec(`UPDATE history_events SET status='interrupted', error=CASE WHEN error='' THEN 'application stopped before the removal operation was finalized' ELSE error END WHERE event_type='removal' AND status='started'`)
 }
 
-const historyColumns = `id,event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name`
+const historyColumns = `id,event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name,dismissed_at`
 
 // scanHistoryEvent reads one row of historyColumns.
 func scanHistoryEvent(row interface{ Scan(...any) error }) (HistoryEvent, error) {
 	var e HistoryEvent
 	var dryRun int64
-	var payload, created string
+	var payload, created, dismissed string
 	err := row.Scan(&e.ID, &e.EventType, &e.Status, &dryRun, &e.RequestedKind, &e.RequestedKey, &e.RequestedLabel,
-		&e.ReclaimableBytes, &payload, &e.Error, &created, &e.MediaBytes, &e.ServiceName)
+		&e.ReclaimableBytes, &payload, &e.Error, &created, &e.MediaBytes, &e.ServiceName, &dismissed)
 	if err != nil {
 		return e, err
 	}
 	e.DryRun = dryRun != 0
+	e.Dismissed = dismissed != ""
 	e.Payload = json.RawMessage(payload)
 	e.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	return e, nil
@@ -144,4 +147,30 @@ func (s *Store) HistoryEventByID(id int64) (HistoryEvent, error) {
 		return HistoryEvent{}, fmt.Errorf("history event %d does not exist", id)
 	}
 	return e, err
+}
+
+// ProblemStatuses are the statuses of a live operation that didn't go
+// through in full.
+var ProblemStatuses = []string{"failed", "partial", "interrupted", "attention"}
+
+// ProblemHistoryEvents returns the live operations that didn't go through
+// in full and weren't dismissed, the newest first.
+func (s *Store) ProblemHistoryEvents() ([]HistoryEvent, error) {
+	s.accessMu.RLock()
+	defer s.accessMu.RUnlock()
+	return s.historyEvents(`SELECT ` + historyColumns + ` FROM history_events WHERE dry_run=0 AND dismissed_at='' AND status IN ('failed','partial','interrupted','attention') ORDER BY created_at DESC`)
+}
+
+// DismissHistoryEvent records that a failed operation needs nothing more.
+func (s *Store) DismissHistoryEvent(id int64) error {
+	s.accessMu.Lock()
+	defer s.accessMu.Unlock()
+	res, err := s.q.Exec(`UPDATE history_events SET dismissed_at=? WHERE id=?`, rfc3339(time.Now().UTC()), id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("history event %d does not exist", id)
+	}
+	return nil
 }

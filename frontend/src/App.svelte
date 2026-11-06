@@ -123,9 +123,9 @@
       {#if live.pendingOperations}
         <a class="operations" href="/tasks">{live.pendingOperations === 1 ? '1 operation in progress' : `${live.pendingOperations} operations in progress`}</a>
       {/if}
-      {#each live.notices as n (n.id)}
-        <a class="failure" href={`/history#operation-${n.id}`}>{n.label || 'Removal'}: {n.message || n.status}</a>
-      {/each}
+      {#if live.failed}
+        <a class="failure" href="/history?problems=1">{live.failed === 1 ? '1 removal failed' : `${live.failed} removals failed`}</a>
+      {/if}
     {/snippet}
     {#if live.updates}
       <div class="notice-bar updates-bar">

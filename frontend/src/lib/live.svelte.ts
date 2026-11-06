@@ -1,7 +1,7 @@
 // Live updates: Overtide pushes a "revision" on /ui/events each time
 // something changes (a task ran, a removal moved on, the disks' bytes
 // ticked). The panel then asks /ui/status what stands (operations in
-// progress, failures to notice), and tells the page, which reloads or shows
+// progress, removals that failed), and tells the page, which reloads or shows
 // "Updates available" according to its policy (follow).
 //
 // The server ends a stream every few minutes on purpose (a connection can
@@ -14,16 +14,10 @@ export interface Revision {
   revision?: number;
 }
 
-interface StatusNotice {
-  id: number | string;
-  label?: string;
-  message?: string;
-  status?: string;
-}
-
 export const live = $state({
   pendingOperations: 0,
-  notices: [] as StatusNotice[],
+  /** failed: removals that didn't go through in full, with something left. */
+  failed: 0,
   /** updates: a list page has changes it didn't show yet. */
   updates: false,
 });
@@ -110,7 +104,7 @@ async function refreshStatus(invalidation: Revision) {
     etag = response.headers.get('ETag') || '';
     const status = await response.json();
     live.pendingOperations = Number(status.pendingOperations) || 0;
-    live.notices = status.notices || [];
+    live.failed = Number(status.failedOperations) || 0;
     const pushed = invalidation.kind !== 'poll' && invalidation.kind !== 'visibility';
     if (pushed) {
       if (lastRevision === null) {
