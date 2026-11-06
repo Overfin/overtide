@@ -83,3 +83,46 @@ func TestCheckDoesNotWait(t *testing.T) {
 		t.Fatal("Check waited")
 	}
 }
+
+// The list is read again after a dropped connection; the folders keep
+// which one holds the downloads still going.
+func TestTorrentsAndRoots(t *testing.T) {
+	defer func(old []time.Duration) { Waits = old }(Waits)
+	Waits = []time.Duration{time.Millisecond}
+	var syncs atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if syncs.Add(1) == 1 {
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				conn.Close()
+				return
+			}
+			fmt.Fprint(w, `{"rid":7,"full_update":true,"torrents":{"ABC":{"name":"A","save_path":"/t/done","content_path":"/t/done/A"}}}`)
+		case "/api/v2/app/preferences":
+			fmt.Fprint(w, `{"save_path":"/t/done","temp_path":"/t/incomplete","temp_path_enabled":true}`)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+	driver := QBittorrent("Downloads", srv.URL, "", "", "key")
+	torrents, cursor, err := driver.Torrents(nil, 0)
+	if err != nil || cursor != 7 || torrents["abc"].Name != "A" || torrents["abc"].Client != "Downloads" || syncs.Load() != 2 {
+		t.Fatalf("torrents: %v %d %v, %d syncs", torrents, cursor, err, syncs.Load())
+	}
+	roots, err := driver.Roots(torrents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	purposes := map[string]string{}
+	for _, root := range roots {
+		purposes[root.Path] = root.Purpose
+	}
+	if purpose, ok := purposes["/t/incomplete"]; !ok || purpose != PurposeIncompleteDownloads {
+		t.Fatalf("roots: %+v", roots)
+	}
+	if purpose, ok := purposes["/t/done"]; !ok || purpose != "" {
+		t.Fatalf("roots: %+v", roots)
+	}
+}
