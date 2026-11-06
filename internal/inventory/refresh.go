@@ -287,6 +287,7 @@ func (service *Service) Refresh(ctx context.Context) error {
 	if err := service.ValidateBaseServices(ctx); err != nil {
 		return service.fail(err)
 	}
+	service.checkProwlarr(ctx)
 	validationDuration := time.Since(validationStarted)
 	service.mu.Lock()
 	if service.refreshing {
