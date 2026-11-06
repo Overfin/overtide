@@ -359,7 +359,7 @@ const TagKeep = "overtide-keep"
 // HasTag reports whether labels holds tag.
 func HasTag(labels []string, tag string) bool {
 	for _, label := range labels {
-		if strings.EqualFold(label, tag) {
+		if sameTag(label, tag) {
 			return true
 		}
 	}

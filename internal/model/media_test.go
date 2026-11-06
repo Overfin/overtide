@@ -18,3 +18,13 @@ func TestNormalizeTorrentStatusMigratesLegacyStates(t *testing.T) {
 		}
 	}
 }
+
+// Until adding replaces them, Overswell's tag names read as Overtide's.
+func TestFormerTagNamesStillRead(t *testing.T) {
+	if !HasTag([]string{"Overswell-Added"}, TagAdded) || !IsManagedTag("overswell-found") || !IsManagedTag(TagNew) {
+		t.Fatal("a former or current managed tag not recognized")
+	}
+	if !HasLabel([]int{7}, map[int]string{7: "overswell-ignore"}, TagIgnore) || HasTag([]string{"overswell-keep"}, TagKeep) {
+		t.Fatal("ignore not recognized, or keep given a former name it never had")
+	}
+}
