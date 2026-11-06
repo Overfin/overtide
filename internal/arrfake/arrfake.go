@@ -48,9 +48,6 @@ type Arrs struct {
 	Grabs         []map[string]any
 	Events        map[string][]map[string]any
 	Downloads     map[string][]map[string]any
-	// Import lists per app, by ID, and the films Radarr's lists have.
-	Lists      map[string]map[int]map[string]any
-	ListMovies []map[string]any
 	// Connect entries per app, by ID; a test sends the entry's webhook a
 	// test event, as Radarr and Sonarr do.
 	Notifications map[string]map[int]map[string]any
@@ -62,7 +59,7 @@ func New(now time.Time) *Arrs {
 		Films: map[int]map[string]any{}, Series: map[int]map[string]any{}, Eps: map[int]map[string]any{},
 		Queued: map[int]bool{}, GrabOn: map[int]bool{}, Releases: map[int][]map[string]any{}, Files: map[int]map[string]any{},
 		Cutoff: map[string][]map[string]any{}, History: map[string][]map[string]any{},
-		Lists: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}, Notifications: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}}
+		Notifications: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}}
 }
 
 // TagID is the ID of the app's tag, made if need be.
@@ -344,14 +341,6 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "/api/v3/notification/") && r.Method == http.MethodPut:
 		id, _ := strconv.Atoi(strings.TrimPrefix(path, "/api/v3/notification/"))
 		f.Notifications[app][id] = body
-		write(body)
-	case path == "/api/v3/importlist/movie":
-		write(f.ListMovies)
-	case path == "/api/v3/importlist":
-		write(list(f.Lists[app]))
-	case strings.HasPrefix(path, "/api/v3/importlist/") && r.Method == http.MethodPut:
-		id, _ := strconv.Atoi(strings.TrimPrefix(path, "/api/v3/importlist/"))
-		f.Lists[app][id] = body
 		write(body)
 	default:
 		write(map[string]any{})
