@@ -51,6 +51,9 @@ type Arrs struct {
 	// Import lists per app, by ID, and the films Radarr's lists have.
 	Lists      map[string]map[int]map[string]any
 	ListMovies []map[string]any
+	// Connect entries per app, by ID; a test sends the entry's webhook a
+	// test event, as Radarr and Sonarr do.
+	Notifications map[string]map[int]map[string]any
 }
 
 // New is an empty Radarr and Sonarr, at now.
@@ -59,7 +62,7 @@ func New(now time.Time) *Arrs {
 		Films: map[int]map[string]any{}, Series: map[int]map[string]any{}, Eps: map[int]map[string]any{},
 		Queued: map[int]bool{}, GrabOn: map[int]bool{}, Releases: map[int][]map[string]any{}, Files: map[int]map[string]any{},
 		Cutoff: map[string][]map[string]any{}, History: map[string][]map[string]any{},
-		Lists: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}}
+		Lists: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}, Notifications: map[string]map[int]map[string]any{"radarr": {}, "sonarr": {}}}
 }
 
 // TagID is the ID of the app's tag, made if need be.
@@ -304,6 +307,44 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write([]map[string]any{{"path": "/data/Series"}})
 	case path == "/api/v3/qualityprofile":
 		write([]map[string]any{{"id": 1}})
+	case path == "/api/v3/notification/schema":
+		write([]map[string]any{{"implementation": "Webhook", "name": "", "onGrab": false, "onMovieAdded": false, "onSeriesAdd": false,
+			"fields": []any{map[string]any{"name": "url"}, map[string]any{"name": "method", "value": 1}, map[string]any{"name": "username"}, map[string]any{"name": "password"}}}})
+	case path == "/api/v3/notification/test":
+		field := func(name string) string {
+			for _, f := range body["fields"].([]any) {
+				if f.(map[string]any)["name"] == name {
+					v, _ := f.(map[string]any)["value"].(string)
+					return v
+				}
+			}
+			return ""
+		}
+		request, _ := http.NewRequest(http.MethodPost, field("url"), strings.NewReader(`{"eventType":"Test"}`))
+		if request == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		request.SetBasicAuth(field("username"), field("password"))
+		request.Header.Set("Content-Type", "application/json")
+		answer, err := (&http.Client{Timeout: 2 * time.Second}).Do(request)
+		if err != nil || answer.StatusCode/100 != 2 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		answer.Body.Close()
+		write(map[string]any{})
+	case path == "/api/v3/notification" && r.Method == http.MethodGet:
+		write(list(f.Notifications[app]))
+	case path == "/api/v3/notification":
+		id := len(f.Notifications[app]) + 1
+		body["id"] = id
+		f.Notifications[app][id] = body
+		write(body)
+	case strings.HasPrefix(path, "/api/v3/notification/") && r.Method == http.MethodPut:
+		id, _ := strconv.Atoi(strings.TrimPrefix(path, "/api/v3/notification/"))
+		f.Notifications[app][id] = body
+		write(body)
 	case path == "/api/v3/importlist/movie":
 		write(f.ListMovies)
 	case path == "/api/v3/importlist":

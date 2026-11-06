@@ -14,6 +14,7 @@
   let titlesPerDay = $state(10);
   let upgradesPerDay = $state(0);
   let searches = $state(3);
+  let eventsUrl = $state('');
   let status = $state<{ text: string; kind: '' | 'ok' | 'error' }>({ text: '', kind: '' });
   // editing: the destination whose form is open; null for a new one.
   let editing = $state<number | null | undefined>(undefined);
@@ -21,7 +22,7 @@
   async function load() {
     try {
       data = await get<AddingSettings>('/api/settings/adding');
-      ({ mode, manage, titlesPerDay, upgradesPerDay, searches } = data);
+      ({ mode, manage, titlesPerDay, upgradesPerDay, searches, eventsUrl } = data);
       failure = '';
     } catch (err) {
       failure = (err as Error).message;
@@ -31,7 +32,7 @@
   async function save() {
     status = { text: '', kind: '' };
     try {
-      await put('/api/settings/adding', { mode, manage, searches: Number(searches), titlesPerDay: Number(titlesPerDay), upgradesPerDay: Number(upgradesPerDay) });
+      await put('/api/settings/adding', { mode, manage, searches: Number(searches), titlesPerDay: Number(titlesPerDay), upgradesPerDay: Number(upgradesPerDay), eventsUrl: eventsUrl.trim() });
       status = { text: 'Saved.', kind: 'ok' };
       await load();
     } catch (err) {
@@ -76,6 +77,12 @@
       </select>
     {/snippet}
   </Setting>
+  {#if manage === 'all'}
+    <Setting label="Overtide's address for Radarr and Sonarr" hint={'Where Radarr and Sonarr tell Overtide each title they add, so it takes it at once (a webhook named Overtide in their Connect settings, which Overtide makes). Left empty, Overtide finds it: it tries its own name and the apps\' machine, and keeps the one a test reaches it at. Set it when they reach Overtide some other way, like http://overtide:8088.'}>
+      {#snippet children(ids)}<input type="url" placeholder="Found by Overtide" bind:value={eventsUrl} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
+    </Setting>
+    {#if data.eventsProblem}<Notice warn>{data.eventsProblem}</Notice>{/if}
+  {/if}
   <Setting label="Titles a day" hint="How many titles may start downloading in 24 hours, whatever brought them: wishes first, then older incomplete seasons, then the rest. Past it, they wait, for months if need be. A series counts once per season, and one with more seasons than that still goes, alone in its day. Episodes of a season airing don't wait and don't count; a season just finished doesn't wait but counts. 10 by default.">
     {#snippet children(ids)}<input type="number" min="1" max="500" bind:value={titlesPerDay} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
   </Setting>

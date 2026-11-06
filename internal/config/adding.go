@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
+	"strings"
 )
 
 // AddingConfig is how Overtide brings titles in.
@@ -23,6 +25,10 @@ type AddingConfig struct {
 	UpgradesPerDay int `json:"upgrades_per_day,omitempty"`
 	// Destinations say where titles go, in order (see DestinationFor).
 	Destinations []Destination `json:"destinations,omitempty"`
+	// EventsURL is Overtide's address as Radarr and Sonarr reach it, for
+	// the events they send (a title added) with "Manage all": found and
+	// tested by Overtide when it can, else set by the operator.
+	EventsURL string `json:"events_url,omitempty"`
 }
 
 // Destination is where titles go: a Radarr (films) or a Sonarr (series),
@@ -130,6 +136,21 @@ func SetUpgradesPerDay(configuration Config, upgrades int) (Config, error) {
 	}
 	updated := configuration
 	updated.Adding.UpgradesPerDay = upgrades
+	return updated, nil
+}
+
+// SetEventsURL sets Overtide's address as Radarr and Sonarr reach it: an
+// http or https address, or "" for Overtide to find it.
+func SetEventsURL(configuration Config, address string) (Config, error) {
+	address = strings.TrimRight(strings.TrimSpace(address), "/")
+	if address != "" {
+		u, err := url.Parse(address)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return configuration, fmt.Errorf("Overtide's address for Radarr and Sonarr must be an http or https address, like http://overtide:8088")
+		}
+	}
+	updated := configuration
+	updated.Adding.EventsURL = address
 	return updated, nil
 }
 

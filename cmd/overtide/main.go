@@ -131,7 +131,10 @@ func main() {
 	addingClaims := []tasks.ResourceClaim{{Resource: "adding", Mode: tasks.ClaimExclusive}, maintenanceClaim}
 	for _, definition := range []tasks.Definition{
 		{ID: "adding-overfin", Name: "Overfin's suggestions", Description: "Read what Overfin suggests adding and what people wished for, into the waiting list.", Interval: adding.ReadEvery, Runner: adder.ReadOverfin, Resources: addingClaims, Priority: tasks.PriorityPeriodic},
-		{ID: "adding", Name: "Try the titles", Description: "Follow what's downloading, then search for the waiting titles, within the run's searches and the trackers' limits.", Interval: adding.RunEvery, Runner: adder.Run, Resources: addingClaims, Priority: tasks.PriorityPeriodic},
+		// A title Radarr or Sonarr just added (their events) waits for a
+		// run that starts after it, not one already past taking it.
+		{ID: "adding", Name: "Try the titles", Description: "Follow what's downloading, then search for the waiting titles, within the run's searches and the trackers' limits.", Interval: adding.RunEvery, Runner: adder.Run, Resources: addingClaims, Priority: tasks.PriorityPeriodic,
+			AttachCompatible: func(_ []tasks.TriggerKind, requested tasks.TriggerKind) bool { return requested != tasks.TriggerEvent }},
 	} {
 		if err := taskManager.Register(definition); err != nil {
 			log.Fatalf("[scheduler] adding registration: %v", err)

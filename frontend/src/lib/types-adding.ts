@@ -111,4 +111,6 @@ export interface AddingSettings {
   upgradesPerDay: number;
   summary?: Summary;
   destinations: Destination[];
+  eventsUrl: string;
+  eventsProblem?: string;
 }
