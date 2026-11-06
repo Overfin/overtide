@@ -6,7 +6,8 @@
   import { PageHead, Notice, Loading } from '@overfin/ui';
   import { get } from '../lib/api';
   import { follow } from '../lib/live.svelte';
-  import { route } from '../lib/router.svelte';
+  import { route, params } from '../lib/router.svelte';
+  import Problems from '../parts/removal/Problems.svelte';
   import type { CleanupRun, HistoryEvent } from '../lib/types-library';
   import { stamp } from '../lib/types-library';
 
@@ -38,6 +39,11 @@
   const plural = (n: number) => (n === 1 ? '' : 's');
 </script>
 
+{#if params().get('problems')}
+  <PageHead title="Failed removals" description="Removals that didn't go through in full, with what's still there of them. Once nothing is left, an operation leaves this list on its own." />
+  <p><a href="/history">All the history</a></p>
+  <Problems />
+{:else}
 <PageHead title="History" description="What Overtide removed, or would have in a dry run, and how it went." />
 {#if problem}<Notice warn>{problem}</Notice>{/if}
 
@@ -103,4 +109,5 @@
       </table>
     </div>
   {/if}
+{/if}
 {/if}

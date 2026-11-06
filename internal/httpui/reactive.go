@@ -268,7 +268,9 @@ type uiStatus struct {
 	Revision          uint64            `json:"revision"`
 	Kind              string            `json:"kind"`
 	PendingOperations int               `json:"pendingOperations"`
-	Notices           []operationNotice `json:"notices,omitempty"`
+	// FailedOperations counts the removals that didn't go through in full
+	// and still have something left (see problems).
+	FailedOperations int `json:"failedOperations"`
 }
 
 func (server *Server) uiStatus(response http.ResponseWriter, request *http.Request) {
@@ -290,11 +292,11 @@ func (server *Server) uiStatus(response http.ResponseWriter, request *http.Reque
 		// Folded into the same #operation-indicator pending removals already
 		// use, rather than a second UI element — there's no history event to
 		// link a "still scanning" notice to, so this only affects the count,
-		// not projection.Notices.
+		// not the failed removals.
 		pendingOperations++
 	}
 	response.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(response).Encode(uiStatus{Revision: revision.Revision, Kind: revision.Kind, PendingOperations: pendingOperations, Notices: projection.Notices})
+	_ = json.NewEncoder(response).Encode(uiStatus{Revision: revision.Revision, Kind: revision.Kind, PendingOperations: pendingOperations, FailedOperations: len(server.problems())})
 }
 
 // serviceConsistencyRunning reports whether the global
@@ -318,7 +320,6 @@ type pendingProjection struct {
 	Unmanaged    map[string]operationNotice
 	ManagedFiles map[string]operationNotice
 	PendingCount int
-	Notices      []operationNotice
 }
 
 // mediaOperationKey identifies one media item across pending-removal
@@ -368,9 +369,6 @@ func (server *Server) pendingProjection() pendingProjection {
 	for _, event := range events {
 		status := strings.ToLower(strings.TrimSpace(event.Status))
 		notice := operationNotice{ID: event.ID, Label: event.RequestedLabel, Status: status, Message: event.Error}
-		if (status == "failed" || status == "partial" || status == "interrupted" || status == "attention") && len(projection.Notices) < 5 {
-			projection.Notices = append(projection.Notices, notice)
-		}
 		projecting := status == "queued" || status == "started"
 		if (status == "interrupted" || status == "attention") && server.tasks != nil && server.tasks.ConsistencyPending() {
 			projecting = true

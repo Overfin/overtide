@@ -98,6 +98,8 @@ func (server *Server) routes() http.Handler {
 	server.removalRoutes(mux)
 	server.servicesRoutes(mux)
 	server.settingsRoutes(mux)
+	mux.HandleFunc("GET /api/history/problems", server.historyProblems)
+	mux.HandleFunc("POST /api/history/{id}/dismiss", server.historyDismiss)
 	mux.HandleFunc("GET /api/adding", server.addingReady(server.addingList))
 	mux.HandleFunc("GET /api/adding/now", server.addingReady(server.nowPanel))
 	mux.HandleFunc("POST /api/adding/run", server.addingReady(server.addingRun))
