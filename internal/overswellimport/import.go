@@ -21,7 +21,7 @@ import (
 
 // overswellConfig is what's read of Overswell's config.json.
 type overswellConfig struct {
-	Services []config.Service   `json:"services"`
+	Services []config.Service    `json:"services"`
 	Adding   config.AddingConfig `json:"adding"`
 }
 
