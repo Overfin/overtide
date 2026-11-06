@@ -11,6 +11,7 @@
   import AddService from '../parts/services/AddService.svelte';
   import EditService from '../parts/services/EditService.svelte';
   import ServiceProgress from '../parts/services/ServiceProgress.svelte';
+  import Trackers from '../parts/services/Trackers.svelte';
 
   let services = $state<ServiceRow[] | null>(null);
   let failure = $state('');
@@ -77,6 +78,7 @@
       </Card>
     {/each}
   </div>
+  <Trackers />
 {/if}
 
 {#if adding !== null}

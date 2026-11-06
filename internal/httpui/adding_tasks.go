@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/config"
@@ -118,4 +119,40 @@ func (server *Server) addingSettingsSave(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	done(w)
+}
+
+type trackerRow struct {
+	Name  string `json:"name"`
+	Limit int    `json:"limit"`
+	// Per is "hour" or "day".
+	Per  string `json:"per"`
+	Used int    `json:"used"`
+	// Searches is how many more searches it has room for.
+	Searches int `json:"searches"`
+}
+
+// addingTrackers answers GET /api/adding/trackers: Prowlarr's trackers,
+// with their limits and what they were asked, for the Services page.
+// Prowlarr is false without one.
+func (server *Server) addingTrackers(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Prowlarr bool         `json:"prowlarr"`
+		Trackers []trackerRow `json:"trackers"`
+		Error    string       `json:"error,omitempty"`
+	}{Trackers: []trackerRow{}}
+	if _, ok := server.inv.Config().FirstService("prowlarr"); ok {
+		data.Prowlarr = true
+		trackers, err := server.pacer.Trackers()
+		for _, t := range trackers {
+			row := trackerRow{Name: t.Name, Limit: t.Limit, Per: "day", Used: t.Used, Searches: t.Searches}
+			if t.Unit == time.Hour {
+				row.Per = "hour"
+			}
+			data.Trackers = append(data.Trackers, row)
+		}
+		if err != nil {
+			data.Error = err.Error()
+		}
+	}
+	writeJSON(w, http.StatusOK, data)
 }

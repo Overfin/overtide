@@ -17,6 +17,18 @@ func buildProwlarrClient(configuration config.Config) *prowlarr.Client {
 	return nil
 }
 
+// checkProwlarr records whether the Prowlarr answers, for the Services
+// page. Only adding's pace depends on it, so it never stops an inventory.
+func (service *Service) checkProwlarr(ctx context.Context) {
+	svc, ok := service.Config().FirstService("prowlarr")
+	client := service.ProwlarrClient()
+	if !ok || client == nil {
+		return
+	}
+	err := client.WithContext(ctx).Validate()
+	service.setStatus(svc.Name, true, err == nil, err)
+}
+
 // ProwlarrClient is the client of Prowlarr, for adding's pace; nil without
 // Prowlarr.
 func (service *Service) ProwlarrClient() *prowlarr.Client {

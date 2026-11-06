@@ -102,6 +102,7 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/history/{id}/dismiss", server.historyDismiss)
 	mux.HandleFunc("GET /api/adding", server.addingReady(server.addingList))
 	mux.HandleFunc("GET /api/adding/now", server.addingReady(server.nowPanel))
+	mux.HandleFunc("GET /api/adding/trackers", server.addingReady(server.addingTrackers))
 	mux.HandleFunc("POST /api/adding/run", server.addingReady(server.addingRun))
 	mux.HandleFunc("POST /api/adding/clear", server.addingReady(server.addingClear))
 	mux.HandleFunc("GET /api/adding/imports", server.addingReady(server.importsList))

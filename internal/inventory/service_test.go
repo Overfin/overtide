@@ -1,8 +1,12 @@
 package inventory
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 )
 
@@ -112,5 +116,38 @@ func TestApplyMediaBundleEstimatesIgnoresNonHardlinkedCurrentTorrent(t *testing.
 
 	if media[0].BundleReclaimableBytes != media[0].ReclaimableBytes {
 		t.Fatalf("a separate copy must never be folded into the bundle estimate: %#v", media[0])
+	}
+}
+
+// A Prowlarr's status is checked at each inventory, and its being down
+// stops nothing.
+func TestCheckProwlarrStatus(t *testing.T) {
+	up := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !up {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	cfg := config.Config{Services: []config.Service{{ID: "p", Type: "prowlarr", Name: "Trackers", URL: srv.URL, APIKey: "k"}}}
+	service := New(cfg, nil)
+	statusOf := func() ServiceStatus {
+		for _, st := range service.StatusSnapshot() {
+			if st.ID == "p" {
+				return st
+			}
+		}
+		return ServiceStatus{}
+	}
+	service.checkProwlarr(context.Background())
+	if st := statusOf(); !st.OK {
+		t.Fatalf("up: %+v", st)
+	}
+	up = false
+	service.checkProwlarr(context.Background())
+	if st := statusOf(); st.OK || st.Message == "" {
+		t.Fatalf("down: %+v", st)
 	}
 }
