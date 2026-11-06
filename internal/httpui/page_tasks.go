@@ -10,8 +10,9 @@ type taskGroup struct {
 }
 
 // taskGroups separates the flat task list into the "Library & Storage" core
-// tasks (always shown) and one group per enrichment service, shown only
-// when that service is actually configured.
+// tasks (always shown), adding's (shown whenever they're registered: off,
+// they do nothing), and one group per enrichment service, shown only when
+// that service is actually configured.
 func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	cfg := server.inv.Config()
 	byID := make(map[string]tasks.Status, len(all))
@@ -27,6 +28,15 @@ func (server *Server) taskGroups(all []tasks.Status) []taskGroup {
 	}
 	if len(core) > 0 {
 		groups = append(groups, taskGroup{Name: "Library & Storage", Tasks: core})
+	}
+	var adding []tasks.Status
+	for _, id := range []string{addingOverfinTaskID, addingTaskID} {
+		if status, ok := byID[id]; ok {
+			adding = append(adding, status)
+		}
+	}
+	if len(adding) > 0 {
+		groups = append(groups, taskGroup{Name: "Adding", Tasks: adding})
 	}
 	if cfg.Overfin.URL != "" {
 		var overfin []tasks.Status

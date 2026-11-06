@@ -258,6 +258,13 @@ func TestTaskGroupsHidesUnconfiguredServices(t *testing.T) {
 	if len(groups) != 2 || groups[1].Name != "Overfin" || len(groups[1].Tasks) != 1 {
 		t.Fatalf("expected an Overfin group once configured, got %#v", groups)
 	}
+
+	// Adding's tasks have their own group, whenever they're registered.
+	all = append(all, tasks.Status{ID: addingOverfinTaskID, Name: "Overfin's suggestions"}, tasks.Status{ID: addingTaskID, Name: "Try the titles"})
+	groups = server.taskGroups(all)
+	if len(groups) != 3 || groups[1].Name != "Adding" || len(groups[1].Tasks) != 2 || groups[1].Tasks[0].ID != addingOverfinTaskID {
+		t.Fatalf("expected an Adding group, got %#v", groups)
+	}
 }
 
 func TestGroupMediaTorrents(t *testing.T) {
