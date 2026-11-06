@@ -16,7 +16,8 @@ Overfin decides; Overtide manages. Radarr, Sonarr and qBittorrent keep doing the
 ## Starting it
 
 ```sh
-mkdir overtide && cd overtide
+# config/ made by you, not by Docker (which would make it root's)
+mkdir -p overtide/config && cd overtide
 curl -fsSLO https://raw.githubusercontent.com/overfin/overtide/main/deploy/compose.yaml
 curl -fsSL -o .env https://raw.githubusercontent.com/overfin/overtide/main/deploy/.env.example
 # in .env, set MEDIA_DIR to your media and downloads, MEDIA_PATH to the path
