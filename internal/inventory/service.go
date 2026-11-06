@@ -15,10 +15,10 @@ import (
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/prowlarr"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/torrentdriver"
 	"github.com/overfin/overtide/internal/valuation"
 )
 
@@ -90,7 +90,7 @@ type Service struct {
 	rad     map[string]*radarr.Client
 	son     map[string]*sonarr.Client
 	overfin *overfin.Client
-	qb      map[string]*qbittorrent.Client
+	qb      map[string]torrentdriver.Driver
 	// prowlarr is the first Prowlarr's client, for adding's pace; nil
 	// without one.
 	prowlarr *prowlarr.Client
@@ -533,7 +533,7 @@ func (service *Service) RemoveTorrent(ctx context.Context, hash, svcID string) e
 	if err != nil {
 		return err
 	}
-	return client.WithContext(ctx).Delete(hash)
+	return client.WithContext(ctx).Remove(hash, true)
 }
 
 // removeIncompleteTorrentViaQueue attempts the Radarr/Sonarr queue removal
@@ -657,7 +657,7 @@ func (service *Service) sonarrClient(svcID string) (*sonarr.Client, error) {
 	return client, nil
 }
 
-func (service *Service) qbittorrentClient(svcID string) (*qbittorrent.Client, error) {
+func (service *Service) qbittorrentClient(svcID string) (torrentdriver.Driver, error) {
 	service.mu.RLock()
 	defer service.mu.RUnlock()
 	client, ok := service.qb[svcID]
@@ -699,7 +699,7 @@ func (service *Service) VerifyUnmanagedContext(ctx context.Context, paths []stri
 	for i, svc := range qbInstances {
 		go func(i int, svc config.Service) {
 			defer wg.Done()
-			qbErrs[i] = qbClients[svc.ID].WithContext(ctx).VerifyPathsUnmanaged(paths)
+			qbErrs[i] = qbClients[svc.ID].WithContext(ctx).NotClaimed(paths)
 		}(i, svc)
 	}
 	for i, svc := range radInstances {

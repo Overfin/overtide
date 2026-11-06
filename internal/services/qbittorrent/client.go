@@ -35,6 +35,21 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("qbittorrent %s: not found: %s", e.Path, e.Body)
 }
 
+// StatusError is qBittorrent answering with an error status.
+type StatusError struct {
+	Path   string
+	Code   int
+	Status string
+	Body   string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("qbittorrent %s: %s: %s", e.Path, e.Status, e.Body)
+}
+
+// ErrTorrentNotFound: qBittorrent has no torrent with that hash.
+var ErrTorrentNotFound = errors.New("torrent not found")
+
 type Client struct {
 	name, base, username, password, apiKey string
 	hc                                     *http.Client
@@ -87,7 +102,10 @@ func (client *Client) login() error {
 	// failure signal is the literal body "Fails." on wrong credentials —
 	// that's the only case to reject; treat every other 2xx response as
 	// success rather than matching one specific body/cookie shape.
-	if r.StatusCode/100 != 2 || strings.TrimSpace(string(b)) == "Fails." {
+	if r.StatusCode/100 != 2 {
+		return &StatusError{Path: "login", Code: r.StatusCode, Status: r.Status, Body: strings.TrimSpace(string(b))}
+	}
+	if strings.TrimSpace(string(b)) == "Fails." {
 		return fmt.Errorf("qbittorrent login: %s: %s", r.Status, strings.TrimSpace(string(b)))
 	}
 	return nil
@@ -110,7 +128,7 @@ func (client *Client) postForm(path string, form url.Values) error {
 	defer r.Body.Close()
 	if r.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(r.Body, 2048))
-		return fmt.Errorf("qbittorrent %s: %s: %s", path, r.Status, bytes.TrimSpace(b))
+		return &StatusError{Path: path, Code: r.StatusCode, Status: r.Status, Body: string(bytes.TrimSpace(b))}
 	}
 	return nil
 }
@@ -131,7 +149,7 @@ func (client *Client) get(path string, out any) error {
 		if r.StatusCode == http.StatusNotFound {
 			return &NotFoundError{Path: path, Body: string(bytes.TrimSpace(b))}
 		}
-		return fmt.Errorf("qbittorrent %s: %s: %s", path, r.Status, bytes.TrimSpace(b))
+		return &StatusError{Path: path, Code: r.StatusCode, Status: r.Status, Body: string(bytes.TrimSpace(b))}
 	}
 	return json.NewDecoder(r.Body).Decode(out)
 }
@@ -418,7 +436,7 @@ func (client *Client) Detail(hash string) (model.Torrent, error) {
 		return model.Torrent{}, err
 	}
 	if len(xs) == 0 {
-		return model.Torrent{}, fmt.Errorf("torrent not found")
+		return model.Torrent{}, ErrTorrentNotFound
 	}
 	x := xs[0]
 	return model.Torrent{Client: client.name, Hash: strings.ToLower(x.Hash), Name: x.Name, State: x.State, Category: x.Category, Tags: x.Tags, Tracker: x.Tracker, SavePath: x.SavePath, ContentPath: x.ContentPath, SizeBytes: x.Size, TotalSizeBytes: x.TotalSize, CompletedBytes: x.Completed, AmountLeftBytes: x.AmountLeft, DownloadedBytes: x.Downloaded, UploadedBytes: x.Uploaded, DownloadedSession: x.DownloadedSession, UploadedSession: x.UploadedSession, DownloadLimit: x.DLLimit, UploadLimit: x.UPLimit, Ratio: x.Ratio, MaxRatio: x.MaxRatio, Progress: x.Progress, Availability: x.Availability, SeedsConnected: x.NumSeeds, LeechersConnected: x.NumLeechs, SeedsSwarm: x.NumComplete, LeechersSwarm: x.NumIncomplete, AddedOn: x.AddedOn, CompletionOn: x.CompletionOn, LastActivity: x.LastActivity, SeenComplete: x.SeenComplete, TimeActive: x.TimeActive, SeedingTime: x.SeedingTime, ETA: x.ETA, Reannounce: x.Reannounce, ForceStart: x.ForceStart, AutoTMM: x.AutoTMM, Sequential: x.Sequential, SuperSeeding: x.SuperSeeding, Private: x.Private}, nil
@@ -692,7 +710,12 @@ func (client *Client) Validate() error {
 	if !client.enabled() {
 		return nil
 	}
-	return client.login()
+	if client.apiKey == "" {
+		return client.login()
+	}
+	// With a key there's no sign-in: something must answer with it.
+	var preferences map[string]any
+	return client.get("/api/v2/app/preferences", &preferences)
 }
 
 // RootPurposeIncompleteDownloads labels a root discovered from qBittorrent's
@@ -799,3 +822,6 @@ func (client *Client) StorageRoots(torrents map[string]model.Torrent) ([]RootPat
 	}
 	return out, nil
 }
+
+// StatusCode is the HTTP status qBittorrent answered.
+func (e *StatusError) StatusCode() int { return e.Code }

@@ -16,10 +16,10 @@ import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 	"github.com/overfin/overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/torrentdriver"
 	"github.com/overfin/overtide/internal/valuation"
 )
 
@@ -57,7 +57,7 @@ func (service *Service) validateServiceTypes(ctx context.Context, allowed map[st
 		case "overfin":
 			fn = overfin.New(i.URL, i.APIKey).WithContext(ctx).Validate
 		case "qbittorrent":
-			fn = qbittorrent.New(i.Name, i.URL, i.Username, i.Password, i.APIKey).WithContext(ctx).Validate
+			fn = torrentdriver.QBittorrent(i.Name, i.URL, i.Username, i.Password, i.APIKey).WithContext(ctx).Check
 		default:
 			return fmt.Errorf("service %q has no registered adapter for type %q", i.Name, i.Type)
 		}
@@ -130,7 +130,7 @@ type storageRoot struct {
 	Service config.Service
 	Label   string
 	// Purpose distinguishes why a root exists at all, e.g.
-	// qbittorrent.RootPurposeIncompleteDownloads — empty for an ordinary
+	// torrentdriver.PurposeIncompleteDownloads — empty for an ordinary
 	// root. Surfaced on StorageCapabilities so the reason a path needs
 	// mounting is visible, not just the bare path.
 	Purpose string
@@ -151,7 +151,7 @@ func configuredOrDiscoveredRoots(i config.Service, discovered []string) []storag
 // qBittorrent's richer qbittorrent.RootPath (path + purpose) instead of a
 // bare path string, so an incomplete-downloads root carries that label all
 // the way through to StorageCapabilities.
-func qbittorrentDiscoveredRoots(i config.Service, discovered []qbittorrent.RootPath) []storageRoot {
+func qbittorrentDiscoveredRoots(i config.Service, discovered []torrentdriver.Root) []storageRoot {
 	out := make([]storageRoot, 0, len(discovered)+1)
 	for _, r := range discovered {
 		out = append(out, storageRoot{Path: r.Path, Service: i, Purpose: r.Purpose})
@@ -433,7 +433,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	}
 	type qbRootsFetch struct {
 		svc   config.Service
-		roots []qbittorrent.RootPath
+		roots []torrentdriver.Root
 		err   error
 	}
 	radRootFetches := make([]rootsFetch, len(radInstances))
@@ -459,7 +459,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	for i, svc := range qbInstances {
 		go func(i int, svc config.Service) {
 			defer wg.Done()
-			roots, err := qbClients[svc.ID].WithContext(ctx).StorageRoots(torrentsByInstance[svc.ID])
+			roots, err := qbClients[svc.ID].WithContext(ctx).Roots(torrentsByInstance[svc.ID])
 			qbRootFetches[i] = qbRootsFetch{svc: svc, roots: roots, err: err}
 		}(i, svc)
 	}
@@ -540,7 +540,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	}
 	type qbittorrentFilesFetch struct {
 		svc   config.Service
-		files map[string][]qbittorrent.File
+		files map[string][]torrentdriver.File
 		err   error
 	}
 	radFilesFetches := make([]radarrFilesFetch, len(radInstances))
@@ -567,7 +567,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 	for i, svc := range qbInstances {
 		go func(i int, svc config.Service) {
 			defer wg.Done()
-			files, err := qbClients[svc.ID].WithContext(ctx).AllFiles(torrentsByInstance[svc.ID])
+			files, err := qbClients[svc.ID].WithContext(ctx).Files(torrentsByInstance[svc.ID])
 			qbFilesFetches[i] = qbittorrentFilesFetch{svc: svc, files: files, err: err}
 		}(i, svc)
 	}
@@ -623,7 +623,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 			if !ok {
 				continue
 			}
-			root := qbittorrent.TorrentFileRoot(t, xs)
+			root := torrentdriver.FileRoot(t, xs)
 			for _, x := range xs {
 				p := filepath.Clean(filepath.Join(root, filepath.FromSlash(x.Name)))
 				torrentRefs = append(torrentRefs, model.TorrentFileRef{ServiceID: qf.svc.ID, ServiceName: qf.svc.Name, Client: t.Client, Hash: h, FileIndex: x.Index, Path: p})
