@@ -68,6 +68,9 @@ type Manager struct {
 	appCtx        context.Context
 	sequence      atomic.Uint64
 	shutdownGrace time.Duration
+	// persisted is the state as last saved: the loop saves at every turn,
+	// and the state (hundreds of kilobytes) is written only when it changed.
+	persisted string
 }
 
 func New(definitions ...Definition) *Manager {
@@ -1294,7 +1297,14 @@ func (manager *Manager) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	return manager.store.SetMeta(persistedStateKey, string(encoded))
+	if string(encoded) == manager.persisted {
+		return nil
+	}
+	if err := manager.store.SetMeta(persistedStateKey, string(encoded)); err != nil {
+		return err
+	}
+	manager.persisted = string(encoded)
+	return nil
 }
 
 func (manager *Manager) copyStateLocked() (persistedState, uint64, error) {
