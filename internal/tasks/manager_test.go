@@ -835,3 +835,45 @@ func TestSnapshotShowsTheRunningExecution(t *testing.T) {
 		t.Fatalf("running status shows the last run: %+v", status)
 	}
 }
+
+// A removal waiting for its exclusive claim isn't kept waiting by shared
+// claims that start after it: once the shared one running ends, it goes
+// before the shared one that came later.
+func TestExclusiveWaiterIsNotStarvedBySharedClaims(t *testing.T) {
+	order := make(chan string, 4)
+	releaseAdding := make(chan struct{})
+	shared := []ResourceClaim{{Resource: "files", Mode: ClaimShared}}
+	manager := New(
+		Definition{ID: "adding", Name: "Adding", Resources: shared, Runner: func(context.Context) error {
+			order <- "adding"
+			<-releaseAdding
+			return nil
+		}},
+		Definition{ID: "inventory", Name: "Inventory", Resources: shared, Runner: func(context.Context) error { order <- "inventory"; return nil }},
+		Definition{ID: "removal", Name: "Removal", Priority: PriorityMutation, Resources: []ResourceClaim{{Resource: "files", Mode: ClaimExclusive}}, Runner: func(context.Context) error { order <- "removal"; return nil }},
+	)
+	startManager(t, manager)
+	_, _ = manager.Submit(Request{TaskID: "adding"})
+	if got := receive(t, order); got != "adding" {
+		t.Fatalf("first: %s", got)
+	}
+	_, _ = manager.Submit(Request{TaskID: "removal", Priority: PriorityMutation})
+	_, _ = manager.Submit(Request{TaskID: "inventory"})
+	// The inventory could share with adding, but the removal is ahead of it.
+	assertNotReceived(t, order)
+	waitUntil(t, func() bool {
+		for _, status := range manager.Snapshot() {
+			if status.ID == "inventory" && strings.Contains(status.Waiting, "Removal") {
+				return true
+			}
+		}
+		return false
+	})
+	close(releaseAdding)
+	if got := receive(t, order); got != "removal" {
+		t.Fatalf("after adding: %s", got)
+	}
+	if got := receive(t, order); got != "inventory" {
+		t.Fatalf("last: %s", got)
+	}
+}

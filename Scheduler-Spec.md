@@ -218,7 +218,10 @@ Priority classes, highest first:
 6. `periodic` — routine maintenance.
 
 Priority selects among ready work that can acquire its resources. It never
-violates resource safety or forcibly kills a runner.
+violates resource safety or forcibly kills a runner. A ready task blocked on
+a resource it claims exclusively reserves that resource: work after it that
+claims the same resource waits, so a stream of shared claims can't keep it
+waiting (writer preference). The wait says which task is ahead.
 
 Emergency or mutation work may request cooperative interruption of conflicting
 executions that explicitly declare themselves interruptible. Non-interruptible
