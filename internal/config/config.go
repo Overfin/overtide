@@ -130,7 +130,7 @@ func validateService(service Service, seenNames map[string]bool) error {
 		return fmt.Errorf("service name %q must be unique (case-insensitive)", service.Name)
 	}
 	switch service.Type {
-	case "radarr", "sonarr", "qbittorrent", "overfin":
+	case "radarr", "sonarr", "qbittorrent", "overfin", "prowlarr":
 		if service.URL == "" {
 			return fmt.Errorf("service %q (%s) requires url", service.Name, service.Type)
 		}

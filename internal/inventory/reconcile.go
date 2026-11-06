@@ -3,14 +3,6 @@ package inventory
 import (
 	"context"
 	"fmt"
-	"github.com/overfin/overtide/internal/config"
-	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/overfin"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
-	"github.com/overfin/overtide/internal/services/radarr"
-	"github.com/overfin/overtide/internal/services/sonarr"
-	"github.com/overfin/overtide/internal/tasks"
-	"github.com/overfin/overtide/internal/valuation"
 	"io/fs"
 	"log"
 	"os"
@@ -20,6 +12,15 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/qbittorrent"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/tasks"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 func (service *Service) ValidateBaseServices(ctx context.Context) error {

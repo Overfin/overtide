@@ -103,18 +103,21 @@ func (client *Client) DeleteFile(id int) error {
 	return client.Send(http.MethodDelete, fmt.Sprintf("/api/v3/moviefile/%d", id), nil, nil)
 }
 
-// updateMovie reads the film whole, lets change edit it, and saves it.
-func (client *Client) updateMovie(id int, change func(movie map[string]any)) error {
+// updateMovie reads the film whole, lets change edit it, and saves it
+// unless change says there's nothing to save.
+func (client *Client) updateMovie(id int, change func(movie map[string]any) bool) error {
 	var movie map[string]any
 	if err := client.Get(fmt.Sprintf("/api/v3/movie/%d", id), &movie); err != nil {
 		return err
 	}
-	change(movie)
+	if !change(movie) {
+		return nil
+	}
 	return client.Send(http.MethodPut, fmt.Sprintf("/api/v3/movie/%d", id), movie, nil)
 }
 
 func (client *Client) SetMonitored(id int, monitored bool) error {
-	return client.updateMovie(id, func(movie map[string]any) { movie["monitored"] = monitored })
+	return client.updateMovie(id, func(movie map[string]any) bool { movie["monitored"] = monitored; return true })
 }
 
 // AddImportListExclusion prevents a configured Radarr import list from

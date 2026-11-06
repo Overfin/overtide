@@ -4,20 +4,22 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/overfin/overtide/internal/config"
-	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/overfin"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
-	"github.com/overfin/overtide/internal/services/radarr"
-	"github.com/overfin/overtide/internal/services/sonarr"
-	"github.com/overfin/overtide/internal/store"
-	"github.com/overfin/overtide/internal/valuation"
 	"log"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/prowlarr"
+	"github.com/overfin/overtide/internal/services/qbittorrent"
+	"github.com/overfin/overtide/internal/services/radarr"
+	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/valuation"
 )
 
 type ServiceStatus struct {
@@ -89,7 +91,10 @@ type Service struct {
 	son     map[string]*sonarr.Client
 	overfin *overfin.Client
 	qb      map[string]*qbittorrent.Client
-	db      *store.Store
+	// prowlarr is the first Prowlarr's client, for adding's pace; nil
+	// without one.
+	prowlarr *prowlarr.Client
+	db       *store.Store
 	// configPath is where a live config mutation (AddService) persists
 	// the updated Config. Empty means live editing is unavailable (e.g. a
 	// Service built directly in tests, with no file backing it at all).
@@ -111,7 +116,7 @@ func (service *Service) SetConfigPath(path string) {
 }
 
 func New(configuration config.Config, database *store.Store) *Service {
-	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), overfin: overfin.New(configuration.Overfin.URL, configuration.Overfin.APIKey), qb: buildQBittorrentClients(configuration)}
+	service := &Service{cfg: configuration, db: database, statuses: map[string]ServiceStatus{}, stageTimings: map[string]time.Duration{}, baseReady: make(chan struct{}), changed: make(chan struct{}), rad: buildRadarrClients(configuration), son: buildSonarrClients(configuration), overfin: overfin.New(configuration.Overfin.URL, configuration.Overfin.APIKey), qb: buildQBittorrentClients(configuration), prowlarr: buildProwlarrClient(configuration)}
 	loadStarted := time.Now()
 	if database != nil {
 		if items, updated, err := database.LoadMedia(); err == nil {

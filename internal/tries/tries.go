@@ -75,3 +75,27 @@ func SearchAndCheck(ctx context.Context, search func() (int, error), status func
 	}
 	return grabbed()
 }
+
+// Title is what a try needs from Radarr or Sonarr for one title, as a
+// driver gives it. For a series, monitoring and searching are the
+// seasons' the driver was given.
+type Title struct {
+	Name string
+	// Lookup reads the title before anything else: unknown when the
+	// service has no record of it, released false with when it comes out.
+	Lookup func() (unknown bool, released bool, at time.Time, err error)
+	// Destination is the root folder and quality profile.
+	Destination func() (string, int, error)
+	// Add puts the title in, unmonitored and tagged; Tag tags it.
+	Add       func(rootFolder string, profileID, tagID int) (int, error)
+	Tag       func(id, tagID int) error
+	EnsureTag func(label string) (int, error)
+	Monitor   func(id int, on bool) error
+	// Search asks for the search and says whether a download started.
+	Search   func(ctx context.Context, id int) (bool, error)
+	Grabbed  func(id int, since time.Time) (bool, error)
+	HasFiles func(id int) (bool, error)
+	// Queued says whether a download of it is in the queue.
+	Queued func(id int) (bool, error)
+	Gone   func(error) bool
+}

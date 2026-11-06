@@ -11,10 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/applog"
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/httpui"
 	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/pacing"
 	"github.com/overfin/overtide/internal/product"
 	"github.com/overfin/overtide/internal/store"
 	"github.com/overfin/overtide/internal/tasks"
@@ -102,6 +104,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("[scheduler] initialization: %v", err)
 	}
+	// Adding: Overfin's suggestions and wishes read every hour, the titles
+	// tried every 15 minutes. One adding task at a time, and never while a
+	// removal changes the files (adding imports, which moves them).
+	pacer := pacing.New(inv.ProwlarrClient)
+	adder := adding.New(inv)
+	adder.Ready = pacer.Ready
+	adder.Trackers = pacer.Unavailable
+	adder.Room = adding.DiskRoom(inv.Room)
+	addingClaims := []tasks.ResourceClaim{{Resource: "adding", Mode: tasks.ClaimExclusive}, maintenanceClaim}
+	for _, definition := range []tasks.Definition{
+		{ID: "adding-overfin", Name: "Overfin's suggestions", Description: "Read what Overfin suggests adding and what people wished for, into the waiting list.", Interval: adding.ReadEvery, Runner: adder.ReadOverfin, Resources: addingClaims, Priority: tasks.PriorityPeriodic},
+		{ID: "adding", Name: "Try the titles", Description: "Follow what's downloading, then search for the waiting titles, within the run's searches and the trackers' limits.", Interval: adding.RunEvery, Runner: adder.Run, Resources: addingClaims, Priority: tasks.PriorityPeriodic},
+	} {
+		if err := taskManager.Register(definition); err != nil {
+			log.Fatalf("[scheduler] adding registration: %v", err)
+		}
+	}
 	if err := taskManager.RegisterWorkflow(tasks.WorkflowDefinition{ID: "inventory-and-files-consistency", Name: "Inventory and files consistency", Description: "Restore authoritative inventory and file topology after a mutation (a removal, or a service being added/edited/removed).", Steps: []string{"inventory", "files"}}); err != nil {
 		log.Fatalf("[scheduler] workflow registration: %v", err)
 	}
@@ -129,6 +148,11 @@ func main() {
 		// Overfin's scores are read again at once: a restart may follow a
 		// long gap.
 		_, _ = taskManager.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
+		// Adding starts from the inventory just read: suggestions first,
+		// then a run.
+		for _, id := range []string{"adding-overfin", "adding"} {
+			_, _ = taskManager.Submit(tasks.Request{TaskID: id, Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
+		}
 	}()
 
 	runError := httpui.Run(ctx, cfg.Server.Listen, ui.Handler())

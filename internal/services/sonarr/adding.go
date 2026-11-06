@@ -13,13 +13,16 @@ import (
 // added, where it goes, adding it, searching for it, and whether that
 // search started a download. Where it goes is arr's Destination.
 
-// updateSeries reads the series whole, lets change edit it, and saves it.
-func (client *Client) updateSeries(id int, change func(series map[string]any)) error {
+// updateSeries reads the series whole, lets change edit it, and saves it
+// unless change says there's nothing to save.
+func (client *Client) updateSeries(id int, change func(series map[string]any) bool) error {
 	var series map[string]any
 	if err := client.Get(fmt.Sprintf("/api/v3/series/%d", id), &series); err != nil {
 		return err
 	}
-	change(series)
+	if !change(series) {
+		return nil
+	}
 	return client.Send(http.MethodPut, fmt.Sprintf("/api/v3/series/%d", id), series, nil)
 }
 
@@ -85,7 +88,7 @@ func (client *Client) SetSeasonsMonitored(seriesID int, seasons []int, monitored
 	for _, n := range seasons {
 		wanted[n] = true
 	}
-	return client.updateSeries(seriesID, func(series map[string]any) {
+	return client.updateSeries(seriesID, func(series map[string]any) bool {
 		list, _ := series["seasons"].([]any)
 		for _, raw := range list {
 			season, _ := raw.(map[string]any)
@@ -94,6 +97,7 @@ func (client *Client) SetSeasonsMonitored(seriesID int, seasons []int, monitored
 			}
 		}
 		series["monitored"] = true
+		return true
 	})
 }
 
@@ -126,14 +130,15 @@ func (client *Client) SeasonsHaveFiles(seriesID int, seasons []int) (bool, error
 
 // TagSeries adds a tag to a series already in Sonarr.
 func (client *Client) TagSeries(seriesID, tagID int) error {
-	return client.updateSeries(seriesID, func(series map[string]any) {
+	return client.updateSeries(seriesID, func(series map[string]any) bool {
 		tags, _ := series["tags"].([]any)
 		for _, existing := range tags {
 			if number, ok := existing.(float64); ok && int(number) == tagID {
-				return
+				return false
 			}
 		}
 		series["tags"] = append(tags, tagID)
+		return true
 	})
 }
 

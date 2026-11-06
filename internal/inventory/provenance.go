@@ -2,8 +2,9 @@ package inventory
 
 import (
 	"fmt"
-	"github.com/overfin/overtide/internal/model"
 	"strings"
+
+	"github.com/overfin/overtide/internal/model"
 )
 
 func projectTorrentRelations(media []model.Media, torrents []model.Torrent) {

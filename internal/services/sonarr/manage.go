@@ -114,7 +114,7 @@ func (client *Client) SearchEpisodes(ids []int) (int, error) {
 // seasons not monitored when they appear. The series stays monitored, so
 // the episodes Overtide monitors are grabbed.
 func (client *Client) TakeSeries(seriesID int) error {
-	return client.updateSeries(seriesID, func(series map[string]any) {
+	return client.updateSeries(seriesID, func(series map[string]any) bool {
 		seasons, _ := series["seasons"].([]any)
 		for _, raw := range seasons {
 			if season, ok := raw.(map[string]any); ok {
@@ -123,6 +123,7 @@ func (client *Client) TakeSeries(seriesID int) error {
 		}
 		series["monitored"] = true
 		series["monitorNewItems"] = "none"
+		return true
 	})
 }
 

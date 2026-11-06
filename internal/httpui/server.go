@@ -61,14 +61,7 @@ func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Serv
 // Handler is every route behind the sign-in (see authGate).
 func (server *Server) Handler() http.Handler {
 	gated := server.authGate(server.routes())
-	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Other apps ask with Overtide's API key, not a session.
-		if r.URL.Path == roomPath {
-			server.room(w, r)
-			return
-		}
-		gated.ServeHTTP(w, r)
-	}))
+	return securityHeaders(gated)
 }
 
 // routes is every route, without the sign-in: tests use it directly.

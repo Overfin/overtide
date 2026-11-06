@@ -1,8 +1,9 @@
 package inventory
 
 import (
-	"github.com/overfin/overtide/internal/model"
 	"testing"
+
+	"github.com/overfin/overtide/internal/model"
 )
 
 func TestMediaWithoutFilesCannotClaimCurrentTorrent(t *testing.T) {

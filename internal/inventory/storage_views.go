@@ -2,11 +2,12 @@ package inventory
 
 import (
 	"fmt"
-	"github.com/overfin/overtide/internal/filetopology"
-	"github.com/overfin/overtide/internal/model"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/overfin/overtide/internal/filetopology"
+	"github.com/overfin/overtide/internal/model"
 )
 
 func (service *Service) setFilesError(err error) error {

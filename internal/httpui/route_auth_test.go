@@ -53,8 +53,9 @@ func TestEveryRouteNeedsASession(t *testing.T) {
 	if checked < 30 {
 		t.Fatalf("only %d routes found in the source: the pattern no longer matches how routes are registered", checked)
 	}
-	// Overswell's room check is open to its key only.
-	if response := getPath(t, handler, roomPath, nil); response.Code != http.StatusUnauthorized {
-		t.Errorf("%s without a key: %d", roomPath, response.Code)
+	// The former room check, for Overswell, is gone: behind the sign-in
+	// like any other path.
+	if response := getPath(t, handler, "/api/v1/room", nil); response.Code == http.StatusOK {
+		t.Errorf("/api/v1/room answered without a session")
 	}
 }

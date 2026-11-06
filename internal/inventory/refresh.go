@@ -3,17 +3,18 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"log"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 	"github.com/overfin/overtide/internal/store"
 	"github.com/overfin/overtide/internal/valuation"
-	"log"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 )
 
 func parseCursor(v string) time.Time {

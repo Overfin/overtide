@@ -63,14 +63,15 @@ func (client *Client) AddMovie(lookup MovieLookup, rootFolder string, qualityPro
 
 // TagMovie adds a tag to a film already in Radarr.
 func (client *Client) TagMovie(movieID, tagID int) error {
-	return client.updateMovie(movieID, func(movie map[string]any) {
+	return client.updateMovie(movieID, func(movie map[string]any) bool {
 		tags, _ := movie["tags"].([]any)
 		for _, existing := range tags {
 			if number, ok := existing.(float64); ok && int(number) == tagID {
-				return
+				return false
 			}
 		}
 		movie["tags"] = append(tags, tagID)
+		return true
 	})
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/prowlarr"
 	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
@@ -564,6 +565,8 @@ func (service *Service) activateClientLocked(svc config.Service) {
 	case "qbittorrent":
 		service.qb = maps.Clone(service.qb)
 		service.qb[svc.ID] = qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
+	case "prowlarr":
+		service.prowlarr = prowlarr.New(svc.URL, svc.APIKey)
 	}
 }
 
@@ -584,6 +587,8 @@ func (service *Service) deactivateClientLocked(svc config.Service) {
 	case "qbittorrent":
 		service.qb = maps.Clone(service.qb)
 		delete(service.qb, svc.ID)
+	case "prowlarr":
+		service.prowlarr = nil
 	case "overfin":
 		// Nothing is valued without Overfin, so everything is protected at
 		// once, rather than planned with Overfin's last scores.

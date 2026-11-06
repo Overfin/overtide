@@ -1,9 +1,10 @@
 package inventory
 
 import (
-	"github.com/overfin/overtide/internal/config"
 	"testing"
 	"time"
+
+	"github.com/overfin/overtide/internal/config"
 )
 
 // TestReadersDoNotBlockBehindSlowPublisher is a regression guard for a real
