@@ -10,9 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/overfin/overtide/internal/adding"
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/pacing"
 	"github.com/overfin/overtide/internal/product"
 	"github.com/overfin/overtide/internal/tasks"
 )
@@ -36,6 +38,9 @@ type Server struct {
 	// its session is still valid; tests shorten it.
 	sseHeartbeat time.Duration
 	loginLimiter *loginLimiter
+	// adder and pacer are adding's, given by SetAdding.
+	adder *adding.Service
+	pacer *pacing.Pacer
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
@@ -93,6 +98,19 @@ func (server *Server) routes() http.Handler {
 	server.removalRoutes(mux)
 	server.servicesRoutes(mux)
 	server.settingsRoutes(mux)
+	mux.HandleFunc("GET /api/adding", server.addingReady(server.addingList))
+	mux.HandleFunc("GET /api/adding/now", server.addingReady(server.nowPanel))
+	mux.HandleFunc("POST /api/adding/run", server.addingReady(server.addingRun))
+	mux.HandleFunc("POST /api/adding/clear", server.addingReady(server.addingClear))
+	mux.HandleFunc("GET /api/adding/imports", server.addingReady(server.importsList))
+	mux.HandleFunc("GET /api/adding/imports/{service}/{download}", server.addingReady(server.importOptions))
+	mux.HandleFunc("POST /api/adding/imports/{service}/{download}", server.addingReady(server.importChoose))
+	mux.HandleFunc("GET /api/settings/adding", server.addingReady(server.addingSettings))
+	mux.HandleFunc("PUT /api/settings/adding", server.addingReady(server.addingSettingsSave))
+	mux.HandleFunc("GET /api/destinations/options", server.addingReady(server.destinationOptions))
+	mux.HandleFunc("POST /api/destinations", server.addingReady(server.destinationSave))
+	mux.HandleFunc("PUT /api/destinations/{index}", server.addingReady(server.destinationSave))
+	mux.HandleFunc("DELETE /api/destinations/{index}", server.addingReady(server.destinationRemove))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "no such request") })
 	return sameOriginWrites(mux)
 }

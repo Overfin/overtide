@@ -616,6 +616,8 @@ func validateServiceConnection(ctx context.Context, svc config.Service) error {
 		return overfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "qbittorrent":
 		return qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey).WithContext(ctx).Validate()
+	case "prowlarr":
+		return prowlarr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	default:
 		return fmt.Errorf("unsupported service type %q", svc.Type)
 	}

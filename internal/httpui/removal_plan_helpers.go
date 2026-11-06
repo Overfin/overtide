@@ -2,12 +2,13 @@ package httpui
 
 import (
 	"fmt"
-	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/removal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/removal"
 )
 
 func groupRelatedTorrents(torrents []relatedRemovalTorrent) []relatedRemovalTorrentGroup {

@@ -145,6 +145,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[http] initialize UI: %v", err)
 	}
+	ui.SetAdding(adder, pacer)
 	ui.Start(ctx)
 	go taskManager.Start(ctx)
 	go func() {

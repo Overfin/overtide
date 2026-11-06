@@ -95,3 +95,9 @@ func (client *Client) Usage(since time.Time) (map[int]Usage, error) {
 	}
 	return usage, nil
 }
+
+// Validate checks the address and the key.
+func (client *Client) Validate() error {
+	var status map[string]any
+	return client.api.Get("/api/v1/system/status", &status)
+}
