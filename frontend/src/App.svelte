@@ -19,6 +19,7 @@
   import Tasks from './pages/Tasks.svelte';
   import History from './pages/History.svelte';
   import Settings from './pages/Settings.svelte';
+  import Adding from './pages/Adding.svelte';
   import RemovalWindow from './parts/removal/RemovalWindow.svelte';
 
   interface Session {
@@ -29,6 +30,7 @@
 
   const icons: Record<string, string[]> = {
     home: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
+    adding: ['M12 5v14', 'M5 12h14'],
     library: ['M4 5h16v14H4z', 'M4 9h16', 'M9 5v14'],
     torrents: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
     unmanaged: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M12 11v3', 'M12 16.5h.01'],
@@ -41,6 +43,7 @@
   const nav: NavGroup[] = [
     { items: [{ href: '/', label: 'Home', icon: icons.home }] },
     { label: 'Media', items: [
+      { href: '/adding', label: 'Adding', icon: icons.adding },
       { href: '/library', label: 'Library', icon: icons.library },
       { href: '/torrents', label: 'Torrents', icon: icons.torrents },
       { href: '/unmanaged', label: 'Unmanaged files', icon: icons.unmanaged },
@@ -61,6 +64,7 @@
   const page = $derived.by(() => {
     const p = route.path;
     if (p === '/' || p === '') return { show: Home, active: '/' };
+    if (p === '/adding') return { show: Adding, active: '/adding' };
     if (p === '/library') return { show: Library, active: '/library' };
     if (p.startsWith('/library/') || p.startsWith('/media/')) return { show: Media, active: '/library' };
     if (p === '/torrents') return { show: Torrents, active: '/torrents' };
