@@ -16,6 +16,7 @@ import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/httpui"
 	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/overswellimport"
 	"github.com/overfin/overtide/internal/pacing"
 	"github.com/overfin/overtide/internal/product"
 	"github.com/overfin/overtide/internal/store"
@@ -32,6 +33,7 @@ const (
 
 func main() {
 	configPath := flag.String("config", "/config/config.json", "path to config file")
+	importFrom := flag.String("import-overswell", "", "Overswell's config folder (config.json, state/overswell.db): import its settings and state once, then exit; Overtide and Overswell stopped")
 	flag.Parse()
 	applicationLog, err := applog.OpenDaily(logDirectory, "overtide", logRetentionDays, time.Now)
 	if err != nil {
@@ -53,6 +55,20 @@ func main() {
 		log.Fatalf("[app] database: %v", err)
 	}
 	defer db.Close()
+	if *importFrom != "" {
+		imported, report, err := overswellimport.Import(cfg, db, *importFrom)
+		if err != nil {
+			log.Fatalf("[import] %v", err)
+		}
+		if err := config.Save(*configPath, imported); err != nil {
+			log.Fatalf("[import] save the settings: %v", err)
+		}
+		for _, line := range report {
+			log.Printf("[import] %s", line)
+		}
+		log.Printf("[import] done: start Overtide, and leave Overswell stopped")
+		return
+	}
 	inv := inventory.New(cfg, db)
 	inv.SetConfigPath(*configPath)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
