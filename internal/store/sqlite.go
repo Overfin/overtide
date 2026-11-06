@@ -96,6 +96,7 @@ func Open(path string) (*Store, error) {
 		{"history_events", "media_bytes", "INTEGER NOT NULL DEFAULT 0"},
 		{"history_events", "service_name", "TEXT NOT NULL DEFAULT ''"},
 		{"arr_imports", "service_id", "TEXT NOT NULL DEFAULT ''"},
+		{"media_files", "added_at", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(migration.table, migration.column, migration.definition); err != nil {
 			s.Close()

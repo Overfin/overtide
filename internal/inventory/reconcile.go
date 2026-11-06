@@ -598,7 +598,7 @@ func (service *Service) reconcileFiles(ctx context.Context) error {
 				continue
 			}
 			p := filepath.Clean(filepath.Join(root, f.Relative))
-			mediaRefs = append(mediaRefs, model.MediaFileRef{ServiceID: rf.svc.ID, ServiceName: rf.svc.Name, MediaType: model.Movie, MediaID: f.MovieID, Source: "radarr", SourceFileID: f.ID, Path: p})
+			mediaRefs = append(mediaRefs, model.MediaFileRef{ServiceID: rf.svc.ID, ServiceName: rf.svc.Name, MediaType: model.Movie, MediaID: f.MovieID, Source: "radarr", SourceFileID: f.ID, Path: p, AddedAt: f.DateAdded})
 			if byPath[p] {
 				claimed[p] = true
 			}

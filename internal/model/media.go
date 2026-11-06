@@ -245,10 +245,12 @@ type Media struct {
 	Path        string    `json:"path"`
 	SizeBytes   int64     `json:"sizeBytes"`
 	AddedAt     time.Time `json:"addedAt"`
-	Tags        []string  `json:"tags"`
-	TMDBID      int       `json:"tmdbId"`
-	TVDBID      int       `json:"tvdbId"`
-	IMDBID      string    `json:"imdbId"`
+	// FilesAddedAt is when its newest file came, as Radarr or Sonarr say.
+	FilesAddedAt time.Time `json:"filesAddedAt,omitzero"`
+	Tags         []string  `json:"tags"`
+	TMDBID       int       `json:"tmdbId"`
+	TVDBID       int       `json:"tvdbId"`
+	IMDBID       string    `json:"imdbId"`
 
 	// OverfinScore is a film's value from Overfin, 0 to 100, and
 	// OverfinSeasonScores a series' values by season number; nil when
@@ -295,7 +297,9 @@ type Season struct {
 	// how recently the content itself is, not when Overtide's library
 	// happened to import it (a show backfilled all at once would otherwise
 	// give every season nearly the same import date).
-	LastAiredAt      time.Time `json:"lastAiredAt,omitempty"`
+	LastAiredAt time.Time `json:"lastAiredAt,omitempty"`
+	// FilesAddedAt is when the season's newest file came.
+	FilesAddedAt     time.Time `json:"filesAddedAt,omitzero"`
 	EpisodeFileCount int       `json:"episodeFileCount"`
 	Protected        bool      `json:"protected,omitempty"`
 	ProtectionReason string    `json:"protectionReason,omitempty"`

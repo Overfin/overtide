@@ -246,3 +246,36 @@ func TestNewTorrentIsProtectedWithoutObligation(t *testing.T) {
 		t.Fatalf("undated: %#v", items[2])
 	}
 }
+
+// What adding brought in is protected for 30 days after its files came: a
+// film whole, a series season by season; other titles, and older files,
+// aren't.
+func TestJustAddedIsProtected(t *testing.T) {
+	at := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	defer func(old func() time.Time) { now = old }(now)
+	now = func() time.Time { return at }
+	score := 5.0
+	fresh, old := at.Add(-29*24*time.Hour), at.Add(-31*24*time.Hour)
+	items := []model.Media{
+		{Type: model.Movie, SourceID: 1, Tags: []string{model.TagAdded}, OverfinScore: &score, FilesAddedAt: fresh},
+		{Type: model.Movie, SourceID: 2, Tags: []string{model.TagAdded}, OverfinScore: &score, FilesAddedAt: old},
+		{Type: model.Movie, SourceID: 3, OverfinScore: &score, FilesAddedAt: fresh},
+		{Type: model.Series, SourceID: 4, Tags: []string{model.TagRequested}, OverfinSeasonScores: map[int]float64{1: 5, 2: 5},
+			Seasons: []model.Season{{Number: 1, FilesAddedAt: old}, {Number: 2, FilesAddedAt: fresh}}},
+	}
+	ApplyMedia(items, config.Config{})
+	byID := map[int]model.Media{}
+	for _, m := range items {
+		byID[m.SourceID] = m
+	}
+	if m := byID[1]; !m.Protected || m.ProtectionReason != justAdded || m.RetentionValue != 5 {
+		t.Errorf("fresh film: %+v", m)
+	}
+	if byID[2].Protected || byID[3].Protected {
+		t.Errorf("older or not adding's: %v %v", byID[2].Protected, byID[3].Protected)
+	}
+	series := byID[4]
+	if series.Protected || series.Seasons[0].Protected || !series.Seasons[1].Protected || series.Seasons[1].ProtectionReason != justAdded {
+		t.Errorf("series: %+v", series)
+	}
+}

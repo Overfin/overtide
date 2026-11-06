@@ -415,7 +415,7 @@ func radarrMediaRefs(svc config.Service, files []radarr.FileRecord, roots map[ow
 	refs := []model.MediaFileRef{}
 	for _, file := range files {
 		root := roots[ownerKey{ServiceID: svc.ID, OwnerID: file.MovieID}]
-		refs = append(refs, model.MediaFileRef{ServiceID: svc.ID, ServiceName: svc.Name, MediaType: model.Movie, MediaID: file.MovieID, Source: "radarr", SourceFileID: file.ID, Path: filepath.Clean(filepath.Join(root, file.Relative))})
+		refs = append(refs, model.MediaFileRef{ServiceID: svc.ID, ServiceName: svc.Name, MediaType: model.Movie, MediaID: file.MovieID, Source: "radarr", SourceFileID: file.ID, Path: filepath.Clean(filepath.Join(root, file.Relative)), AddedAt: file.DateAdded})
 	}
 	return refs
 }
