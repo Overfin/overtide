@@ -265,9 +265,9 @@ type operationNotice struct {
 }
 
 type uiStatus struct {
-	Revision          uint64            `json:"revision"`
-	Kind              string            `json:"kind"`
-	PendingOperations int               `json:"pendingOperations"`
+	Revision          uint64 `json:"revision"`
+	Kind              string `json:"kind"`
+	PendingOperations int    `json:"pendingOperations"`
 	// FailedOperations counts the removals that didn't go through in full
 	// and still have something left (see problems).
 	FailedOperations int `json:"failedOperations"`
