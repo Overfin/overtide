@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/services/arr"
@@ -25,6 +26,9 @@ func (service *Service) checkProwlarr(ctx context.Context) {
 	if !ok || client == nil {
 		return
 	}
+	// Bounded: a Prowlarr that hangs mustn't hold the inventory up.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	err := client.WithContext(ctx).Validate()
 	service.setStatus(svc.Name, true, err == nil, err)
 }
