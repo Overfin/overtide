@@ -75,6 +75,18 @@ type Scores struct {
 	seasonsByTVDB map[int]map[int]float64
 }
 
+// scopeOf is the scope of Overfin's Apps a path needs, as Overfin's panel
+// names it.
+func scopeOf(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/apps/v1/wishes"):
+		return "Wishes to fetch"
+	case strings.HasPrefix(path, "/apps/v1/history"):
+		return "What came and went"
+	}
+	return "Values"
+}
+
 func (client *Client) get(path string, query url.Values, out any) error {
 	req, err := http.NewRequestWithContext(client.requestContext(), http.MethodGet, client.base+path+"?"+query.Encode(), nil)
 	if err != nil {
@@ -87,13 +99,14 @@ func (client *Client) get(path string, query url.Values, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	scope := scopeOf(path)
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		return fmt.Errorf("overfin refused the key: make one in its control panel, under Apps")
+		return fmt.Errorf("overfin refused the key: make one in its control panel, under Apps, with %s ticked", scope)
 	case resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("overfin's key may not read values: tick Values for it in Overfin's Apps")
+		return fmt.Errorf("overfin's key may not read this: tick %s for it in Overfin's Apps", scope)
 	case resp.StatusCode/100 != 2:
-		return fmt.Errorf("overfin titles: %s", resp.Status)
+		return fmt.Errorf("overfin %s: %s", path, resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

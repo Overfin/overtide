@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/model"
 )
@@ -85,5 +86,23 @@ func TestValidate(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%d: %v", status, err)
 		}
+	}
+}
+
+// A key Overfin refuses for wishes or history says which scope it lacks.
+func TestRefusalNamesTheScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	client := New(srv.URL, "ofapp_k")
+	if _, err := client.Wishes(5); err == nil || !strings.Contains(err.Error(), "Wishes to fetch") {
+		t.Errorf("wishes: %v", err)
+	}
+	if _, err := client.LeftSince(time.Now()); err == nil || !strings.Contains(err.Error(), "What came and went") {
+		t.Errorf("history: %v", err)
+	}
+	if _, err := client.Fetch(); err == nil || !strings.Contains(err.Error(), "Values") {
+		t.Errorf("values: %v", err)
 	}
 }
