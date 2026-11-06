@@ -86,6 +86,11 @@ func (service *Service) SetAdding(mode, manage string, searches, titlesPerDay, u
 	})
 }
 
+// SetEventsURL keeps Overtide's address as Radarr and Sonarr reach it.
+func (service *Service) SetEventsURL(address string) error {
+	return service.changeAdding(func(c config.Config) (config.Config, error) { return config.SetEventsURL(c, address) })
+}
+
 // DestinationOptions are a Radarr's or a Sonarr's root folders and
 // quality profiles.
 type DestinationOptions struct {

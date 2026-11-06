@@ -78,6 +78,8 @@ func (server *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", server.page)
 	mux.HandleFunc("GET /healthz", func(response http.ResponseWriter, _ *http.Request) { _, _ = response.Write([]byte("ok")) })
+	// Radarr's and Sonarr's events: outside the sign-in, with their secret.
+	mux.HandleFunc("POST /events/arr", server.arrEvents) // adding.EventsPath
 	mux.HandleFunc("GET /ui/events", server.uiEvents)
 	mux.HandleFunc("GET /ui/status", server.uiStatus)
 

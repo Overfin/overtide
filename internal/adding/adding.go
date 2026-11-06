@@ -199,6 +199,12 @@ type Service struct {
 	// trackersDown is why this run's searches stopped: the trackers were
 	// unavailable.
 	trackersDown string
+	// Radarr's and Sonarr's events (events.go): when the last test event
+	// came, what keeps them from coming, and the webhooks saved.
+	eventsMu      sync.Mutex
+	heard         time.Time
+	eventsProblem string
+	connected     map[string]bool
 }
 
 // unavailable reports whether the searches since start missed trackers;
@@ -232,7 +238,7 @@ func (service *Service) ready() bool {
 }
 
 func New(inv *inventory.Service) *Service {
-	service := &Service{inv: inv, now: time.Now}
+	service := &Service{inv: inv, now: time.Now, connected: map[string]bool{}}
 	driver := sonarrdriver.New(inv, func() time.Time { return service.now() })
 	driver.Room = func(cfg config.Config, folder string) string {
 		disk := service.diskStop

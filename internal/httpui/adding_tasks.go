@@ -78,13 +78,17 @@ type addingSettingsData struct {
 	UpgradesPerDay int                   `json:"upgradesPerDay"`
 	Summary        *adding.ManageSummary `json:"summary,omitempty"`
 	Destinations   []destinationRow      `json:"destinations"`
+	// EventsURL is Overtide's address for Radarr's and Sonarr's events,
+	// EventsProblem what keeps them from coming ("" when nothing does).
+	EventsURL     string `json:"eventsUrl"`
+	EventsProblem string `json:"eventsProblem,omitempty"`
 }
 
 // addingSettings answers GET /api/settings/adding.
 func (server *Server) addingSettings(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
 	data := addingSettingsData{Mode: cfg.Adding.Mode, Manage: cfg.Adding.Manage, Searches: cfg.Adding.SearchesPerRun(), TitlesPerDay: cfg.Adding.PerDay(), UpgradesPerDay: cfg.Adding.UpgradesPerDay,
-		Destinations: server.destinationRows(r.Context())}
+		EventsURL: cfg.Adding.EventsURL, EventsProblem: server.adder.EventsProblem(), Destinations: server.destinationRows(r.Context())}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
 	}
@@ -105,6 +109,9 @@ type addingForm struct {
 	Searches       int    `json:"searches"`
 	TitlesPerDay   int    `json:"titlesPerDay"`
 	UpgradesPerDay int    `json:"upgradesPerDay"`
+	// EventsURL, when sent, replaces Overtide's address for Radarr and
+	// Sonarr ("" lets Overtide find it).
+	EventsURL *string `json:"eventsUrl"`
 }
 
 // addingSettingsSave saves the adding settings (PUT /api/settings/adding).
@@ -114,9 +121,23 @@ func (server *Server) addingSettingsSave(w http.ResponseWriter, r *http.Request)
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if in.EventsURL != nil {
+		if _, err := config.SetEventsURL(server.inv.Config(), *in.EventsURL); err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if err := server.inv.SetAdding(in.Mode, in.Manage, in.Searches, in.TitlesPerDay, in.UpgradesPerDay); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if in.EventsURL != nil {
+		if err := server.inv.SetEventsURL(*in.EventsURL); err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Radarr's and Sonarr's webhooks move to it now, not in an hour.
+		_ = server.runAdding(addingOverfinTaskID)
 	}
 	done(w)
 }
