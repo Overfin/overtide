@@ -243,7 +243,9 @@ keep each app's mechanics to themselves: internal/sonarrdriver and
 internal/radarrdriver for what adding asks of Sonarr and Radarr, and
 internal/torrentdriver for the torrent client, whose calls are tried again
 when the connection fails for a moment (reads briefly, removals for about a
-minute and a half). The rest of Overtide talks to the drivers.
+minute and a half). Adding reaches Sonarr and Radarr through their drivers,
+and all of Overtide reaches the torrent client through its driver; the
+inventory and removal still call the Radarr and Sonarr clients themselves.
 
 Adapters participate through explicit capabilities. An adapter need not
 subscribe to the File management layer to contribute value, request,
