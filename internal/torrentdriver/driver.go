@@ -67,16 +67,21 @@ type Root struct {
 // one easy to leave out of a Docker mount by accident.
 const PurposeIncompleteDownloads = "incomplete downloads"
 
-// Waits between the tries of a call that failed for a moment: 4 tries in
-// all, about a minute and a half. Tests shorten them.
-var Waits = []time.Duration{5 * time.Second, 20 * time.Second, time.Minute}
+// Waits between the tries of a removal that failed for a moment: 4 tries
+// in all, about a minute and a half, since a removal cut short leaves data
+// behind. ReadWaits are the reads': 3 tries in 4 s, since the tasks that
+// read try again themselves. Tests shorten both.
+var (
+	Waits     = []time.Duration{5 * time.Second, 20 * time.Second, time.Minute}
+	ReadWaits = []time.Duration{time.Second, 3 * time.Second}
+)
 
-// retry runs call, and again after each of Waits while it fails for a
+// retry runs call, and again after each of waits while it fails for a
 // moment (Passing). It gives up at once on any other error, and when ctx
 // ends.
-func retry(ctx context.Context, call func() error) error {
+func retry(ctx context.Context, waits []time.Duration, call func() error) error {
 	err := call()
-	for _, wait := range Waits {
+	for _, wait := range waits {
 		if err == nil || !Passing(err) {
 			return err
 		}
