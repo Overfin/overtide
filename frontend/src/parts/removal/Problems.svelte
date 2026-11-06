@@ -26,7 +26,6 @@
     status: string;
     error?: string;
     leftovers: Leftover[];
-    unknown?: boolean;
   }
 
   let problems = $state<Problem[] | null>(null);
@@ -66,10 +65,7 @@
     <Card title={p.label}>
       <p class="muted">{stamp(p.createdAt)} · {p.status}</p>
       {#if p.error}<p class="error problem-error">{p.error}</p>{/if}
-      {#if p.unknown}
-        <p>What it planned wasn't recorded, so what's left can't be said: check by hand, then dismiss it.</p>
-      {:else}
-        <table>
+      <table>
           <thead><tr><th>Still there</th><th>Kind</th><th class="num">Size</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
           <tbody>
             {#each p.leftovers as l, i (i)}
@@ -82,7 +78,6 @@
             {/each}
           </tbody>
         </table>
-      {/if}
       {#snippet foot()}
         <span class="grow"></span>
         <Busy action={() => dismiss(p)}>Dismiss</Busy>

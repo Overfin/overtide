@@ -38,8 +38,6 @@ type problemJSON struct {
 	Status    string     `json:"status"`
 	Error     string     `json:"error,omitempty"`
 	Leftovers []leftover `json:"leftovers"`
-	// Unknown: its plan wasn't recorded, so what's left can't be said.
-	Unknown bool `json:"unknown,omitempty"`
 }
 
 // problemsFresh is how long a reading of the failed removals is reused:
@@ -53,7 +51,14 @@ func (server *Server) problems() []problemJSON {
 	server.problemsMu.Lock()
 	defer server.problemsMu.Unlock()
 	if server.problemsAt.IsZero() || time.Since(server.problemsAt) > problemsFresh {
-		server.problemsCache, server.problemsAt = server.problemsNow(), time.Now()
+		// Before the file model is read (or while it can't be), everything
+		// would look gone: the last reading stands.
+		if problems, ok := server.problemsNow(); ok {
+			server.problemsCache, server.problemsAt = problems, time.Now()
+		}
+	}
+	if server.problemsCache == nil {
+		return []problemJSON{}
 	}
 	return server.problemsCache
 }
@@ -66,40 +71,44 @@ func (server *Server) forgetProblems() {
 }
 
 // problemsNow are the live removals that didn't go through in full, weren't
-// dismissed, and still have something left (or can't say): once what
-// failed is gone, removed again or otherwise, the operation needs nothing
-// more.
-func (server *Server) problemsNow() []problemJSON {
+// dismissed, and still have something left: once what failed is gone,
+// removed again or otherwise, the operation needs nothing more. One whose
+// plan wasn't recorded changed nothing (the plan is recorded as it starts),
+// so it needs nothing either. ok is false while the file model isn't read.
+func (server *Server) problemsNow() ([]problemJSON, bool) {
 	out := []problemJSON{}
 	if server.inv == nil || server.inv.Store() == nil {
-		return out
+		return out, true
 	}
 	events, err := server.inv.Store().ProblemHistoryEvents()
-	if err != nil || len(events) == 0 {
-		return out
+	if err != nil {
+		return nil, false
 	}
-	files, mediaRefs, _, _, _ := server.inv.FileSnapshot()
+	if len(events) == 0 {
+		return out, true
+	}
+	files, mediaRefs, _, updated, err := server.inv.FileSnapshot()
+	if err != nil || updated.IsZero() {
+		return nil, false
+	}
 	torrents := map[string]model.Torrent{}
 	for _, t := range server.inv.TorrentSnapshot() {
 		torrents[t.Hash] = t
 	}
 	for _, event := range events {
 		left, known := leftoversOf(event, files, mediaRefs, torrents)
-		if known && len(left) == 0 {
+		if !known || len(left) == 0 {
 			continue
 		}
-		out = append(out, problemJSON{ID: event.ID, CreatedAt: event.CreatedAt, Label: event.RequestedLabel, Status: event.Status, Error: event.Error, Leftovers: left, Unknown: !known})
+		out = append(out, problemJSON{ID: event.ID, CreatedAt: event.CreatedAt, Label: event.RequestedLabel, Status: event.Status, Error: event.Error, Leftovers: left})
 	}
-	return out
+	return out, true
 }
 
 // leftoversOf reads an operation's recorded plan and keeps what's still
 // there of what it selected. known is false when no plan was recorded.
 func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model.MediaFileRef, torrents map[string]model.Torrent) (left []leftover, known bool) {
 	var payload struct {
-		Command struct {
-			Form map[string][]string `json:"form"`
-		} `json:"command"`
 		Plan struct {
 			Files []removal.FileState `json:"files"`
 		} `json:"plan"`
@@ -107,24 +116,20 @@ func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model
 	if json.Unmarshal(event.Payload, &payload) != nil || len(payload.Plan.Files) == 0 {
 		return nil, false
 	}
-	form := func(key string) string {
-		if values := payload.Command.Form[key]; len(values) > 0 {
-			return values[0]
-		}
-		return ""
-	}
 	present := map[string]bool{}
 	for _, f := range files {
 		if f.Exists {
 			present[filepath.Clean(f.Path)] = true
 		}
 	}
-	managed := map[string]bool{}
+	managed := map[string]model.MediaFileRef{}
 	for _, ref := range mediaRefs {
-		managed[managedFileKey(ref)] = true
+		managed[managedFileKey(ref)] = ref
 	}
 	byTorrent := map[string]*leftover{}
-	var media, unmanaged *leftover
+	byTitle := map[string]*leftover{}
+	var titles []string
+	var unmanaged *leftover
 	for _, f := range payload.Plan.Files {
 		if !f.Selected {
 			continue
@@ -140,13 +145,22 @@ func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model
 			}
 			byTorrent[f.OwnerKey].Bytes += f.SizeBytes
 		case removal.MediaOwner:
-			if !managed[f.OwnerKey] || form("kind") != "media" {
+			// A title's files, whichever removal selected them: the title
+			// is the file's owner as the inventory has it now.
+			ref, ok := managed[f.OwnerKey]
+			if !ok {
 				continue
 			}
-			if media == nil {
-				media = &leftover{Kind: "media", Label: event.RequestedLabel, ServiceID: form("service_id"), MediaType: form("media_type"), MediaID: form("media_id")}
+			key := mediaOperationKey(ref.MediaType, ref.MediaID, ref.ServiceID)
+			if byTitle[key] == nil {
+				label := f.Label
+				if label == "" {
+					label = event.RequestedLabel
+				}
+				byTitle[key] = &leftover{Kind: "media", Label: label, ServiceID: ref.ServiceID, MediaType: string(ref.MediaType), MediaID: strconv.Itoa(ref.MediaID)}
+				titles = append(titles, key)
 			}
-			media.Bytes += f.SizeBytes
+			byTitle[key].Bytes += f.SizeBytes
 		case removal.UnmanagedOwner:
 			if !present[filepath.Clean(f.Path)] {
 				continue
@@ -158,8 +172,8 @@ func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model
 			unmanaged.Bytes += f.SizeBytes
 		}
 	}
-	if media != nil {
-		left = append(left, *media)
+	for _, key := range titles {
+		left = append(left, *byTitle[key])
 	}
 	hashes := make([]string, 0, len(byTorrent))
 	for hash := range byTorrent {
