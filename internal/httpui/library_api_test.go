@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -166,21 +167,75 @@ func TestLibraryKeepAPI(t *testing.T) {
 	}
 }
 
-// History lists the removals with what each did, from its payload.
+// History lists additions, one row per title and day, and live removals,
+// the newest first; a dry run is left out, though its operation still
+// shows on its own with what it did.
 func TestHistoryAPI(t *testing.T) {
 	server, handler := libraryServer(t, config.Config{})
+	db := server.inv.Store()
 	payload := json.RawMessage(`{"plan":{"files":[{"path":"/movies/a.mkv","owner":"radarr","selected":true}]},"results":["deleted"],"errors":["one failed"]}`)
-	if _, err := server.inv.Store().SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "partial", DryRun: true, RequestedKind: "media", RequestedLabel: "Test Movie", ReclaimableBytes: 2048, Payload: payload, CreatedAt: time.Now()}); err != nil {
+	now := time.Now()
+	dry, err := db.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "done", DryRun: true, RequestedKind: "media", RequestedLabel: "Dry Movie", Payload: payload, CreatedAt: now.Add(-time.Minute)})
+	if err != nil {
 		t.Fatal(err)
 	}
-	history, code := libraryGet[historyJSON](t, handler, "/api/history")
-	if code != http.StatusOK || len(history.Events) != 1 || history.Runs == nil {
+	if _, err := db.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "partial", DryRun: false, RequestedKind: "media", RequestedLabel: "Test Movie", ReclaimableBytes: 2048, Payload: payload, CreatedAt: now.Add(-2 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	var files []store.ImportedFile
+	for episode := 1; episode <= 3; episode++ {
+		files = append(files, store.ImportedFile{ServiceID: "sonarr-1", ServiceName: "Sonarr", RecordID: episode, Kind: "series", SourceID: 9, Title: "A Show", Season: 1, Episode: episode,
+			Size: 1024, Origin: "wish", ImportedAt: now.Add(-time.Duration(episode) * time.Second)})
+	}
+	files = append(files, store.ImportedFile{ServiceID: "sonarr-1", RecordID: 9, Kind: "series", SourceID: 9, Title: "A Show", Season: 1, Episode: 5, ImportedAt: now.AddDate(0, 0, -20)})
+	if err := db.AddImportedFiles(append(files, files[0])); err != nil {
+		t.Fatal(err)
+	}
+
+	history, code := libraryGet[activityPageJSON](t, handler, "/api/history")
+	if code != http.StatusOK || history.Total != 2 || len(history.Rows) != 2 {
 		t.Fatalf("code=%d %+v", code, history)
 	}
-	event := history.Events[0]
-	if event.Label != "Test Movie" || !event.DryRun || event.Reclaimable != "2.0 KiB" || len(event.Files) != 1 || !event.Files[0].Selected || event.Files[0].Owner != "radarr" ||
-		len(event.Results) != 1 || len(event.Errors) != 1 {
-		t.Fatalf("event: %+v", event)
+	added, removed := history.Rows[0], history.Rows[1]
+	if added.Action != "added" || added.Title != "A Show" || added.Files != 3 || added.Episodes != "S1 E1–E3" || added.Size != "3.0 KiB" || added.Origin != "wish" || added.Day == "" {
+		t.Fatalf("added: %+v", added)
+	}
+	if removed.Action != "removed" || removed.Title != "Test Movie" || removed.Status != "partial" || removed.Size != "2.0 KiB" || removed.Operation == 0 {
+		t.Fatalf("removed: %+v", removed)
+	}
+	if all, _ := libraryGet[activityPageJSON](t, handler, "/api/history?days=0"); all.Total != 3 {
+		t.Fatalf("every day: %+v", all)
+	}
+	if failed, _ := libraryGet[activityPageJSON](t, handler, "/api/history?show=failed&q=test"); failed.Total != 1 || failed.Rows[0].Title != "Test Movie" {
+		t.Fatalf("failed: %+v", failed)
+	}
+	if none, _ := libraryGet[activityPageJSON](t, handler, "/api/history?q=50%25"); none.Total != 0 {
+		t.Fatalf("a %% searched for: %+v", none)
+	}
+	if _, code := libraryGet[activityPageJSON](t, handler, "/api/history?show=everything"); code != http.StatusBadRequest {
+		t.Fatalf("unknown show: %d", code)
+	}
+
+	day, _ := libraryGet[struct {
+		Files []importedFileJSON `json:"files"`
+	}](t, handler, "/api/history/added?service=sonarr-1&kind=series&id=9&day="+added.Day)
+	if len(day.Files) != 3 || day.Files[0].Episode != "S01E01" {
+		t.Fatalf("the day's files: %+v", day)
+	}
+	operation, code := libraryGet[historyEventJSON](t, handler, "/api/history/operations/"+strconv.FormatInt(dry, 10))
+	if code != http.StatusOK || operation.Label != "Dry Movie" || !operation.DryRun || len(operation.Files) != 1 || !operation.Files[0].Selected || len(operation.Results) != 1 || len(operation.Errors) != 1 {
+		t.Fatalf("operation: %d %+v", code, operation)
+	}
+}
+
+// Episodes are written by season, consecutive ones as a run.
+func TestEpisodeRanges(t *testing.T) {
+	got := episodeRanges([][2]int{{2, 1}, {1, 5}, {1, 1}, {1, 2}, {1, 3}, {1, 3}})
+	if got != "S1 E1–E3, E5 · S2 E1" {
+		t.Fatalf("%q", got)
+	}
+	if episodeRanges(nil) != "" {
+		t.Fatal("no episodes")
 	}
 }
 

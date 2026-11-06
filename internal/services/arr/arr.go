@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -317,12 +318,31 @@ func (client *Client) RemoveQueueItem(id int) error {
 
 // HistoryRecord is one event of the app's whole history.
 type HistoryRecord struct {
-	MovieID    int    `json:"movieId"`
-	SeriesID   int    `json:"seriesId"`
-	EpisodeID  int    `json:"episodeId"`
-	DownloadID string `json:"downloadId"`
-	EventType  string `json:"eventType"`
-	Date       string `json:"date"`
+	ID          int    `json:"id"`
+	MovieID     int    `json:"movieId"`
+	SeriesID    int    `json:"seriesId"`
+	EpisodeID   int    `json:"episodeId"`
+	DownloadID  string `json:"downloadId"`
+	EventType   string `json:"eventType"`
+	Date        string `json:"date"`
+	SourceTitle string `json:"sourceTitle"`
+	// Data is the import's file: where it went and its size (the apps
+	// write both as strings).
+	Data struct {
+		ImportedPath string `json:"importedPath"`
+		Size         string `json:"size"`
+	} `json:"data"`
+	// Episode is Sonarr's, asked for with includeEpisode.
+	Episode struct {
+		SeasonNumber  int `json:"seasonNumber"`
+		EpisodeNumber int `json:"episodeNumber"`
+	} `json:"episode"`
+}
+
+// SizeBytes is the imported file's size, 0 when the app didn't say.
+func (r HistoryRecord) SizeBytes() int64 {
+	n, _ := strconv.ParseInt(strings.TrimSpace(r.Data.Size), 10, 64)
+	return max(n, 0)
 }
 
 // ImportsSince walks the history newest-first, gives each import's record
@@ -337,7 +357,7 @@ func (client *Client) ImportsSince(since time.Time, add func(HistoryRecord, time
 			TotalRecords int             `json:"totalRecords"`
 			Records      []HistoryRecord `json:"records"`
 		}
-		path := fmt.Sprintf("/api/v3/history?page=%d&pageSize=%d&sortKey=date&sortDirection=descending", page, pageSize)
+		path := fmt.Sprintf("/api/v3/history?page=%d&pageSize=%d&sortKey=date&sortDirection=descending&includeEpisode=true", page, pageSize)
 		if err := client.Get(path, &hp); err != nil {
 			return time.Time{}, err
 		}

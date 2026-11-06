@@ -10,6 +10,12 @@ type ImportEvent struct {
 	MovieID    int
 	DownloadID string
 	Date       time.Time
+	// The import itself, for History: Radarr's record, the file and what
+	// the release was called.
+	RecordID    int
+	Path        string
+	SizeBytes   int64
+	SourceTitle string
 }
 
 // ImportEventsSince returns the films' imports since then, newest first
@@ -18,7 +24,8 @@ func (client *Client) ImportEventsSince(since time.Time) ([]ImportEvent, time.Ti
 	var out []ImportEvent
 	newest, err := client.ImportsSince(since, func(r arr.HistoryRecord, date time.Time) {
 		if r.MovieID > 0 {
-			out = append(out, ImportEvent{MovieID: r.MovieID, DownloadID: r.DownloadID, Date: date})
+			out = append(out, ImportEvent{MovieID: r.MovieID, DownloadID: r.DownloadID, Date: date,
+				RecordID: r.ID, Path: r.Data.ImportedPath, SizeBytes: r.SizeBytes(), SourceTitle: r.SourceTitle})
 		}
 	})
 	if err != nil {

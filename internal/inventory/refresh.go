@@ -57,15 +57,66 @@ func addProvenance(m map[string][]torrentProvenance, hash string, p torrentProve
 	m[h] = append(m[h], p)
 }
 
+// historyBackfilledKey is set once History holds the apps' past imports.
+const historyBackfilledKey = "history.imports.backfilled"
+
+// importedTitle is what History keeps of a title with each of its imports.
+type importedTitle struct {
+	Title  string
+	Year   int
+	Origin string
+}
+
+// importedTitles are the titles by service and ID, with what brought each:
+// adding, a wish, or "" (from outside Overtide).
+func importedTitles(media []model.Media) map[ownerKey]importedTitle {
+	out := make(map[ownerKey]importedTitle, len(media))
+	for _, m := range media {
+		origin := ""
+		switch {
+		case model.HasTag(m.Tags, model.TagAdded):
+			origin = "adding"
+		case model.HasTag(m.Tags, model.TagRequested):
+			origin = "wish"
+		}
+		out[ownerKey{ServiceID: m.ServiceID, OwnerID: m.SourceID}] = importedTitle{Title: m.Title, Year: m.Year, Origin: origin}
+	}
+	return out
+}
+
+// importedFile completes one import with its service and title; a title
+// no longer known is named by its release.
+func importedFile(titles map[ownerKey]importedTitle, svc config.Service, kind model.MediaType, id int, f store.ImportedFile) store.ImportedFile {
+	f.ServiceID, f.ServiceName, f.Kind, f.SourceID = svc.ID, svc.Name, string(kind), id
+	if t, ok := titles[ownerKey{ServiceID: svc.ID, OwnerID: id}]; ok {
+		f.Title, f.Year, f.Origin = t.Title, t.Year, t.Origin
+	} else {
+		f.Title = f.SourceTitle
+	}
+	return f
+}
+
 // syncImportHistory fans out import-history sync across every configured
 // Radarr and Sonarr instance independently — each gets its own durable
 // cursor (radarr.<id>.history.cursor / sonarr.<id>.history.cursor) and its
 // own rows in arr_imports (tagged with service_id), since movie/series
 // IDs are only unique within one instance. The returned maps are keyed by
 // (ServiceID, OwnerID) for the same reason.
-func (service *Service) syncImportHistory(ctx context.Context) (map[ownerKey][]string, map[ownerKey][]string, map[string][]torrentProvenance, error) {
+//
+// Each import is also kept for History, with its title as titles names it
+// (see importedFile). History's first sync reads the apps' whole history
+// once, to fill History for the past.
+func (service *Service) syncImportHistory(ctx context.Context, titles map[ownerKey]importedTitle) (map[ownerKey][]string, map[ownerKey][]string, map[string][]torrentProvenance, error) {
 	if service.db == nil {
 		return nil, nil, nil, fmt.Errorf("database is unavailable")
+	}
+	backfilled, _ := service.db.Meta(historyBackfilledKey)
+	cursorOf := func(key string) time.Time {
+		if backfilled == "" {
+			return time.Time{}
+		}
+		cursor, _ := service.db.Meta(key)
+		return parseCursor(cursor)
 	}
 	service.mu.RLock()
 	radInstances := service.cfg.ServicesOfType("radarr")
@@ -93,9 +144,8 @@ func (service *Service) syncImportHistory(ctx context.Context) (map[ownerKey][]s
 		wg.Add(1)
 		go func(i int, svc config.Service) {
 			defer wg.Done()
-			cursor, _ := service.db.Meta("radarr." + svc.ID + ".history.cursor")
 			client := radClients[svc.ID]
-			events, newest, err := client.WithContext(ctx).ImportEventsSince(parseCursor(cursor))
+			events, newest, err := client.WithContext(ctx).ImportEventsSince(cursorOf("radarr." + svc.ID + ".history.cursor"))
 			radFetches[i] = radarrFetch{svc: svc, events: events, newest: newest, err: err}
 		}(i, svc)
 	}
@@ -103,9 +153,8 @@ func (service *Service) syncImportHistory(ctx context.Context) (map[ownerKey][]s
 		wg.Add(1)
 		go func(i int, svc config.Service) {
 			defer wg.Done()
-			cursor, _ := service.db.Meta("sonarr." + svc.ID + ".history.cursor")
 			client := sonClients[svc.ID]
-			events, newest, err := client.WithContext(ctx).ImportEventsSince(parseCursor(cursor))
+			events, newest, err := client.WithContext(ctx).ImportEventsSince(cursorOf("sonarr." + svc.ID + ".history.cursor"))
 			sonFetches[i] = sonarrFetch{svc: svc, events: events, newest: newest, err: err}
 		}(i, svc)
 	}
@@ -134,6 +183,27 @@ func (service *Service) syncImportHistory(ctx context.Context) (map[ownerKey][]s
 	}
 	if err := service.db.AddImportEvents(batch); err != nil {
 		return nil, nil, nil, err
+	}
+	var files []store.ImportedFile
+	for _, f := range radFetches {
+		for _, x := range f.events {
+			files = append(files, importedFile(titles, f.svc, model.Movie, x.MovieID, store.ImportedFile{RecordID: x.RecordID,
+				Path: x.Path, Size: x.SizeBytes, SourceTitle: x.SourceTitle, ImportedAt: x.Date}))
+		}
+	}
+	for _, f := range sonFetches {
+		for _, x := range f.events {
+			files = append(files, importedFile(titles, f.svc, model.Series, x.SeriesID, store.ImportedFile{RecordID: x.RecordID,
+				Season: x.Season, Episode: x.Episode, Path: x.Path, Size: x.SizeBytes, SourceTitle: x.SourceTitle, ImportedAt: x.Date}))
+		}
+	}
+	if err := service.db.AddImportedFiles(files); err != nil {
+		return nil, nil, nil, err
+	}
+	if backfilled == "" {
+		if err := service.db.SetMeta(historyBackfilledKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	for _, f := range radFetches {
 		if !f.newest.IsZero() {
@@ -483,9 +553,10 @@ func (service *Service) Refresh(ctx context.Context) error {
 	var he error
 	historyStarted := time.Now()
 	historyDone := make(chan struct{})
+	titles := importedTitles(all)
 	go func() {
 		defer close(historyDone)
-		rids, sids, provenance, he = service.syncImportHistory(ctx)
+		rids, sids, provenance, he = service.syncImportHistory(ctx, titles)
 	}()
 
 	valuation.ApplyMedia(all, runCfg)
