@@ -41,6 +41,10 @@ type Server struct {
 	// adder and pacer are adding's, given by SetAdding.
 	adder *adding.Service
 	pacer *pacing.Pacer
+	// problemsCache is the failed removals as last read (see problems).
+	problemsMu    sync.Mutex
+	problemsCache []problemJSON
+	problemsAt    time.Time
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
