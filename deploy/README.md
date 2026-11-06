@@ -6,7 +6,8 @@ and torrent client you already have, and the Overfin whose values it reads.
 ## Starting it
 
 ```sh
-mkdir overtide && cd overtide
+# config/ made by you, not by Docker (which would make it root's)
+mkdir -p overtide/config && cd overtide
 curl -fsSLO https://raw.githubusercontent.com/overfin/overtide/main/deploy/compose.yaml
 curl -fsSL -o .env https://raw.githubusercontent.com/overfin/overtide/main/deploy/.env.example
 ```
