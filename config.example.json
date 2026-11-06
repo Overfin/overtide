@@ -25,6 +25,12 @@
       "api_key": ""
     },
     {
+      "type": "prowlarr",
+      "name": "Prowlarr",
+      "url": "http://prowlarr:9696",
+      "api_key": ""
+    },
+    {
       "type": "qbittorrent",
       "name": "qBittorrent",
       "url": "http://qbittorrent:8080",
@@ -34,6 +40,14 @@
       "allow_automatic_removal": false
     }
   ],
+  "adding": {
+    "mode": "off",
+    "manage": "own",
+    "searches": 3,
+    "titles_per_day": 10,
+    "upgrades_per_day": 0,
+    "destinations": []
+  },
   "storage": {
     "device_thresholds": {}
   },
