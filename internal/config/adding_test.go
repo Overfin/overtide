@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // A title goes to the first destination of a category it fits, else to
 // its kind's default; none set, there's no destination. Removing a
@@ -46,5 +50,25 @@ func TestDestinationFor(t *testing.T) {
 	}
 	if cfg, err = RemoveDestination(cfg, 0); err != nil || cfg.Adding.Destinations[0].Category != "anime" {
 		t.Fatalf("after removing the first: %+v %v", cfg.Adding.Destinations, err)
+	}
+}
+
+// The example config loads, every service type and the adding settings
+// included.
+func TestExampleConfigLoads(t *testing.T) {
+	raw, err := os.ReadFile("../../config.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.FirstService("prowlarr"); !ok || cfg.Adding.Mode != AddingOff || cfg.Adding.SearchesPerRun() != DefaultSearches {
+		t.Fatalf("%+v", cfg.Adding)
 	}
 }
