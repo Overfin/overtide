@@ -232,9 +232,18 @@ The long-term optimization question is:
 
 A service type exists only when Overtide has a defined adapter for it.
 Configuration cannot create a generic service merely by supplying a URL or
-filesystem root. The currently defined types are Radarr, Sonarr, qBittorrent
-and Overfin. Overfin's scores are the Retention Value (internal/valuation,
-applyOverfinValue), and their reliability gates automatic planning.
+filesystem root. The currently defined types are Radarr, Sonarr, qBittorrent,
+Overfin and Prowlarr (one; it only paces adding's searches). Overfin's scores
+are the Retention Value (internal/valuation, applyOverfinValue), and their
+reliability gates automatic planning.
+
+Clients and drivers: internal/services/* are the apps' APIs as they are
+(radarr and sonarr share internal/services/arr). Drivers sit above them and
+keep each app's mechanics to themselves: internal/sonarrdriver and
+internal/radarrdriver for what adding asks of Sonarr and Radarr, and
+internal/torrentdriver for the torrent client, whose calls are tried again
+when the connection fails for a moment (reads briefly, removals for about a
+minute and a half). The rest of Overtide talks to the drivers.
 
 Adapters participate through explicit capabilities. An adapter need not
 subscribe to the File management layer to contribute value, request,
