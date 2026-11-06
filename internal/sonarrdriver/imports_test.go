@@ -173,6 +173,46 @@ func TestImportHandover(t *testing.T) {
 	}
 }
 
+// A download grabbed again (the same torrent, months after its first import
+// and its files' deletion) is imported again: the first import isn't this
+// grab's.
+func TestImportGrabbedAgain(t *testing.T) {
+	now := *arrfake.Day("2026-11-01")
+	fake, driver, cfg := importTestDriver(t, now)
+	ctx := context.Background()
+	driver.knowOrders(5, &overfin.EpisodeOrders{Seasons: []overfin.OrderSeason{{Season: 1, Episodes: []overfin.OrderEpisode{
+		{Episode: 1, AirDate: "2025-01-01", Name: "Title 1"}, {Episode: 2, AirDate: "2025-01-01", Name: "Title 2"}}}}})
+	fake.Grabs = []map[string]any{{"downloadId": "D", "seriesId": 1, "sourceTitle": "Show.S01", "date": arrfake.ISO(now.Add(-time.Hour))}}
+	fake.Events["D"] = []map[string]any{
+		{"eventType": "grabbed", "date": arrfake.ISO(now.AddDate(0, -4, 0)), "downloadId": "D"},
+		{"eventType": "downloadFolderImported", "date": arrfake.ISO(now.AddDate(0, -4, 0)), "downloadId": "D", "data": map[string]any{"droppedPath": "/dl/Show.S01/Show.S01E01.mkv"}},
+		{"eventType": "downloadFolderImported", "date": arrfake.ISO(now.AddDate(0, -4, 0)), "downloadId": "D", "data": map[string]any{"droppedPath": "/dl/Show.S01/Show.S01E02.mkv"}},
+		{"eventType": "grabbed", "date": arrfake.ISO(now.Add(-time.Hour)), "downloadId": "D"},
+	}
+	fake.Downloads["D"] = []map[string]any{file("/dl/Show.S01/Show.S01E01.mkv", 1, 101), file("/dl/Show.S01/Show.S01E02.mkv", 1, 102)}
+	driver.ImportDownloads(ctx, cfg, false)
+	if len(fake.Imported) != 1 || len(fake.Imported[0]) != 2 {
+		t.Fatalf("grabbed again: %v", fake.Imported)
+	}
+
+	// Remembered as over, then grabbed once more: followed anew.
+	states, _ := driver.States()
+	states["s"].Imports["D"].Done = true
+	if err := driver.SaveStates(states); err != nil {
+		t.Fatal(err)
+	}
+	later := now.AddDate(0, 0, 7)
+	driver.now = func() time.Time { return later }
+	driver.knowOrders(5, &overfin.EpisodeOrders{Seasons: []overfin.OrderSeason{{Season: 1, Episodes: []overfin.OrderEpisode{
+		{Episode: 1, AirDate: "2025-01-01", Name: "Title 1"}, {Episode: 2, AirDate: "2025-01-01", Name: "Title 2"}}}}})
+	fake.Grabs = append(fake.Grabs, map[string]any{"downloadId": "D", "seriesId": 1, "sourceTitle": "Show.S01", "date": arrfake.ISO(later.Add(-time.Hour))})
+	fake.Imported = nil
+	driver.ImportDownloads(ctx, cfg, false)
+	if len(fake.Imported) != 1 || len(fake.Imported[0]) != 2 {
+		t.Fatalf("grabbed a third time: %v", fake.Imported)
+	}
+}
+
 // A season's pack, with Overtide importing: it waits until its files are in,
 // and a pack whose files can't be told apart gives way to another later.
 func TestPackFollowedThroughImports(t *testing.T) {
