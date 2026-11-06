@@ -125,9 +125,9 @@ Interrupted idempotent maintenance may be retried; irreversible mutations defer
 restart decisions to their domain journal and otherwise require attention.
 
 Overtide composes a shared owner/filesystem mutation boundary and an exclusive
-inventory-publication boundary. Base inventory and Overfin's scores publish
-serially. File reconciliation may overlap inventory network work but cannot
-overlap a removal. Reading Overfin's scores is interruptible and resumes after
+inventory-publication boundary. Base inventory, Overfin's scores and File
+reconciliation publish serially: a file scan that overlapped an inventory run
+had its result discarded. None of them overlaps a removal. Reading Overfin's scores is interruptible and resumes after
 its cooldown when it yields to a mutation.
 
 Confirmed removals are first written to the durable domain journal, then

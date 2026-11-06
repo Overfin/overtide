@@ -115,7 +115,7 @@ func main() {
 				return inv.ReconcileFilesAfterMutation(ctx)
 			}
 			return inv.ReconcileFiles(ctx)
-		}), Resources: []tasks.ResourceClaim{maintenanceClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
+		}), Resources: []tasks.ResourceClaim{maintenanceClaim, publicationClaim}, Priority: tasks.PriorityPeriodic, Retry: retryPolicy, Recovery: tasks.RecoveryRetry},
 	)
 	if err != nil {
 		log.Fatalf("[scheduler] initialization: %v", err)
