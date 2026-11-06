@@ -548,6 +548,9 @@ const defaultConfigJSON = `{
     "refresh_interval": "30m"
   },
   "services": [],
+  "adding": {
+    "mode": "off"
+  },
   "storage": {
     "device_thresholds": {}
   },
