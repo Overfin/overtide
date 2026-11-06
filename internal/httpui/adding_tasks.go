@@ -49,7 +49,9 @@ func (server *Server) runAdding(ids ...string) error {
 		return fmt.Errorf("the scheduler is unavailable")
 	}
 	for _, id := range ids {
-		if _, err := server.tasks.Submit(tasks.Request{TaskID: id, Kind: tasks.TriggerManual, Priority: tasks.PriorityManual, Cause: "Asked on the Adding page"}); err != nil {
+		// Accepted manual triggers are durable (Scheduler-Spec 3.2): a
+		// restart doesn't lose what was asked.
+		if _, err := server.tasks.Submit(tasks.Request{TaskID: id, Kind: tasks.TriggerManual, Priority: tasks.PriorityManual, Durable: true, Cause: "Asked on the Adding page"}); err != nil {
 			return err
 		}
 	}
