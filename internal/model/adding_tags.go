@@ -44,10 +44,10 @@ var LegacyTags = []struct{ Old, New string }{
 	{legacyTagIgnore, TagIgnore},
 }
 
-// ManagedTags are Overswell's tags.
+// ManagedTags are adding's tags.
 var ManagedTags = []string{TagAdded, TagRequested, TagFound, TagNew}
 
-// IsManagedTag reports whether label is one of Overswell's tags.
+// IsManagedTag reports whether label is one of adding's tags.
 func IsManagedTag(label string) bool {
 	for _, tag := range ManagedTags {
 		if strings.EqualFold(label, tag) {
@@ -67,7 +67,7 @@ func HasLabel(ids []int, labels map[int]string, tag string) bool {
 	return false
 }
 
-// HasManagedLabel reports whether one of the tag IDs is one of Overswell's
+// HasManagedLabel reports whether one of the tag IDs is one of adding's
 // tags.
 func HasManagedLabel(ids []int, labels map[int]string) bool {
 	for _, id := range ids {
