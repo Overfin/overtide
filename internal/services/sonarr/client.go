@@ -1,85 +1,39 @@
+// Package sonarr is Overtide's client of Sonarr: the series and their
+// files for the inventory and removals, and what adding series needs:
+// seasons, episodes, releases, the queue and imports. What Radarr and
+// Sonarr share is in arr.
 package sonarr
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/redirect"
+	"github.com/overfin/overtide/internal/services/arr"
 )
 
-type Client struct {
-	base, key string
-	hc        *http.Client
-	ctx       context.Context
-}
+type Client struct{ *arr.Client }
 
-func New(base, key string) *Client {
-	return &Client{base: strings.TrimRight(base, "/"), key: key, hc: &http.Client{Timeout: 20 * time.Second, CheckRedirect: redirect.Check}}
-}
+func New(base, key string) *Client { return &Client{arr.New("Sonarr", base, key)} }
 
 func (client *Client) WithContext(ctx context.Context) *Client {
-	clientCopy := *client
-	clientCopy.ctx = ctx
-	return &clientCopy
-}
-func (client *Client) requestContext() context.Context {
-	if client.ctx != nil {
-		return client.ctx
-	}
-	return context.Background()
-}
-
-type series struct {
-	ID         int    `json:"id"`
-	Title      string `json:"title"`
-	Year       int    `json:"year"`
-	Path       string `json:"path"`
-	Statistics struct {
-		SizeOnDisk int64 `json:"sizeOnDisk"`
-	} `json:"statistics"`
-	Added  time.Time `json:"added"`
-	TVDBID int       `json:"tvdbId"`
-	// TMDBID is Sonarr's own TMDB ID for the series (Sonarr 4); Overfin
-	// knows some series by it alone.
-	TMDBID int    `json:"tmdbId"`
-	IMDBID string `json:"imdbId"`
-	Tags   []int  `json:"tags"`
-}
-type tag struct {
-	ID    int    `json:"id"`
-	Label string `json:"label"`
-}
-
-func (client *Client) get(path string, out any) error {
-	req, _ := http.NewRequestWithContext(client.requestContext(), http.MethodGet, client.base+path, nil)
-	req.Header.Set("X-Api-Key", client.key)
-	r, e := client.hc.Do(req)
-	if e != nil {
-		return e
-	}
-	defer r.Body.Close()
-	if r.StatusCode/100 != 2 {
-		return fmt.Errorf("sonarr %s: %s", path, r.Status)
-	}
-	return json.NewDecoder(r.Body).Decode(out)
+	return &Client{client.Client.WithContext(ctx)}
 }
 
 func (client *Client) Inventory() ([]model.Media, error) {
-	var ss []series
-	var ts []tag
+	var titles []Title
+	var labels map[int]string
 	var seriesErr, tagErr error
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); seriesErr = client.get("/api/v3/series", &ss) }()
-	go func() { defer wg.Done(); tagErr = client.get("/api/v3/tag", &ts) }()
+	go func() { defer wg.Done(); titles, seriesErr = client.Titles() }()
+	go func() { defer wg.Done(); labels, tagErr = client.TagLabels() }()
 	wg.Wait()
 	if seriesErr != nil {
 		return nil, seriesErr
@@ -87,40 +41,29 @@ func (client *Client) Inventory() ([]model.Media, error) {
 	if tagErr != nil {
 		return nil, fmt.Errorf("sonarr tags: %w", tagErr)
 	}
-	tm := map[int]string{}
-	for _, t := range ts {
-		tm[t.ID] = t.Label
-	}
-	out := make([]model.Media, 0, len(ss))
-	for _, s := range ss {
-		labels := []string{}
-		for _, id := range s.Tags {
-			if x := tm[id]; x != "" {
-				labels = append(labels, x)
-			}
-		}
-		out = append(out, model.Media{Type: model.Series, SourceID: s.ID, Title: s.Title, Year: s.Year, Path: s.Path, SizeBytes: s.Statistics.SizeOnDisk, AddedAt: s.Added, Tags: labels, TMDBID: s.TMDBID, TVDBID: s.TVDBID, IMDBID: s.IMDBID})
+	out := make([]model.Media, 0, len(titles))
+	for _, s := range titles {
+		out = append(out, model.Media{Type: model.Series, SourceID: s.ID, Title: s.Title, Year: s.Year, Path: s.Path, SizeBytes: s.Statistics.SizeOnDisk, AddedAt: s.Added, Tags: arr.Labels(s.Tags, labels), TMDBID: s.TMDBID, TVDBID: s.TVDBID, IMDBID: s.IMDBID})
 	}
 	return out, nil
 }
 
+// FileRecord is an episode file. Files fills SeasonNumber and Parts from
+// the episodes on it.
 type FileRecord struct {
 	ID           int                   `json:"id"`
 	SeriesID     int                   `json:"seriesId"`
-	SeasonNumber int                   `json:"-"`
+	SeasonNumber int                   `json:"seasonNumber"`
 	Relative     string                `json:"relativePath"`
 	Size         int64                 `json:"size"`
 	DateAdded    time.Time             `json:"dateAdded"`
 	Parts        []model.MediaFilePart `json:"-"`
 }
 
-type episodeRecord struct {
-	ID            int       `json:"id"`
-	EpisodeFileID int       `json:"episodeFileId"`
-	SeasonNumber  int       `json:"seasonNumber"`
-	EpisodeNumber int       `json:"episodeNumber"`
-	Title         string    `json:"title"`
-	AirDateUtc    time.Time `json:"airDateUtc"`
+// EpisodeFiles returns a series' episode files, as Sonarr gives them.
+func (client *Client) EpisodeFiles(seriesID int) ([]FileRecord, error) {
+	var files []FileRecord
+	return files, client.Get(fmt.Sprintf("/api/v3/episodefile?seriesId=%d", seriesID), &files)
 }
 
 // Files returns authoritative current episode files. Sonarr's v3 endpoint is
@@ -136,29 +79,20 @@ func (client *Client) Files(seriesIDs []int) ([]FileRecord, error) {
 	}
 	jobs := make(chan int)
 	results := make(chan result, len(seriesIDs))
-	workers := 8
-	if len(seriesIDs) < workers {
-		workers = len(seriesIDs)
-	}
+	workers := min(8, len(seriesIDs))
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for id := range jobs {
 				var xs []FileRecord
-				var episodes []episodeRecord
+				var episodes []Episode
 				var filesErr, episodesErr error
 				var calls sync.WaitGroup
 				calls.Add(2)
-				go func() {
-					defer calls.Done()
-					filesErr = client.get(fmt.Sprintf("/api/v3/episodefile?seriesId=%d", id), &xs)
-				}()
-				go func() {
-					defer calls.Done()
-					episodesErr = client.get(fmt.Sprintf("/api/v3/episode?seriesId=%d", id), &episodes)
-				}()
+				go func() { defer calls.Done(); xs, filesErr = client.EpisodeFiles(id) }()
+				go func() { defer calls.Done(); episodes, episodesErr = client.Episodes(id) }()
 				calls.Wait()
 				if filesErr != nil {
 					results <- result{nil, filesErr}
@@ -181,7 +115,7 @@ func (client *Client) Files(seriesIDs []int) ([]FileRecord, error) {
 					parts[e.EpisodeFileID] = append(parts[e.EpisodeFileID], model.MediaFilePart{
 						Group: fmt.Sprintf("Season %d", e.SeasonNumber), Label: label,
 						Order: e.SeasonNumber*100000 + e.EpisodeNumber, SourcePartID: e.ID,
-						AiredAt: e.AirDateUtc,
+						AiredAt: e.AirDateUTC,
 					})
 					seasonByFileID[e.EpisodeFileID] = e.SeasonNumber
 				}
@@ -213,72 +147,7 @@ func (client *Client) Files(seriesIDs []int) ([]FileRecord, error) {
 }
 
 func (client *Client) DeleteFile(id int) error {
-	req, _ := http.NewRequestWithContext(client.requestContext(), http.MethodDelete, fmt.Sprintf("%s/api/v3/episodefile/%d", client.base, id), nil)
-	req.Header.Set("X-Api-Key", client.key)
-	r, e := client.hc.Do(req)
-	if e != nil {
-		return e
-	}
-	defer r.Body.Close()
-	if r.StatusCode/100 != 2 {
-		return fmt.Errorf("sonarr episode file delete: %s", r.Status)
-	}
-	return nil
-}
-
-type queueRecord struct {
-	ID         int    `json:"id"`
-	DownloadID string `json:"downloadId"`
-}
-type queueResponse struct {
-	TotalRecords int           `json:"totalRecords"`
-	Records      []queueRecord `json:"records"`
-}
-
-// FindQueueItem returns the queue entry id for the download with the given
-// info hash, if Sonarr currently has one — e.g. an incomplete torrent it's
-// still waiting to import. Comparison is case-insensitive since Sonarr's
-// downloadId casing isn't guaranteed to match the torrent client's.
-func (client *Client) FindQueueItem(hash string) (int, bool, error) {
-	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		return 0, false, fmt.Errorf("hash is required")
-	}
-	// Pages are counted at the size asked for, not the one answered, so an
-	// answer without one can't keep the search going.
-	const pageSize = 250
-	for page := 1; ; page++ {
-		var resp queueResponse
-		if err := client.get(fmt.Sprintf("/api/v3/queue?page=%d&pageSize=%d", page, pageSize), &resp); err != nil {
-			return 0, false, err
-		}
-		for _, rec := range resp.Records {
-			if strings.EqualFold(rec.DownloadID, hash) {
-				return rec.ID, true, nil
-			}
-		}
-		if len(resp.Records) == 0 || page*pageSize >= resp.TotalRecords {
-			return 0, false, nil
-		}
-	}
-}
-
-// RemoveQueueItem removes a queue entry and asks Sonarr to instruct the
-// download client to remove the underlying download too, rather than
-// leaving an orphaned client-side download behind once the queue entry
-// Sonarr was tracking it under is gone.
-func (client *Client) RemoveQueueItem(id int) error {
-	req, _ := http.NewRequestWithContext(client.requestContext(), http.MethodDelete, fmt.Sprintf("%s/api/v3/queue/%d?removeFromClient=true&blocklist=false", client.base, id), nil)
-	req.Header.Set("X-Api-Key", client.key)
-	r, e := client.hc.Do(req)
-	if e != nil {
-		return e
-	}
-	defer r.Body.Close()
-	if r.StatusCode/100 != 2 {
-		return fmt.Errorf("sonarr queue delete: %s", r.Status)
-	}
-	return nil
+	return client.Send(http.MethodDelete, fmt.Sprintf("/api/v3/episodefile/%d", id), nil, nil)
 }
 
 func (client *Client) SetEpisodesMonitored(ids []int, monitored bool) error {
@@ -289,22 +158,7 @@ func (client *Client) SetEpisodesMonitored(ids []int, monitored bool) error {
 		EpisodeIDs []int `json:"episodeIds"`
 		Monitored  bool  `json:"monitored"`
 	}{EpisodeIDs: ids, Monitored: monitored}
-	b, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	req, _ := http.NewRequestWithContext(client.requestContext(), http.MethodPut, client.base+"/api/v3/episode/monitor", bytes.NewReader(b))
-	req.Header.Set("X-Api-Key", client.key)
-	req.Header.Set("Content-Type", "application/json")
-	r, err := client.hc.Do(req)
-	if err != nil {
-		return err
-	}
-	defer r.Body.Close()
-	if r.StatusCode/100 != 2 {
-		return fmt.Errorf("sonarr episode monitoring update: %s", r.Status)
-	}
-	return nil
+	return client.Send(http.MethodPut, "/api/v3/episode/monitor", body, nil)
 }
 
 // AddImportListExclusion prevents a configured Sonarr import list from
@@ -317,26 +171,9 @@ func (client *Client) AddImportListExclusion(title string, tvdbID int) error {
 		TVDBID int    `json:"tvdbId"`
 		Title  string `json:"title"`
 	}{TVDBID: tvdbID, Title: title}
-	encodedBody, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequestWithContext(client.requestContext(), http.MethodPost, client.base+"/api/v3/importlistexclusion", bytes.NewReader(encodedBody))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("X-Api-Key", client.key)
-	request.Header.Set("Content-Type", "application/json")
-	response, err := client.hc.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode/100 == 2 {
-		return nil
-	}
-	responseBody, _ := io.ReadAll(response.Body)
-	if response.StatusCode == http.StatusBadRequest && importListExclusionAlreadyAdded(responseBody) {
+	err := client.Send(http.MethodPost, "/api/v3/importlistexclusion", body, nil)
+	var status *arr.StatusError
+	if errors.As(err, &status) && status.Code == http.StatusBadRequest && importListExclusionAlreadyAdded(status.Body) {
 		// Sonarr's own FluentValidation rejects a TvdbId that already
 		// carries an exclusion with this exact 400 — the exclusion is
 		// already in the state we wanted, so this isn't a real failure.
@@ -345,7 +182,7 @@ func (client *Client) AddImportListExclusion(title string, tvdbID int) error {
 		// exclusion that already succeeded the first time.
 		return nil
 	}
-	return fmt.Errorf("sonarr /api/v3/importlistexclusion: %s", response.Status)
+	return err
 }
 
 // importListExclusionAlreadyAdded reports whether a 400 response body from
@@ -364,35 +201,4 @@ func importListExclusionAlreadyAdded(body []byte) bool {
 		}
 	}
 	return false
-}
-
-type RootFolder struct {
-	Path string `json:"path"`
-}
-
-// StorageRoots returns Sonarr's authoritative configured root folders.
-func (client *Client) StorageRoots() ([]string, error) {
-	if client.base == "" {
-		return nil, nil
-	}
-	var xs []RootFolder
-	if err := client.get("/api/v3/rootfolder", &xs); err != nil {
-		return nil, err
-	}
-	out := make([]string, 0, len(xs))
-	for _, x := range xs {
-		if strings.TrimSpace(x.Path) != "" {
-			out = append(out, x.Path)
-		}
-	}
-	return out, nil
-}
-
-// Validate verifies that the configured Sonarr endpoint and credentials work.
-func (client *Client) Validate() error {
-	if client.base == "" {
-		return nil
-	}
-	var x map[string]any
-	return client.get("/api/v3/system/status", &x)
 }

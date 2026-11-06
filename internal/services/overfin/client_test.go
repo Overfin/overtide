@@ -57,6 +57,22 @@ func TestApply(t *testing.T) {
 	}
 }
 
+// LibraryValues reads the same scores: films by TMDB ID, seasons by
+// TheTVDB ID; without an Overfin, none and no error.
+func TestLibraryValues(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"titles":[{"kind":"movie","tmdbId":"10","score":61.5},{"kind":"season","tmdbId":"20","tvdbId":"200","season":2,"score":75},{"kind":"season","tmdbId":"30","season":1,"score":9}]}`))
+	}))
+	defer srv.Close()
+	values, err := New(srv.URL, "ofapp_k").LibraryValues()
+	if err != nil || values.Films[10] != 61.5 || values.Seasons[200][2] != 75 || len(values.Seasons) != 1 {
+		t.Fatalf("%v %v", values, err)
+	}
+	if values, err := New("", "").LibraryValues(); err != nil || values.Films == nil || len(values.Films) != 0 {
+		t.Fatalf("without Overfin: %v %v", values, err)
+	}
+}
+
 // A key Overfin refuses, or one without Values, says what to do.
 func TestValidate(t *testing.T) {
 	for status, want := range map[int]string{http.StatusUnauthorized: "refused the key", http.StatusForbidden: "Values"} {
