@@ -46,7 +46,6 @@ export interface Settings {
   autoExcludeFromImportLists: boolean;
   autoRemoveIncompleteTorrents: boolean;
   copiesWithTitles: boolean;
-  apiKey: string;
 }
 
 /** shortPath keeps a long path's start and end, as the old pages did. */

@@ -16,8 +16,6 @@ type settingsData struct {
 	AutoExcludeFromImportLists     bool   `json:"autoExcludeFromImportLists"`
 	AutoRemoveIncompleteTorrents   bool   `json:"autoRemoveIncompleteTorrents"`
 	CopiesWithTitles               bool   `json:"copiesWithTitles"`
-	// APIKey is what other apps give to ask Overtide something.
-	APIKey string `json:"apiKey"`
 }
 
 func (server *Server) settingsData() settingsData {
@@ -34,7 +32,6 @@ func (server *Server) settingsData() settingsData {
 		AutoExcludeFromImportLists:     cfg.Removal.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   cfg.Removal.AutoRemoveIncompleteTorrents,
 		CopiesWithTitles:               cfg.Removal.CopiesWithTitles,
-		APIKey:                         cfg.APIKey,
 	}
 }
 

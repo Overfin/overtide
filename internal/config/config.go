@@ -252,10 +252,7 @@ type Config struct {
 	// There is deliberately no separate "reset" flow: erasing this field
 	// from config.json (and restarting) puts the app back into first-run
 	// setup, the same pattern used across the *arr ecosystem.
-	Auth Auth `json:"auth"`
-	// APIKey is what other apps (Overswell) give to ask Overtide
-	// something: made at the first start, shown in Settings.
-	APIKey          string        `json:"api_key,omitempty"`
+	Auth            Auth          `json:"auth"`
 	RefreshInterval time.Duration `json:"-"`
 }
 
@@ -450,7 +447,7 @@ func SetDeviceThreshold(configuration Config, representativePath, name string, t
 		return configuration, fmt.Errorf("critical usage percent must be greater than 0 and less than 100")
 	}
 	if critical <= target {
-		return configuration, fmt.Errorf("critical usage percent must be above the target: removal steers toward the target; past critical, Overswell adds nothing more there")
+		return configuration, fmt.Errorf("critical usage percent must be above the target: removal steers toward the target; past critical, adding adds nothing more there")
 	}
 	updated := configuration
 	updated.Storage.DeviceThresholds = make(map[string]DeviceThreshold, len(configuration.Storage.DeviceThresholds)+1)
@@ -654,12 +651,6 @@ func Load(path string) (Config, error) {
 	if configuration.RefreshInterval <= 0 {
 		return configuration, fmt.Errorf("server.refresh_interval must be greater than zero")
 	}
-	if configuration.APIKey == "" {
-		if configuration.APIKey, err = NewAPIKey(); err != nil {
-			return configuration, err
-		}
-		assignedFreshID = true
-	}
 	if assignedFreshID || droppedServices {
 		if err := Save(path, configuration); err != nil {
 			return configuration, fmt.Errorf("persist updated services: %w", err)
@@ -810,13 +801,4 @@ func RemoveService(configuration Config, id string) (Config, error) {
 	updated.Adding.Destinations = slices.DeleteFunc(slices.Clone(configuration.Adding.Destinations), func(d Destination) bool { return d.ServiceID == id })
 	updated.populateDerivedServiceFields()
 	return updated, nil
-}
-
-// NewAPIKey makes a random API key.
-func NewAPIKey() (string, error) {
-	key := make([]byte, 24)
-	if _, err := rand.Read(key); err != nil {
-		return "", fmt.Errorf("make an API key: %w", err)
-	}
-	return hex.EncodeToString(key), nil
 }
