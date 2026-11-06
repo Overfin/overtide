@@ -15,8 +15,9 @@ import (
 const suggestionsMax = 400
 
 // ReadOverfin is the Overfin suggestions task: it reads what left the
-// libraries (Overfin's history), then brings what people wished for, then
-// what Overfin suggests adding, into the waiting list, in Overfin's order.
+// libraries (Overfin's history), then brings what people wished for into
+// the waiting list, sends Overfin the import lists (sendLists), then brings
+// what Overfin suggests adding, in Overfin's order.
 func (service *Service) ReadOverfin(ctx context.Context) error {
 	cfg := service.inv.Config()
 	if cfg.Adding.Mode != config.AddingDryRun && cfg.Adding.Mode != config.AddingOn {
@@ -37,6 +38,10 @@ func (service *Service) ReadOverfin(ctx context.Context) error {
 		return err
 	}
 	entries = service.readWishes(ctx, cfg, entries)
+	// The import lists first: what Overfin suggests mixes them in.
+	if err := service.sendLists(ctx, cfg, cfg.Adding.Mode == config.AddingDryRun); err != nil {
+		log.Printf("[adding] import lists: %v", err)
+	}
 	return service.save(service.readOverfin(ctx, cfg, entries, history))
 }
 
