@@ -9,7 +9,6 @@ import (
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/store"
 	"github.com/overfin/overtide/internal/tasks"
 )
 
@@ -18,6 +17,8 @@ func (server *Server) libraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/library", server.libraryList)
 	mux.HandleFunc("GET /api/library/{type}/{id}", server.libraryTitle)
 	mux.HandleFunc("GET /api/history", server.historyList)
+	mux.HandleFunc("GET /api/history/added", server.historyAdded)
+	mux.HandleFunc("GET /api/history/operations/{id}", server.historyOperation)
 	mux.HandleFunc("GET /api/tasks", server.tasksList)
 	mux.HandleFunc("POST /api/tasks/run", server.tasksRun)
 }
@@ -281,41 +282,21 @@ type cleanupRunJSON struct {
 	Reclaimed       string    `json:"reclaimed"`
 }
 
-type historyJSON struct {
-	Events []historyEventJSON `json:"events"`
-	Runs   []cleanupRunJSON   `json:"runs"`
-}
-
-// historyList answers GET /api/history: the removals, newest first, and
-// the legacy cleanup runs.
-func (server *Server) historyList(w http.ResponseWriter, r *http.Request) {
-	var runs []store.CleanupRun
-	var events []store.HistoryEvent
-	if db := server.inv.Store(); db != nil {
-		runs, _ = db.CleanupRuns(100)
-		events, _ = db.HistoryEvents(200)
+// historyEventOut is one removal as History's details show it.
+func historyEventOut(view historyEventView) historyEventJSON {
+	event := historyEventJSON{ID: view.ID, CreatedAt: view.CreatedAt, Label: view.RequestedLabel, Kind: view.RequestedKind, ServiceName: view.ServiceName,
+		DryRun: view.DryRun, Status: view.Status, Reclaimable: humanSize(view.ReclaimableBytes), Error: view.Error,
+		Files: []historyFileJSON{}, Results: view.Results, Errors: view.Errors}
+	for _, f := range view.Files {
+		event.Files = append(event.Files, historyFileJSON{Owner: string(f.Owner), Selected: f.Selected, Path: f.Path})
 	}
-	out := historyJSON{Events: []historyEventJSON{}, Runs: []cleanupRunJSON{}}
-	for _, view := range historyEventViews(events) {
-		event := historyEventJSON{ID: view.ID, CreatedAt: view.CreatedAt, Label: view.RequestedLabel, Kind: view.RequestedKind, ServiceName: view.ServiceName,
-			DryRun: view.DryRun, Status: view.Status, Reclaimable: humanSize(view.ReclaimableBytes), Error: view.Error,
-			Files: []historyFileJSON{}, Results: view.Results, Errors: view.Errors}
-		for _, f := range view.Files {
-			event.Files = append(event.Files, historyFileJSON{Owner: string(f.Owner), Selected: f.Selected, Path: f.Path})
-		}
-		if event.Results == nil {
-			event.Results = []string{}
-		}
-		if event.Errors == nil {
-			event.Errors = []string{}
-		}
-		out.Events = append(out.Events, event)
+	if event.Results == nil {
+		event.Results = []string{}
 	}
-	for _, run := range runs {
-		out.Runs = append(out.Runs, cleanupRunJSON{CompletedAt: run.CompletedAt, Status: run.Status, UsageBefore: run.UsageBefore, UsageAfter: run.UsageAfter,
-			MediaRemoved: run.MediaRemoved, TorrentsRemoved: run.TorrentsRemoved, Reclaimed: humanSize(run.ReclaimedBytes)})
+	if event.Errors == nil {
+		event.Errors = []string{}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return event
 }
 
 // ---- Tasks ----

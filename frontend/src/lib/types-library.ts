@@ -121,6 +121,42 @@ export interface HistoryEvent {
   errors: string[];
 }
 
+// One row of History: a title's files added on one day, or a removal.
+export interface Activity {
+  action: 'added' | 'removed';
+  at: string;
+  title: string;
+  year?: number;
+  kind: string;
+  service?: string;
+  episodes?: string;
+  files: number;
+  size: string;
+  origin?: string;
+  status?: string;
+  error?: string;
+  operation?: number;
+  serviceId?: string;
+  sourceId?: number;
+  day?: string;
+}
+
+export interface ActivityPage {
+  rows: Activity[];
+  total: number;
+  page: number;
+  pages: number;
+  runs: CleanupRun[];
+}
+
+export interface ImportedFile {
+  at: string;
+  episode?: string;
+  path: string;
+  size: string;
+  release?: string;
+}
+
 export interface CleanupRun {
   completedAt?: string;
   status: string;

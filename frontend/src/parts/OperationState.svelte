@@ -33,6 +33,6 @@
     <p>This removal needs attention while Overtide restores a consistent view.</p>
   {/if}
   {#if notice.message}<p class="error">{notice.message}</p>{/if}
-  <p><a href={`/history#operation-${notice.id}`}>View operation in History →</a></p>
+  <p><a href={`/history?operation=${notice.id}`}>View operation in History →</a></p>
   <p><a href={back}>Back to {backLabel} →</a></p>
 </Card>
