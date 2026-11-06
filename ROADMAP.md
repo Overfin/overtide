@@ -4,23 +4,25 @@ This file separates implemented behavior from intended direction. It is not a pr
 
 ## The design
 
-**The vision.** A library that keeps renewing itself, toward what the people of the server like. Overswell brings new titles in, Overtide takes weaker ones out, so the library drifts over time toward the operator's and people's preferences, and it keeps every disk under its threshold: a full disk would stop everything, so staying under it is Overtide's responsibility, and renewal happens within it.
+**The vision.** A library that keeps renewing itself, toward what the people of the server like. Overtide brings new titles in and takes weaker ones out, so the library drifts over time toward the operator's and people's preferences, and it keeps every disk under its threshold: a full disk would stop everything, so staying under it is Overtide's responsibility, and renewal happens within it.
 
 **Foundations, kept from Stewarr.**
 1. **Hardlinked bundles.** Overtide proves through the filesystem (device and inode) which files share the same data, so it knows exactly what a removal frees before it acts.
 2. **What the torrent client knows**: when a torrent was added and last active, its seeding time, its ratio, whether its tracker is private. (Stewarr's Torrent Value, scored from a sampled history, is gone: once torrents stopped weighing on titles, it only ordered torrents that all go anyway.)
 3. **Every action through the file's owner**: Radarr, Sonarr, the torrent client. Overtide deletes directly only what no service owns, checked again right before.
 
-**Roles.** Overfin values every title, in the libraries or not (tastes, viewing, requests, favourites, watchlist, ratings, new release, recently added, popularity, the operator's weights), and keeps requests and the limits on people. Overtide knows the storage and decides what to remove; Overswell adds. **Overtide has no valuation of its own**: it keeps a copy of Overfin's scores, for its pages and its plans, read again when it plans.
+**Roles.** Overfin values every title, in the libraries or not (tastes, viewing, requests, favourites, watchlist, ratings, new release, recently added, popularity, the operator's weights), and keeps requests and the limits on people. Overtide knows the storage, decides what to remove, and adds. **Overtide has no valuation of its own**: it keeps a copy of Overfin's scores, for its pages and its plans, read again when it plans.
 
 **Removing.** The unit is a bundle: a title's files and every torrent sharing them, cross-seeds included. Torrents don't weigh on a title: a bundle is worth its title's Overfin score. Only real obligations hold a bundle back: what the operator kept (the Kept list, which replaces keep tags), a private tracker's seeding time (one setting, off by default), the minimum ratio. When a disk is over its threshold, torrents with no title behind them go first, the one inactive the longest first, then the lowest bundles, until it's back under. Overtide reads the scores of every title the libraries have (`/apps/v1/titles?inLibrary=true&fields=score`) and plans from that copy. Overfin out of reach: nothing is planned automatically.
 
 **Adding moved to Overswell (2026-10-30).** Overtide is back to its first job, making room; adding (the waiting list, the tries, both ownership modes, whole seasons, the origin tags, tracker pacing) is a separate app, Overswell, which asks Overtide whether a folder has room before adding (`GET /api/v1/room`), and will take Overfin's requests first. Overswell's README says how it adds; what follows is Overtide's part.
 
+**Adding back in (2026-11).** The split was undone: Overswell's adding, its Sonarr driver and a Radarr driver are packages of Overtide again, its jobs scheduler tasks, the room check a function call. `-import-overswell` brings an Overswell's settings and state along once.
+
 **With Overfin** (user, 2026-10-25). Overfin gives its opinion, the least valuable titles in the libraries; Overtide decides what actually goes out, and when, from space and the rules above.
 - **Removing:** when it needs space, Overtide asks Overfin for the least valuable titles the libraries have and removes from there (skipping what it can't remove), asking for more when needed.
 - **The goal:** use the space up to each disk's target and keep titles rolling, so the library keeps evolving toward the people using it. A title's size never matters in choosing.
-- **The target is soft:** Overswell adds first, and removal brings the disk back under its target. Only the critical threshold stops adding, until removal catches up.
+- **The target is soft:** adding goes first, and removal brings the disk back under its target. Only the critical threshold stops adding, until removal catches up.
 - **Import lists are the operator's business:** neither Overfin nor Overtide reads them or works around them. An operator may keep them inside Radarr and Sonarr; the removal form's optional import-list exclusion stays for them.
 - **Thresholds** (built 2026-10-25): each disk's target and critical are set in its settings on the Storage page; critical must be above the target.
 - **Removing** (built 2026-10-25): files deleted through Radarr or Sonarr, the entry kept, always unmonitored (a series, its removed episodes), untagged. Overfin's scores are read again before every plan, opened by hand or made by automatic removal (and at startup).

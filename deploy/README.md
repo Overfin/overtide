@@ -31,8 +31,7 @@ address.
 
 Overtide starts in dry run: it plans, and records what it would remove, but
 removes nothing until you turn dry run off in **Settings**.
-Adding titles is Overswell's, a separate app, which asks Overtide whether a
-folder's disk has room.
+Adding is off too until you switch it on in **Settings**.
 
 ## Paths
 
