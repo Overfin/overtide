@@ -1,4 +1,5 @@
-// The panel's pages, by address: /, /adding, /library, /library/<…>, /torrents,
+// The panel's pages, by address: /, /adding, /adding/waiting,
+// /adding/seasons, /library, /library/<…>, /torrents,
 // /torrents/<hash>, /unmanaged, /storage, /services, /tasks, /history,
 // /settings. A click on one of the panel's own links changes the page
 // without reloading it; the query string is the page's own (filters).
