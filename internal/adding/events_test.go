@@ -76,6 +76,19 @@ func TestConnect(t *testing.T) {
 		t.Errorf("saved again: %v", changes)
 	}
 
+	// Behind a published port, only the address the panel was opened at
+	// works.
+	fake, service, cfg = setup(true)
+	receiverPort := strings.TrimPrefix(cfg.Server.Listen, ":")
+	cfg.Server.Listen = ":1"
+	service.SeenAt("http://127.0.0.1:" + receiverPort)
+	if err := service.connect(context.Background(), cfg, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.inv.Config().Adding.EventsURL; got != "http://127.0.0.1:"+receiverPort || len(fake.Notifications["sonarr"]) != 1 {
+		t.Errorf("from the panel's address: %q, %v", got, fake.Notifications)
+	}
+
 	fake, service, cfg = setup(false)
 	if err := service.connect(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)

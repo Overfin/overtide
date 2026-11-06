@@ -51,6 +51,15 @@ func (service *Service) EventsSecret() (string, error) {
 	return secret, database.SetMeta(eventsSecretKey, secret)
 }
 
+// SeenAt notes the address the panel was opened at (scheme and host), for
+// findAddress to try first: what reaches Overtide from the operator's
+// browser often reaches it from Radarr and Sonarr too.
+func (service *Service) SeenAt(address string) {
+	service.eventsMu.Lock()
+	service.seenAt = address
+	service.eventsMu.Unlock()
+}
+
 // HeardTest notes that a test event came, the webhook's secret right.
 func (service *Service) HeardTest() {
 	service.eventsMu.Lock()
@@ -94,6 +103,8 @@ func (service *Service) connect(ctx context.Context, cfg config.Config, dryRun b
 	if !cfg.Adding.ManagesAll() || dryRun {
 		return nil
 	}
+	service.connectMu.Lock()
+	defer service.connectMu.Unlock()
 	secret, err := service.EventsSecret()
 	if err != nil {
 		return err
@@ -135,6 +146,19 @@ func (service *Service) connect(ctx context.Context, cfg config.Config, dryRun b
 	}
 	service.setEventsProblem("")
 	return nil
+}
+
+// Connect is connect for the Settings page, which brings an address to try
+// (SeenAt): run at once, apart from the hourly task, while no address is
+// known.
+func (service *Service) Connect(ctx context.Context) {
+	cfg := service.inv.Config()
+	if cfg.Adding.EventsURL != "" || (cfg.Adding.Mode != config.AddingOn) {
+		return
+	}
+	if err := service.connect(ctx, cfg, false); err != nil {
+		log.Printf("[adding] Radarr's and Sonarr's events: %v", err)
+	}
 }
 
 // webhook is the Connect entry that sends app's added titles to address:
@@ -191,30 +215,37 @@ func (service *Service) saveWebhook(app eventsApp, address, secret string) error
 	return nil
 }
 
-// findAddress tries the addresses Overtide may have as app reaches it, on
-// the port it listens on: its host name and "overtide" (on the same Docker
-// network), the app's own host (on the same machine). The first one a
-// test event comes through wins; "" when none does.
+// findAddress tries the addresses Overtide may have as app reaches it: the
+// one the panel was last opened at (SeenAt), then, on the port it listens
+// on, its host name and "overtide" (on the same Docker network) and the
+// app's own host (on the same machine). The first one a test event comes
+// through wins; "" when none does.
 func (service *Service) findAddress(app eventsApp, cfg config.Config, secret string) string {
-	_, port, err := net.SplitHostPort(cfg.Server.Listen)
-	if err != nil || port == "" {
-		return ""
+	var addresses []string
+	service.eventsMu.Lock()
+	if service.seenAt != "" {
+		addresses = append(addresses, service.seenAt)
 	}
-	var hosts []string
-	if name, err := os.Hostname(); err == nil && name != "" {
-		hosts = append(hosts, name)
-	}
-	hosts = append(hosts, "overtide")
-	if u, err := url.Parse(app.svc.URL); err == nil && u.Hostname() != "" {
-		hosts = append(hosts, u.Hostname())
+	service.eventsMu.Unlock()
+	if _, port, err := net.SplitHostPort(cfg.Server.Listen); err == nil && port != "" {
+		var hosts []string
+		if name, err := os.Hostname(); err == nil && name != "" {
+			hosts = append(hosts, name)
+		}
+		hosts = append(hosts, "overtide")
+		if u, err := url.Parse(app.svc.URL); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, u.Hostname())
+		}
+		for _, host := range hosts {
+			addresses = append(addresses, "http://"+net.JoinHostPort(host, port))
+		}
 	}
 	schema, err := app.client.WebhookSchema()
 	if err != nil {
 		return ""
 	}
 	tried := map[string]bool{}
-	for _, host := range hosts {
-		address := "http://" + net.JoinHostPort(host, port)
+	for _, address := range addresses {
 		if tried[address] {
 			continue
 		}
