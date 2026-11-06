@@ -74,7 +74,7 @@ func (s *Store) ReplaceFiles(files []model.File, mediaRefs []model.MediaFileRef,
 
 const (
 	insertFile         = `INSERT INTO files(path,payload,updated_at) VALUES(?,?,?)`
-	insertMediaFile    = `INSERT INTO media_files(kind,source_id,source,source_file_id,path,service_id,service_name) VALUES(?,?,?,?,?,?,?)`
+	insertMediaFile    = `INSERT INTO media_files(kind,source_id,source,source_file_id,path,service_id,service_name,added_at) VALUES(?,?,?,?,?,?,?,?)`
 	insertMediaPart    = `INSERT INTO media_file_parts(kind,source_id,source,source_file_id,part_group,part_label,part_order,source_part_id) VALUES(?,?,?,?,?,?,?,?)`
 	insertTorrentFile  = `INSERT INTO torrent_files(client,hash,file_index,path,service_id,service_name) VALUES(?,?,?,?,?,?)`
 	insertUnmanagedRow = `INSERT INTO unmanaged_files(path,payload,updated_at) VALUES(?,?,?)`
@@ -95,7 +95,11 @@ func fileRows(files []model.File, now string) ([][]any, error) {
 // mediaRefRows are media_files rows and media_file_parts rows.
 func mediaRefRows(refs []model.MediaFileRef) (files, parts [][]any) {
 	for _, r := range refs {
-		files = append(files, []any{string(r.MediaType), r.MediaID, r.Source, r.SourceFileID, filepath.Clean(r.Path), r.ServiceID, r.ServiceName})
+		addedAt := ""
+		if !r.AddedAt.IsZero() {
+			addedAt = r.AddedAt.UTC().Format(time.RFC3339Nano)
+		}
+		files = append(files, []any{string(r.MediaType), r.MediaID, r.Source, r.SourceFileID, filepath.Clean(r.Path), r.ServiceID, r.ServiceName, addedAt})
 		for _, part := range r.Parts {
 			parts = append(parts, []any{string(r.MediaType), r.MediaID, r.Source, r.SourceFileID, part.Group, part.Label, part.Order, part.SourcePartID})
 		}
@@ -339,18 +343,19 @@ func (s *Store) LoadFiles() ([]model.File, []model.MediaFileRef, []model.Torrent
 }
 
 func (s *Store) mediaFileRefs() ([]model.MediaFileRef, error) {
-	rows, err := s.q.Query(`SELECT kind,source_id,source,source_file_id,path,service_id,service_name FROM media_files ORDER BY kind,source_id,path`)
+	rows, err := s.q.Query(`SELECT kind,source_id,source,source_file_id,path,service_id,service_name,added_at FROM media_files ORDER BY kind,source_id,path`)
 	if err != nil {
 		return nil, err
 	}
 	var mr []model.MediaFileRef
 	for rows.Next() {
 		var r model.MediaFileRef
-		var kind string
-		if err := rows.Scan(&kind, &r.MediaID, &r.Source, &r.SourceFileID, &r.Path, &r.ServiceID, &r.ServiceName); err != nil {
+		var kind, addedAt string
+		if err := rows.Scan(&kind, &r.MediaID, &r.Source, &r.SourceFileID, &r.Path, &r.ServiceID, &r.ServiceName, &addedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
+		r.AddedAt, _ = time.Parse(time.RFC3339Nano, addedAt)
 		r.MediaType = model.MediaType(kind)
 		mr = append(mr, r)
 	}

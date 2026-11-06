@@ -3,6 +3,7 @@ package valuation
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
@@ -34,6 +35,7 @@ func ApplyMedia(mediaItems []model.Media, configuration config.Config) {
 		mediaItem.ProtectionReason = ""
 		mediaItem.RemovalRestricted = !serviceAllowsRemoval(configuration, mediaItem.ServiceID)
 		applyOverfinValue(mediaItem, configuration)
+		applyJustAdded(mediaItem, now())
 	}
 	sort.SliceStable(mediaItems, func(leftIndex, rightIndex int) bool {
 		leftMedia, rightMedia := mediaItems[leftIndex], mediaItems[rightIndex]
@@ -42,6 +44,53 @@ func ApplyMedia(mediaItems []model.Media, configuration config.Config) {
 		}
 		return leftMedia.SizeBytes > rightMedia.SizeBytes
 	})
+}
+
+// JustAddedFor is how long what adding brought in (tagged overswell-added or
+// overswell-requested) is protected from removal, counted from its newest
+// file: a film, or each season on its own, so a download that waited still
+// gets its time to be watched.
+const JustAddedFor = 30 * 24 * time.Hour
+
+// justAdded is that protection's reason.
+const justAdded = "Just added"
+
+// now is the clock JustAddedFor counts on; tests set it.
+var now = time.Now
+
+// applyJustAdded protects what adding brought in for JustAddedFor after its
+// files came: a film whole, a series season by season. What's protected
+// already keeps its reason.
+func applyJustAdded(mediaItem *model.Media, at time.Time) {
+	if !model.HasTag(mediaItem.Tags, model.TagAdded) && !model.HasTag(mediaItem.Tags, model.TagRequested) {
+		return
+	}
+	recent := func(added time.Time) (model.Reason, bool) {
+		until := added.Add(JustAddedFor)
+		if added.IsZero() || !at.Before(until) {
+			return model.Reason{}, false
+		}
+		return model.Reason{Label: justAdded, Value: "until " + until.Local().Format("Jan 2"),
+			Note: "Brought in by adding: kept 30 days after its files came, to give people time to watch it."}, true
+	}
+	if mediaItem.Type != model.Series || len(mediaItem.Seasons) == 0 {
+		if reason, ok := recent(mediaItem.FilesAddedAt); ok {
+			mediaItem.RetentionValueReasons = append(mediaItem.RetentionValueReasons, reason)
+			if !mediaItem.Protected {
+				mediaItem.Protected, mediaItem.ProtectionReason = true, justAdded
+			}
+		}
+		return
+	}
+	for i := range mediaItem.Seasons {
+		season := &mediaItem.Seasons[i]
+		if reason, ok := recent(season.FilesAddedAt); ok {
+			season.RetentionValueReasons = append(season.RetentionValueReasons, reason)
+			if !season.Protected {
+				season.Protected, season.ProtectionReason = true, justAdded
+			}
+		}
+	}
 }
 
 // notValued is the protection of what Overfin didn't score: never removed

@@ -324,7 +324,7 @@ func TestFileModelRoundTrip(t *testing.T) {
 	}
 	defer db.Close()
 	files := []model.File{{Path: "/data/Films/A.mkv", SizeBytes: 123, Exists: true, IdentityKnown: true, Device: 7, Inode: 9, Links: 2}}
-	mr := []model.MediaFileRef{{MediaType: model.Series, MediaID: 4, Source: "sonarr", SourceFileID: 11, Path: "/data/Films/A.mkv", Parts: []model.MediaFilePart{{Group: "Season 1", Label: "S01E05 · Test", Order: 100005, SourcePartID: 55}}}}
+	mr := []model.MediaFileRef{{MediaType: model.Series, MediaID: 4, Source: "sonarr", SourceFileID: 11, Path: "/data/Films/A.mkv", AddedAt: time.Date(2026, 11, 6, 1, 2, 3, 4, time.UTC), Parts: []model.MediaFilePart{{Group: "Season 1", Label: "S01E05 · Test", Order: 100005, SourcePartID: 55}}}}
 	tr := []model.TorrentFileRef{{Client: "qBittorrent", Hash: "ABC", FileIndex: 0, Path: "/data/downloads/A.mkv"}}
 	files = append(files, model.File{Path: "/data/downloads/A.mkv", SizeBytes: 123, Exists: true, IdentityKnown: true, Device: 7, Inode: 9, Links: 2})
 	if err := db.ReplaceFiles(files, mr, tr); err != nil {
@@ -342,6 +342,9 @@ func TestFileModelRoundTrip(t *testing.T) {
 	}
 	if len(gmr[0].Parts) != 1 || gmr[0].Parts[0].SourcePartID != 55 || gmr[0].Parts[0].Group != "Season 1" {
 		t.Fatalf("managed file parts did not round-trip: %#v", gmr[0])
+	}
+	if !gmr[0].AddedAt.Equal(mr[0].AddedAt) {
+		t.Fatalf("the file's added date did not round-trip: %v", gmr[0].AddedAt)
 	}
 }
 

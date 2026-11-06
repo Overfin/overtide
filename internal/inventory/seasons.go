@@ -3,6 +3,7 @@ package inventory
 import (
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/overfin/overtide/internal/filetopology"
 	"github.com/overfin/overtide/internal/model"
@@ -55,6 +56,9 @@ func aggregateSeasons(mediaRefs []model.MediaFileRef, files []model.File) map[ow
 		}
 		season.SizeBytes += sizeByPath[filepath.Clean(ref.Path)]
 		season.EpisodeFileCount++
+		if ref.AddedAt.After(season.FilesAddedAt) {
+			season.FilesAddedAt = ref.AddedAt
+		}
 		for _, part := range ref.Parts {
 			if part.AiredAt.After(season.LastAiredAt) {
 				season.LastAiredAt = part.AiredAt
@@ -74,13 +78,27 @@ func aggregateSeasons(mediaRefs []model.MediaFileRef, files []model.File) map[ow
 
 // attachSeasons computes and assigns Media.Seasons for every Series item
 // from already-reconciled file refs, so it is available at every place a
-// Media snapshot is built, not only right after a fresh Sonarr fetch.
+// Media snapshot is built, not only right after a fresh Sonarr fetch. Every
+// item gets when its newest file came (Media.FilesAddedAt) the same way.
 func attachSeasons(items []model.Media, mediaRefs []model.MediaFileRef, files []model.File) {
 	bySeries := aggregateSeasons(mediaRefs, files)
-	for i := range items {
-		if items[i].Type == model.Series {
-			items[i].Seasons = bySeries[ownerKey{ServiceID: items[i].ServiceID, OwnerID: items[i].SourceID}]
+	type titleKey struct {
+		owner ownerKey
+		kind  model.MediaType
+	}
+	newest := map[titleKey]time.Time{}
+	for _, ref := range mediaRefs {
+		key := titleKey{ownerKey{ServiceID: ref.ServiceID, OwnerID: ref.MediaID}, ref.MediaType}
+		if ref.AddedAt.After(newest[key]) {
+			newest[key] = ref.AddedAt
 		}
+	}
+	for i := range items {
+		owner := ownerKey{ServiceID: items[i].ServiceID, OwnerID: items[i].SourceID}
+		if items[i].Type == model.Series {
+			items[i].Seasons = bySeries[owner]
+		}
+		items[i].FilesAddedAt = newest[titleKey{owner, items[i].Type}]
 	}
 }
 
