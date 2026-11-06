@@ -1,9 +1,11 @@
 package httpui
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/adding"
@@ -87,6 +89,22 @@ type addingSettingsData struct {
 // addingSettings answers GET /api/settings/adding.
 func (server *Server) addingSettings(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
+	// Where the operator reaches Overtide: an address to try for Radarr's
+	// and Sonarr's events (signed in, so it's the operator's own request).
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	if r.Host != "" && !strings.ContainsAny(r.Host, "/@?#") {
+		server.adder.SeenAt(scheme + "://" + r.Host)
+		if cfg.Adding.EventsURL == "" && cfg.Adding.ManagesAll() {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				server.adder.Connect(ctx)
+			}()
+		}
+	}
 	data := addingSettingsData{Mode: cfg.Adding.Mode, Manage: cfg.Adding.Manage, Searches: cfg.Adding.SearchesPerRun(), TitlesPerDay: cfg.Adding.PerDay(), UpgradesPerDay: cfg.Adding.UpgradesPerDay,
 		EventsURL: cfg.Adding.EventsURL, EventsProblem: server.adder.EventsProblem(), Destinations: server.destinationRows(r.Context())}
 	if data.Mode == "" {

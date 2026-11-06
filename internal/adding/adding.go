@@ -199,9 +199,12 @@ type Service struct {
 	// trackersDown is why this run's searches stopped: the trackers were
 	// unavailable.
 	trackersDown string
-	// Radarr's and Sonarr's events (events.go): when the last test event
-	// came, what keeps them from coming, and the webhooks saved.
+	// Radarr's and Sonarr's events (events.go): where the panel was opened,
+	// when the last test event came, what keeps them from coming, and the
+	// webhooks saved.
+	connectMu     sync.Mutex // one connect at a time
 	eventsMu      sync.Mutex
+	seenAt        string
 	heard         time.Time
 	eventsProblem string
 	connected     map[string]bool
