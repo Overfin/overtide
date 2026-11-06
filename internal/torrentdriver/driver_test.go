@@ -87,8 +87,8 @@ func TestCheckDoesNotWait(t *testing.T) {
 // The list is read again after a dropped connection; the folders keep
 // which one holds the downloads still going.
 func TestTorrentsAndRoots(t *testing.T) {
-	defer func(old []time.Duration) { Waits = old }(Waits)
-	Waits = []time.Duration{time.Millisecond}
+	defer func(old []time.Duration) { ReadWaits = old }(ReadWaits)
+	ReadWaits = []time.Duration{time.Millisecond}
 	var syncs atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

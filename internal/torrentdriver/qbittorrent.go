@@ -33,7 +33,7 @@ func (d *qbDriver) WithContext(ctx context.Context) Driver {
 func (d *qbDriver) Torrents(previous map[string]model.Torrent, cursor int64) (map[string]model.Torrent, int64, error) {
 	var torrents map[string]model.Torrent
 	next := cursor
-	err := retry(d.ctx, func() (err error) {
+	err := retry(d.ctx, ReadWaits, func() (err error) {
 		torrents, next, err = d.client.Sync(previous, cursor)
 		return err
 	})
@@ -42,7 +42,7 @@ func (d *qbDriver) Torrents(previous map[string]model.Torrent, cursor int64) (ma
 
 func (d *qbDriver) Detail(hash string) (model.Torrent, error) {
 	var torrent model.Torrent
-	err := retry(d.ctx, func() (err error) {
+	err := retry(d.ctx, ReadWaits, func() (err error) {
 		torrent, err = d.client.Detail(hash)
 		return err
 	})
@@ -54,7 +54,7 @@ func (d *qbDriver) Detail(hash string) (model.Torrent, error) {
 
 func (d *qbDriver) Files(torrents map[string]model.Torrent) (map[string][]File, error) {
 	var found map[string][]qbittorrent.File
-	if err := retry(d.ctx, func() (err error) {
+	if err := retry(d.ctx, ReadWaits, func() (err error) {
 		found, err = d.client.AllFiles(torrents)
 		return err
 	}); err != nil {
@@ -73,7 +73,7 @@ func (d *qbDriver) Files(torrents map[string]model.Torrent) (map[string][]File, 
 
 func (d *qbDriver) Roots(torrents map[string]model.Torrent) ([]Root, error) {
 	var found []qbittorrent.RootPath
-	if err := retry(d.ctx, func() (err error) {
+	if err := retry(d.ctx, ReadWaits, func() (err error) {
 		found, err = d.client.StorageRoots(torrents)
 		return err
 	}); err != nil {
@@ -94,7 +94,7 @@ func (d *qbDriver) Roots(torrents map[string]model.Torrent) ([]Root, error) {
 // any other, so trying again after a reset, when the first may have gone
 // through, is safe.
 func (d *qbDriver) Remove(hash string, withData bool) error {
-	return retry(d.ctx, func() error {
+	return retry(d.ctx, Waits, func() error {
 		if withData {
 			return d.client.Delete(hash)
 		}
@@ -103,7 +103,7 @@ func (d *qbDriver) Remove(hash string, withData bool) error {
 }
 
 func (d *qbDriver) NotClaimed(paths []string) error {
-	return retry(d.ctx, func() error { return d.client.VerifyPathsUnmanaged(paths) })
+	return retry(d.ctx, ReadWaits, func() error { return d.client.VerifyPathsUnmanaged(paths) })
 }
 
 // Check isn't tried again: it answers someone adding the service, who
