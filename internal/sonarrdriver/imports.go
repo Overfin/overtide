@@ -118,7 +118,13 @@ func (driver *Driver) importFrom(ctx context.Context, cfg config.Config, client 
 		return
 	}
 	for _, grab := range grabs {
-		if grab.DownloadID != "" && state.Imports[grab.DownloadID] == nil {
+		if grab.DownloadID == "" {
+			continue
+		}
+		// A download over and grabbed again later (the same torrent, its
+		// files deleted since) is followed anew. A grab's events, one per
+		// episode, all fall within the overlap.
+		if known := state.Imports[grab.DownloadID]; known == nil || known.Done && grab.Date.Sub(known.GrabbedAt) > importOverlap {
 			state.Imports[grab.DownloadID] = &downloadImport{SeriesID: grab.SeriesID, Title: grab.SourceTitle, GrabbedAt: grab.Date}
 		}
 	}
@@ -171,6 +177,11 @@ func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, cli
 	}
 	imported := map[string]bool{}
 	for _, event := range events {
+		// What came of an earlier grab of the same download isn't this
+		// one's.
+		if event.Date.Before(download.GrabbedAt) {
+			continue
+		}
 		switch event.EventType {
 		case "downloadFailed":
 			download.Done, download.Failed, download.Waiting = true, true, nil
