@@ -146,7 +146,7 @@ func SetEventsURL(configuration Config, address string) (Config, error) {
 	if address != "" {
 		u, err := url.Parse(address)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-			return configuration, fmt.Errorf("Overtide's address for Radarr and Sonarr must be an http or https address, like http://overtide:8088")
+			return configuration, fmt.Errorf("the address Radarr and Sonarr reach Overtide at must be an http or https address, like http://overtide:8088")
 		}
 	}
 	updated := configuration
