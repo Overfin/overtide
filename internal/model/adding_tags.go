@@ -17,12 +17,6 @@ const (
 	TagNew = "overtide-new"
 )
 
-// TagList is on Sonarr's import lists, so every series they add carries
-// it: with "Manage all", they add series unmonitored, and Overfin decides
-// which come (see adding's lists). Not one of adding's tags: a series with
-// it is taken like any other.
-const TagList = "overtide-list"
-
 // TagIgnore is set by the operator, in Radarr or Sonarr: a title
 // Overtide never takes, tags, unmonitors or searches for.
 const TagIgnore = "overtide-ignore"

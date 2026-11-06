@@ -4,8 +4,8 @@
 // Overtide decides. A title goes in Radarr or Sonarr once, unmonitored
 // and tagged, and is never deleted from them: a try monitors it and
 // searches for it, and if nothing started it's unmonitored again until
-// its next try. With "Manage all", the import lists are Overfin's to choose
-// from (see lists.go). Episodes and seasons go through the Sonarr driver
+// its next try. Import lists are the operator's business: Overtide never
+// reads them. Episodes and seasons go through the Sonarr driver
 // (internal/sonarrdriver): this side says when, and within how many
 // searches, and counts them.
 package adding

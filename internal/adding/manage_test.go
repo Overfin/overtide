@@ -143,20 +143,12 @@ func TestTakeAll(t *testing.T) {
 	}
 
 	// The next pass changes nothing more, and what was added since is new:
-	// a film or a series added by hand goes first; a film or a series from
-	// an import list is Overfin's to choose from: not in line, nothing of
-	// it wanted (an earlier pass's "by hand" undone).
+	// a film or a series added from outside (by hand, by a list, whatever
+	// its tags) goes first.
 	before := len(fake.Mutations())
 	fake.Films[4] = map[string]any{"id": 4, "tmdbId": 14, "title": "Added since", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.Add(time.Hour))}
-	fake.Films[5] = map[string]any{"id": 5, "tmdbId": 15, "title": "From a list", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.Add(time.Hour))}
-	fake.Lists["radarr"][1] = map[string]any{"id": 1, "name": "Latest", "enabled": true, "enableAuto": false, "searchOnAdd": false}
-	fake.ListMovies = []map[string]any{{"tmdbId": 15, "lists": []int{1}}}
-	entries = append(entries, Entry{Key: movieKey(15), Kind: model.Movie, ServiceID: "r", ExternalID: 15, Source: FromHand, State: Waiting, ArrID: 5})
-	states, _ = service.sonarr.States()
-	states["s"].Wanted[399] = sonarrdriver.EpisodeWant{SeriesID: 4, Season: 1, ByHand: true}
-	service.sonarr.SaveStates(states)
-	fromList := fake.TagID("sonarr", model.TagList)
-	for id, tags := range map[int][]int{3: nil, 4: {fromList}} {
+	other := fake.TagID("sonarr", "from-a-list")
+	for id, tags := range map[int][]int{3: nil, 4: {other}} {
 		fake.Series[id] = map[string]any{"id": id, "title": "Added since", "monitored": true, "monitorNewItems": "none", "tags": tags,
 			"seasons": []any{season(1, true)}, "added": arrfake.ISO(now.Add(time.Hour))}
 		fake.Eps[300+id] = map[string]any{"id": 300 + id, "seriesId": id, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": arrfake.ISO(now.AddDate(0, 0, -60)), "hasFile": false, "monitored": true}
@@ -169,19 +161,8 @@ func TestTakeAll(t *testing.T) {
 		t.Errorf("film added since: %v, in line %+v", fake.Films[4], entries)
 	}
 	states, _ = service.sonarr.States()
-	wanted := states["s"].Wanted
-	_, list1 := wanted[304]
-	_, list2 := wanted[399]
-	if !wanted[303].ByHand || list1 || list2 || wanted[101].ByHand {
+	if wanted := states["s"].Wanted; !wanted[303].ByHand || !wanted[304].ByHand || wanted[101].ByHand {
 		t.Errorf("wanted by hand: %+v", wanted)
-	}
-	for _, entry := range entries {
-		if entry.ExternalID == 15 {
-			t.Errorf("a list's film in line: %+v", entry)
-		}
-	}
-	if fake.Films[5]["monitored"] != false {
-		t.Errorf("a list's film still monitored: %v", fake.Films[5])
 	}
 	for _, change := range fake.Mutations()[before:] {
 		if strings.Contains(change, "sonarr PUT /api/v3/series/1") || strings.Contains(change, "sonarr PUT /api/v3/series/2") {
