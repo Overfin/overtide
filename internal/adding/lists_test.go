@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
@@ -52,6 +53,9 @@ func TestSendLists(t *testing.T) {
 		fake.Series[11]["tmdbId"], fake.Series[11]["added"] = 1668, arrfake.ISO(now)
 		fake.AddSeries(12, nil) // not from a list
 		fake.Series[12]["tmdbId"] = 60059
+		// Added by the list before Overtide tagged it: the list's too.
+		fake.AddSeries(13, nil)
+		fake.Series[13]["tmdbId"], fake.Series[13]["added"] = 2316, arrfake.ISO(now.Add(-30*time.Minute))
 		cfg := arrfake.Config(t, fake, config.ManageAll)
 		cfg.Services[0].Name, cfg.Services[1].Name = "Radarr", "Sonarr"
 		cfg.Overfin = config.Connection{URL: overfinSrv.URL, APIKey: "ofapp_k"}
@@ -59,7 +63,7 @@ func TestSendLists(t *testing.T) {
 	}
 	want := []overfin.List{
 		{Name: "Radarr: Latest", Titles: []overfin.ListTitle{{Kind: "movie", TMDB: "550"}, {Kind: "movie", TMDB: "13"}}},
-		{Name: "Sonarr: import lists", Titles: []overfin.ListTitle{{Kind: "series", TMDB: "1668"}, {Kind: "series", TMDB: "1399"}}},
+		{Name: "Sonarr: import lists", Titles: []overfin.ListTitle{{Kind: "series", TMDB: "1668"}, {Kind: "series", TMDB: "2316"}, {Kind: "series", TMDB: "1399"}}},
 	}
 
 	fake, cfg := setup()
@@ -73,8 +77,12 @@ func TestSendLists(t *testing.T) {
 	if err := service.sendLists(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)
 	}
-	if len(sent) != 2 || !reflect.DeepEqual(sent[0], want) || !reflect.DeepEqual(sent[1], want) {
-		t.Errorf("sent %+v, want %+v twice", sent, want)
+	// The dry run sent the lists without the series it would tag.
+	if len(sent) != 2 || !reflect.DeepEqual(sent[1], want) {
+		t.Errorf("sent %+v, want %+v", sent, want)
+	}
+	if got := fake.Labels("sonarr", fake.Series[13]["tags"]); !slices.Equal(got, []string{model.TagList}) || len(fake.Labels("sonarr", fake.Series[12]["tags"])) != 0 {
+		t.Errorf("catching up: 13 %v, 12 %v", got, fake.Series[12]["tags"])
 	}
 	if l := fake.Lists["radarr"][1]; l["enableAuto"] != false || l["searchOnAdd"] != false {
 		t.Errorf("Radarr's list: %v", l)

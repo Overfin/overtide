@@ -76,6 +76,7 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 		// byHand are the series added by hand since "Manage all" (TagNew,
 		// not from a list): what they lack is searched first.
 		byHand := map[int]bool{}
+		listed := map[int]bool{} // from an import list
 		for _, t := range titles {
 			if model.HasLabel(t.Tags, labels, model.TagIgnore) {
 				// Left alone: nothing of it is followed or searched.
@@ -92,8 +93,20 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 				label = labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
 			}
-			if (label == model.TagNew || model.HasLabel(t.Tags, labels, model.TagNew)) && !model.HasLabel(t.Tags, labels, model.TagList) {
+			fromList := model.HasLabel(t.Tags, labels, model.TagList)
+			if (label == model.TagNew || model.HasLabel(t.Tags, labels, model.TagNew)) && !fromList {
 				byHand[t.ID] = true
+			}
+			if fromList {
+				// A list's series is Overfin's to choose from: nothing of it
+				// is wanted as if added by hand (a list may have added it
+				// before Overtide took the list over).
+				listed[t.ID] = true
+				for id, want := range state.Wanted {
+					if want.SeriesID == t.ID && want.ByHand && !want.Grabbed {
+						delete(state.Wanted, id)
+					}
+				}
 			}
 			if !t.Taken() && !active[fmt.Sprintf("%s|%s|%d", svc.ID, model.Series, t.ID)] {
 				toTake = append(toTake, t)
@@ -116,7 +129,7 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 					// A recent one in a followed series is the airing
 					// window's: monitored for the RSS until tries.ReleaseGrace.
 					recent := e.AirDateUTC.After(now.Add(-tries.ReleaseGrace))
-					if taking[e.SeriesID] && !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now) && !(recent && state.Follow[e.SeriesID]) {
+					if taking[e.SeriesID] && !listed[e.SeriesID] && !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now) && !(recent && state.Follow[e.SeriesID]) {
 						if _, there := state.Wanted[e.ID]; !there {
 							state.Wanted[e.ID] = EpisodeWant{SeriesID: e.SeriesID, Season: e.SeasonNumber, AiredAt: e.AirDateUTC, Episode: e.EpisodeNumber, ByHand: byHand[e.SeriesID]}
 						}

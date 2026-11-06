@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -226,6 +227,20 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 		_ = service.saveSummary(summary)
 		return entries, err
 	}
+	// The lists first, so they stop adding on their own; what they added
+	// is Overfin's to choose from, not added by hand.
+	_, onLists, err := service.takeLists(ctx, cfg, dryRun)
+	if err != nil {
+		log.Printf("[adding] import lists: %v", err)
+	}
+	kept := entries[:0]
+	for _, entry := range entries {
+		if entry.Source == FromHand && entry.waiting() && onLists[entry.ServiceID][entry.ExternalID] {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	entries = kept
 
 	for _, svc := range cfg.ServicesOfType("radarr") {
 		client, err := service.inv.RadarrClient(svc.ID)
@@ -256,9 +271,9 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 				continue
 			}
 			toUnmonitor = append(toUnmonitor, t.ID)
-			if !t.HasFile && !listed[key] && t.TMDBID > 0 {
-				// Radarr's lists add nothing (see lists.go): a film added
-				// since "Manage all" was added by hand, and goes first.
+			if !t.HasFile && !listed[key] && t.TMDBID > 0 && !onLists[svc.ID][t.TMDBID] {
+				// A film added since "Manage all" that's on no list was
+				// added by hand, and goes first.
 				source, result := FromLibrary, "Taken from Radarr"
 				if labelFor(t.Added) == model.TagNew {
 					source, result = FromHand, "Added by hand in Radarr"

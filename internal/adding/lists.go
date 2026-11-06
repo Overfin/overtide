@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
@@ -21,28 +22,57 @@ import (
 // model.TagList, and those tagged series are its lists' titles. Every list
 // is sent to Overfin (overfin.SendLists), and comes back in its
 // suggestions. A list the operator switched off stays off.
+//
+// A list switched on may add titles before Overtide sees it, with its own
+// settings: they're the list's all the same, not added by hand (takeAll):
+// a film still on a Radarr list, a series added in the hour before Overtide
+// first tagged a Sonarr list (listCatchUp).
 
-// sendLists takes the import lists over (in dry run, it only says so) and
-// sends their titles to Overfin. Without "Manage all", the lists are the
-// operator's, and nothing is sent.
-func (service *Service) sendLists(ctx context.Context, cfg config.Config, dryRun bool) error {
-	if !cfg.Adding.ManagesAll() || cfg.Overfin.URL == "" {
-		return nil
-	}
+// listCatchUp is how long before Overtide first takes a Sonarr list over
+// the series added are taken as the list's.
+const listCatchUp = time.Hour
+
+// takeLists takes the import lists over (in dry run, it only says so), and
+// returns them, with the films on Radarr's lists by service and TMDB ID.
+// Every run does it before taking the titles, so a list just switched on
+// stops adding on its own as soon as possible.
+func (service *Service) takeLists(ctx context.Context, cfg config.Config, dryRun bool) ([]overfin.List, map[string]map[int]bool, error) {
 	var lists []overfin.List
+	films := map[string]map[int]bool{}
 	for _, svc := range cfg.ServicesOfType("radarr") {
 		found, err := service.radarrLists(ctx, svc, dryRun)
 		if err != nil {
-			return fmt.Errorf("%s's import lists: %w", svc.Name, err)
+			return nil, nil, fmt.Errorf("%s's import lists: %w", svc.Name, err)
+		}
+		films[svc.ID] = map[int]bool{}
+		for _, list := range found {
+			for _, t := range list.Titles {
+				if id, err := strconv.Atoi(t.TMDB); err == nil {
+					films[svc.ID][id] = true
+				}
+			}
 		}
 		lists = append(lists, found...)
 	}
 	for _, svc := range cfg.ServicesOfType("sonarr") {
 		found, err := service.sonarrLists(ctx, svc, dryRun)
 		if err != nil {
-			return fmt.Errorf("%s's import lists: %w", svc.Name, err)
+			return nil, nil, fmt.Errorf("%s's import lists: %w", svc.Name, err)
 		}
 		lists = append(lists, found...)
+	}
+	return lists, films, nil
+}
+
+// sendLists takes the import lists over and sends their titles to Overfin.
+// Without "Manage all", the lists are the operator's, and nothing is sent.
+func (service *Service) sendLists(ctx context.Context, cfg config.Config, dryRun bool) error {
+	if !cfg.Adding.ManagesAll() || cfg.Overfin.URL == "" {
+		return nil
+	}
+	lists, _, err := service.takeLists(ctx, cfg, dryRun)
+	if err != nil {
+		return err
 	}
 	return service.inv.OverfinClient().WithContext(ctx).SendLists(lists)
 }
@@ -136,6 +166,7 @@ func (service *Service) sonarrLists(ctx context.Context, svc config.Service, dry
 		}
 	}
 	adding := 0
+	firstTime := false
 	for _, list := range all {
 		if adds, _ := list["enableAutomaticAdd"].(bool); !adds {
 			continue
@@ -161,6 +192,7 @@ func (service *Service) sonarrLists(ctx context.Context, svc config.Service, dry
 		}
 		if !slices.Contains(tags, any(float64(tagID))) {
 			list["tags"] = append(tags, tagID)
+			firstTime = true
 		}
 		list["searchForMissingEpisodes"], list["shouldMonitor"], list["monitorNewItems"] = false, "none", "none"
 		if err := client.SaveImportList(list); err != nil {
@@ -174,6 +206,22 @@ func (service *Service) sonarrLists(ctx context.Context, svc config.Service, dry
 	series, err := client.Titles()
 	if err != nil {
 		return nil, err
+	}
+	if firstTime {
+		// What the list added before Overtide tagged it is the list's too.
+		var recent []int
+		for i, s := range series {
+			if s.Added.After(service.now().Add(-listCatchUp)) && !model.HasLabel(s.Tags, labels, model.TagList) {
+				recent = append(recent, s.ID)
+				series[i].Tags = append(series[i].Tags, tagID)
+			}
+		}
+		if len(recent) > 0 {
+			if err := client.EditTags(recent, tagID, true); err != nil {
+				return nil, err
+			}
+			log.Printf("[adding] %s: %d series added in the hour before its lists were taken over are taken as theirs", svc.Name, len(recent))
+		}
 	}
 	sort.SliceStable(series, func(i, j int) bool { return series[i].Added.After(series[j].Added) })
 	list := overfin.List{Name: listName(svc, "import lists")}
