@@ -267,6 +267,9 @@ distributed locking are out of scope.
 
 - The engine is event/timer driven; it does not poll status every second or
   every 25 milliseconds.
+- The loop computes its next wake-up as a moment, under its lock, and waits
+  until that moment (`Clock.At`): a clock that moves before the timer starts
+  doesn't push the wake-up later.
 - All time comes from an injected clock.
 - Periodic schedules are fixed-rate from a stable schedule anchor, avoiding
   drift caused by task duration.
@@ -294,6 +297,14 @@ SQLite persists:
 
 Periodic definitions are reconstructed from code at startup. At most one
 catch-up trigger is produced.
+Schedules saved for tasks no longer registered are dropped when the
+scheduler starts (every task is registered by then).
+
+Retention: the newest 500 finished executions are kept, with their
+triggers; cancelled triggers nothing refers to (a workflow's steps it moved
+past) are kept up to the newest 200. Other finished triggers stay with
+their executions: domain recovery (the removal journal) reads them. The
+state is written when it changed, not at every turn of the loop.
 
 Executions left `running` at process death become `interrupted` during startup.
 
