@@ -1,10 +1,11 @@
-<!-- Settings: the password, the API key, and when Overtide may remove
-     titles on its own. -->
+<!-- Settings: the password, adding, and when Overtide may remove titles
+     on its own. -->
 <script lang="ts">
-  import { PageHead, Card, Field, Setting, Status, Busy, Loading, Notice, toast } from '@overfin/ui';
+  import { PageHead, Card, Setting, Status, Busy, Loading, Notice, toast } from '@overfin/ui';
   import { get, put } from '../lib/api';
   import type { Settings } from '../lib/types-services';
   import PasswordForm from '../parts/settings/PasswordForm.svelte';
+  import AddingSettings from '../parts/settings/AddingSettings.svelte';
 
   let data = $state<Settings | null>(null);
   let failure = $state('');
@@ -66,7 +67,7 @@
   load();
 </script>
 
-<PageHead title="Settings" description="Your password, the API key, and when Overtide may remove titles on its own." />
+<PageHead title="Settings" description="Your password, how Overtide adds titles and where they go, and when it may remove titles on its own." />
 
 {#if failure}
   <Notice warn>{failure}</Notice>
@@ -77,9 +78,7 @@
     <button type="button" onclick={() => (password = true)}>Update password</button>
   </Card>
 
-  <Card title="API key" description="What Overswell gives to ask Overtide whether a folder has room before it adds a title: add Overtide in Overswell's Services with this key.">
-    <Field label="Key"><input class="mono" value={data.apiKey} readonly /></Field>
-  </Card>
+  <AddingSettings />
 
   <Card title="Automatic removal">
     <Setting label="Automatic removal" hint={'Disabled: the evaluation never runs. Confirm: it evaluates candidates on schedule but never submits anything — review and remove them yourself. Auto: it submits them on its own. Each service also needs "Include in cleanup plans" ticked in its own settings before anything it owns is planned.'}>
