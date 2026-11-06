@@ -765,3 +765,27 @@ func TestStateWrittenOnlyWhenChanged(t *testing.T) {
 		t.Errorf("a submission wrote %d times", stateStore.writes-before)
 	}
 }
+
+// Cancelled triggers nothing refers to (a workflow's steps) are kept up to
+// a bound, the newest; referenced and other finished ones stay.
+func TestOrphanTriggersAreBounded(t *testing.T) {
+	manager := NewWithClock(NewFakeClock(time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)), Definition{ID: "x", Name: "X", Runner: func(context.Context) error { return nil }})
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	for i := 1; i <= 10; i++ {
+		id := fmt.Sprintf("trigger-%d", i)
+		manager.state.Triggers[id] = &Trigger{ID: id, TaskID: "x", State: "cancelled"}
+	}
+	manager.state.Triggers["trigger-1"].State = "pending"
+	manager.state.Triggers["trigger-3"].State = "rejected"
+	manager.state.Executions["execution-1"] = &Execution{ID: "execution-1", TaskID: "x", State: "succeeded", TriggerIDs: []string{"trigger-2"}}
+	manager.trimOrphanTriggersLocked(3)
+	for _, id := range []string{"trigger-1", "trigger-2", "trigger-3", "trigger-8", "trigger-9", "trigger-10"} {
+		if manager.state.Triggers[id] == nil {
+			t.Errorf("%s went", id)
+		}
+	}
+	if len(manager.state.Triggers) != 6 {
+		t.Errorf("%d triggers kept", len(manager.state.Triggers))
+	}
+}

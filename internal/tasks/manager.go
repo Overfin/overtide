@@ -1285,6 +1285,46 @@ func (manager *Manager) trimHistoryLocked(limit int) {
 		}
 		completed = completed[1:]
 	}
+	manager.trimOrphanTriggersLocked(orphanTriggerLimit)
+}
+
+// orphanTriggerLimit is how many cancelled triggers no execution, intent or
+// workflow refers to are kept (a workflow's steps it moved past), the
+// newest: without a bound, every removal left a few more for good. Other
+// finished triggers stay: domain recovery reads them (a removal journal
+// with no trigger would be submitted again).
+const orphanTriggerLimit = 200
+
+func (manager *Manager) trimOrphanTriggersLocked(limit int) {
+	referenced := map[string]bool{}
+	for _, execution := range manager.state.Executions {
+		for _, id := range execution.TriggerIDs {
+			referenced[id] = true
+		}
+	}
+	for _, intent := range manager.state.Pending {
+		for _, id := range intent.TriggerIDs {
+			referenced[id] = true
+		}
+	}
+	for _, instance := range manager.state.Workflows {
+		referenced[instance.TriggerID] = true
+	}
+	orphans := []*Trigger{}
+	for id, trigger := range manager.state.Triggers {
+		if !referenced[id] && trigger.State == "cancelled" {
+			orphans = append(orphans, trigger)
+		}
+	}
+	if len(orphans) <= limit {
+		return
+	}
+	sort.Slice(orphans, func(first, second int) bool {
+		return idSequence(orphans[first].ID) < idSequence(orphans[second].ID)
+	})
+	for _, trigger := range orphans[:len(orphans)-limit] {
+		delete(manager.state.Triggers, trigger.ID)
+	}
 }
 
 func (manager *Manager) persistLocked() error {
