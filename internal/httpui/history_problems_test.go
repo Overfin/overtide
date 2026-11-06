@@ -1,8 +1,12 @@
 package httpui
 
 import (
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/store"
 )
@@ -43,5 +47,27 @@ func TestLeftoversOf(t *testing.T) {
 	}
 	if _, known := leftoversOf(store.HistoryEvent{Payload: []byte(`{}`)}, nil, nil, nil); known {
 		t.Fatal("no plan, yet known")
+	}
+}
+
+// Before the file model is read, nothing can be said to be gone: the
+// reading isn't made (and a previous one stands).
+func TestProblemsWaitForTheFileModel(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "partial", RequestedLabel: "X",
+		Payload: []byte(`{"plan":{"files":[{"path":"/t/x.mkv","owner":"torrent","ownerKey":"abc","selected":true,"sizeBytes":1}]}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{inv: inventory.New(config.Config{}, database)}
+	if _, ok := server.problemsNow(); ok {
+		t.Fatal("a reading made before the file model was read")
+	}
+	server.problemsCache, server.problemsAt = []problemJSON{{ID: 1}}, time.Now().Add(-time.Hour)
+	if got := server.problems(); len(got) != 1 {
+		t.Fatalf("the previous reading didn't stand: %+v", got)
 	}
 }
