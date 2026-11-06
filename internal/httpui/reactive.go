@@ -82,6 +82,11 @@ func (hub *revisionHub) subscribe() (<-chan uiRevision, func(), uiRevision) {
 }
 
 func (server *Server) publishUIChange(kind string) uiRevision {
+	// A removal that moved on may have failed, or removed what was left of
+	// one that did.
+	if strings.HasPrefix(kind, "removal") || strings.HasPrefix(kind, "operation") {
+		server.forgetProblems()
+	}
 	if server.revisions == nil {
 		return uiRevision{}
 	}
@@ -279,7 +284,10 @@ func (server *Server) uiStatus(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	revision := server.revisions.current()
-	etag := `"ui-` + strconv.FormatUint(revision.Revision, 10) + `"`
+	// The failed removals' count is in the tag: it can change without a
+	// revision of its own (the cache in problems).
+	failed := len(server.problems())
+	etag := `"ui-` + strconv.FormatUint(revision.Revision, 10) + "-" + strconv.Itoa(failed) + `"`
 	response.Header().Set("ETag", etag)
 	response.Header().Set("Cache-Control", "no-cache")
 	if request.Header.Get("If-None-Match") == etag {
@@ -296,7 +304,7 @@ func (server *Server) uiStatus(response http.ResponseWriter, request *http.Reque
 		pendingOperations++
 	}
 	response.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(response).Encode(uiStatus{Revision: revision.Revision, Kind: revision.Kind, PendingOperations: pendingOperations, FailedOperations: len(server.problems())})
+	_ = json.NewEncoder(response).Encode(uiStatus{Revision: revision.Revision, Kind: revision.Kind, PendingOperations: pendingOperations, FailedOperations: failed})
 }
 
 // serviceConsistencyRunning reports whether the global

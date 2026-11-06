@@ -29,9 +29,17 @@ func TestLeftoversOf(t *testing.T) {
 	if left, known := leftoversOf(event, nil, nil, map[string]model.Torrent{}); !known || len(left) != 0 {
 		t.Fatalf("all gone: %v %+v", known, left)
 	}
-	mediaRefs := []model.MediaFileRef{{Source: "sonarr", SourceFileID: 21929}}
-	if left, _ := leftoversOf(event, nil, mediaRefs, nil); len(left) != 1 || left[0].Kind != "media" || left[0].MediaID != "1658" {
+	mediaRefs := []model.MediaFileRef{{Source: "sonarr", SourceFileID: 21929, MediaType: model.Series, MediaID: 1658, ServiceID: "sonarr-1"}}
+	if left, _ := leftoversOf(event, nil, mediaRefs, nil); len(left) != 1 || left[0].Kind != "media" || left[0].MediaID != "1658" || left[0].ServiceID != "sonarr-1" {
 		t.Fatalf("episodes still there: %+v", left)
+	}
+	// A torrent's removal that selected a title's files too: they're left
+	// over just the same.
+	torrentRemoval := event
+	torrentRemoval.Payload = []byte(`{"command": {"form": {"kind": ["torrent"]}}, "plan": {"files": [
+		{"path": "/data/Series/M/S01E01.mkv", "owner": "media", "ownerKey": "sonarr:21929", "label": "Mid-Century Modern", "selected": true, "sizeBytes": 100}]}}`)
+	if left, _ := leftoversOf(torrentRemoval, nil, mediaRefs, nil); len(left) != 1 || left[0].Kind != "media" || left[0].Label != "Mid-Century Modern" {
+		t.Fatalf("a torrent removal's title files: %+v", left)
 	}
 	if _, known := leftoversOf(store.HistoryEvent{Payload: []byte(`{}`)}, nil, nil, nil); known {
 		t.Fatal("no plan, yet known")

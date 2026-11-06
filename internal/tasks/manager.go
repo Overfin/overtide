@@ -1275,6 +1275,7 @@ func (manager *Manager) recoverInterruptedLocked() {
 }
 
 func (manager *Manager) trimHistoryLocked(limit int) {
+	defer manager.trimOrphanTriggersLocked(orphanTriggerLimit)
 	if len(manager.state.Executions) <= limit {
 		return
 	}
@@ -1295,7 +1296,6 @@ func (manager *Manager) trimHistoryLocked(limit int) {
 		}
 		completed = completed[1:]
 	}
-	manager.trimOrphanTriggersLocked(orphanTriggerLimit)
 }
 
 // orphanTriggerLimit is how many cancelled triggers no execution, intent or
