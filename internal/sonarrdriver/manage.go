@@ -73,6 +73,9 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 		}
 		toTag := map[string][]int{}
 		var toTake []sonarr.Title
+		// byHand are the series added by hand since "Manage all" (TagNew,
+		// not from a list): what they lack is searched first.
+		byHand := map[int]bool{}
 		for _, t := range titles {
 			if model.HasLabel(t.Tags, labels, model.TagIgnore) {
 				// Left alone: nothing of it is followed or searched.
@@ -84,9 +87,13 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 				}
 				continue
 			}
+			label := ""
 			if !model.HasManagedLabel(t.Tags, labels) {
-				label := labelFor(t.Added)
+				label = labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
+			}
+			if (label == model.TagNew || model.HasLabel(t.Tags, labels, model.TagNew)) && !model.HasLabel(t.Tags, labels, model.TagList) {
+				byHand[t.ID] = true
 			}
 			if !t.Taken() && !active[fmt.Sprintf("%s|%s|%d", svc.ID, model.Series, t.ID)] {
 				toTake = append(toTake, t)
@@ -111,7 +118,7 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 					recent := e.AirDateUTC.After(now.Add(-tries.ReleaseGrace))
 					if taking[e.SeriesID] && !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now) && !(recent && state.Follow[e.SeriesID]) {
 						if _, there := state.Wanted[e.ID]; !there {
-							state.Wanted[e.ID] = EpisodeWant{SeriesID: e.SeriesID, Season: e.SeasonNumber, AiredAt: e.AirDateUTC, Episode: e.EpisodeNumber}
+							state.Wanted[e.ID] = EpisodeWant{SeriesID: e.SeriesID, Season: e.SeasonNumber, AiredAt: e.AirDateUTC, Episode: e.EpisodeNumber, ByHand: byHand[e.SeriesID]}
 						}
 					}
 				}
@@ -593,6 +600,19 @@ func (driver *Driver) airingWindow(client *sonarr.Client, state *State, holds, a
 // (wantRetry). An episode that has its file, or left Sonarr, leaves the
 // list. It returns the searches it asked for.
 func (driver *Driver) SearchEpisodes(ctx context.Context, cfg config.Config, budget int, dryRun, airing bool) (int, error) {
+	return driver.searchEpisodes(ctx, cfg, budget, dryRun, func(want EpisodeWant, airingNow bool) bool { return !want.ByHand && airingNow == airing })
+}
+
+// SearchByHand searches, within budget, for the episodes of the series
+// added by hand since "Manage all" (EpisodeWant.ByHand), airing or not:
+// before anything else, since the operator wants them now.
+func (driver *Driver) SearchByHand(ctx context.Context, cfg config.Config, budget int, dryRun bool) (int, error) {
+	return driver.searchEpisodes(ctx, cfg, budget, dryRun, func(want EpisodeWant, _ bool) bool { return want.ByHand })
+}
+
+// searchEpisodes searches, within budget, for the wanted episodes pick
+// keeps, told whether each is airing.
+func (driver *Driver) searchEpisodes(ctx context.Context, cfg config.Config, budget int, dryRun bool, pick func(want EpisodeWant, airing bool) bool) (int, error) {
 	states, err := driver.States()
 	if err != nil {
 		return 0, err
@@ -676,7 +696,7 @@ func (driver *Driver) SearchEpisodes(ctx context.Context, cfg config.Config, bud
 			}
 			out := want.Season <= 0 || seasonOut(list, want.Season, now)
 			recent := !want.AiredAt.IsZero() && now.Sub(want.AiredAt) < tries.ReleaseGrace
-			if (!out && recent) != airing {
+			if !pick(want, !out && recent) {
 				continue
 			}
 			if out && want.Season > 0 && state.Seasons[seasonKey(want.SeriesID, want.Season)].wanted() {

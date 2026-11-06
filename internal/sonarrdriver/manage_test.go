@@ -89,6 +89,41 @@ func TestSearchEpisodes(t *testing.T) {
 	}
 }
 
+// The episodes of a series added by hand are SearchByHand's alone, airing
+// or not: the other searches leave them.
+func TestSearchByHand(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	for _, id := range []int{1, 2} {
+		fake.Eps[id] = map[string]any{"id": id, "seriesId": 9, "seasonNumber": 1, "episodeNumber": id, "airDateUtc": arrfake.ISO(now.AddDate(0, -1, 0)), "hasFile": false, "monitored": false}
+	}
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}, Wanted: map[int]EpisodeWant{1: {SeriesID: 9, ByHand: true}, 2: {SeriesID: 9}}}}); err != nil {
+		t.Fatal(err)
+	}
+	searched := func() []string {
+		var out []string
+		for _, change := range fake.Mutations() {
+			if strings.HasPrefix(change, "search") {
+				out = append(out, change)
+			}
+		}
+		return out
+	}
+	if _, err := driver.SearchByHand(context.Background(), cfg, 5, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := searched(); !slices.Equal(got, []string{"search episode 1"}) {
+		t.Errorf("by hand: %v", got)
+	}
+	if _, err := driver.SearchEpisodes(context.Background(), cfg, 5, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := searched(); !slices.Equal(got, []string{"search episode 1", "search episode 2"}) {
+		t.Errorf("then the others: %v", got)
+	}
+}
+
 // A season whose episodes all aired SeasonWait ago is replaced by a whole
 // pack: the first complete one Sonarr refused only for the files already
 // there. Its single episodes wait meanwhile. Once downloaded, the pack's

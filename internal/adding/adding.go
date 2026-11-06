@@ -67,13 +67,15 @@ const (
 	tagsKey = "adding.tags_overtide"
 )
 
-// Source is where a title in the waiting list comes from: requests always
-// go first (older incomplete seasons come right after them, see Run), then
-// the titles "Manage all" found waiting in Radarr, then Overfin's
-// suggestions, in Overfin's order.
+// Source is where a title in the waiting list comes from: what the
+// operator added by hand in Radarr since "Manage all" goes first (they want
+// it now), then requests (older incomplete seasons come right after them,
+// see Run), then the other titles "Manage all" found waiting in Radarr,
+// then Overfin's suggestions, in Overfin's order.
 type Source string
 
 const (
+	FromHand    Source = "hand"
 	FromRequest Source = "request"
 	FromLibrary Source = "library"
 	FromOverfin Source = "overfin"
@@ -81,12 +83,14 @@ const (
 
 func (source Source) rank() int {
 	switch source {
-	case FromRequest:
+	case FromHand:
 		return 0
-	case FromLibrary:
+	case FromRequest:
 		return 1
+	case FromLibrary:
+		return 2
 	}
-	return 2
+	return 3
 }
 
 // State is where a title stands.
@@ -274,7 +278,7 @@ func (service *Service) Clear() (int, error) {
 	}
 	kept := entries[:0]
 	for _, entry := range entries {
-		if entry.waiting() && entry.Source != FromRequest && entry.Source != FromLibrary {
+		if entry.waiting() && entry.Source != FromRequest && entry.Source != FromLibrary && entry.Source != FromHand {
 			continue
 		}
 		kept = append(kept, entry)
@@ -310,7 +314,7 @@ func titleKey(m model.Media) string {
 // Run is the trying task: the first time it's on, it replaces the legacy
 // tag; with "Manage all", it takes every title (takeAll); then it follows
 // what's moving and applies the lifecycle. Searches then go in this order,
-// until the run's run out: episodes just aired and seasons just finished
+// until the run's run out: what the operator added by hand, episodes just aired and seasons just finished
 // (at most half of them, the rest at the end if any are left), wishes, older
 // incomplete seasons and episodes, the other titles, upgrades.
 func (service *Service) Run(ctx context.Context) error {
@@ -407,12 +411,22 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 	// What people follow first: episodes just aired, then seasons just
 	// finished. Neither waits for the titles a day, but together they take
-	// at most half of the run's searches, so that what comes next gets
+	// at most half of the run's searches left, so that what comes next gets
 	// some. What the others leave comes back to them at the end.
-	first := (budget + 1) / 2
-	service.phase("Searching airing episodes")
-	used, err := service.sonarr.SearchEpisodes(ctx, cfg, first, dryRun, true)
-	counted(used)
+	// What the operator added by hand comes before all that.
+	var used int
+	err = tryTitles(func(source Source) bool { return source == FromHand })
+	if err == nil && !stopped() {
+		service.phase("Searching what was added by hand")
+		used, err = service.sonarr.SearchByHand(ctx, cfg, budget-searches, dryRun)
+		counted(used)
+	}
+	first := searches + (budget-searches+1)/2
+	if err == nil && !stopped() {
+		service.phase("Searching airing episodes")
+		used, err = service.sonarr.SearchEpisodes(ctx, cfg, first-searches, dryRun, true)
+		counted(used)
+	}
 	if err == nil && !stopped() {
 		service.phase("Whole seasons, just finished")
 		used, err = service.replaceSeasons(ctx, cfg, first-searches, dryRun, true)
@@ -545,7 +559,7 @@ func (service *Service) match(entries []Entry) []Entry {
 		}
 		m, there := present[entry.id()]
 		switch {
-		case !there && entry.Source == FromLibrary:
+		case !there && (entry.Source == FromLibrary || entry.Source == FromHand):
 			continue // taken from Radarr, and gone from it since
 		case there && model.HasTag(m.Tags, model.TagIgnore):
 			continue // left alone by the operator

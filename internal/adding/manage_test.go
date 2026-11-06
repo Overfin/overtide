@@ -69,14 +69,14 @@ func TestRetagReplacesTheFormerTags(t *testing.T) {
 // gets nothing new. Dry run changes nothing.
 func TestTakeAll(t *testing.T) {
 	now := *arrfake.Day("2026-10-30")
+	season := func(n int, monitored bool) map[string]any {
+		return map[string]any{"seasonNumber": n, "monitored": monitored}
+	}
 	build := func() *arrfake.Arrs {
 		fake := arrfake.New(now)
 		fake.Films[1] = map[string]any{"id": 1, "tmdbId": 11, "title": "Has its file", "monitored": true, "hasFile": true, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
 		fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "Wanted", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
 		fake.Films[3] = map[string]any{"id": 3, "tmdbId": 13, "title": "Removed", "monitored": false, "hasFile": false, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
-		season := func(n int, monitored bool) map[string]any {
-			return map[string]any{"seasonNumber": n, "monitored": monitored}
-		}
 		fake.Series[1] = map[string]any{"id": 1, "title": "Airing", "monitored": true, "monitorNewItems": "all", "seasons": []any{season(1, true), season(2, true)}, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
 		fake.Series[2] = map[string]any{"id": 2, "title": "Dropped", "monitored": true, "monitorNewItems": "none", "seasons": []any{season(1, false)}, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
 		ep := func(id, series, season int, aired time.Time, file, monitored bool) {
@@ -142,18 +142,30 @@ func TestTakeAll(t *testing.T) {
 		t.Errorf("wanted: %+v", wanted)
 	}
 
-	// The next pass changes nothing more, and a film added since is new.
+	// The next pass changes nothing more, and what was added since is new:
+	// a film or a series added by hand goes first, a series from an import
+	// list doesn't.
 	before := len(fake.Mutations())
 	fake.Films[4] = map[string]any{"id": 4, "tmdbId": 14, "title": "Added since", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.Add(time.Hour))}
+	fromList := fake.TagID("sonarr", model.TagList)
+	for id, tags := range map[int][]int{3: nil, 4: {fromList}} {
+		fake.Series[id] = map[string]any{"id": id, "title": "Added since", "monitored": true, "monitorNewItems": "none", "tags": tags,
+			"seasons": []any{season(1, true)}, "added": arrfake.ISO(now.Add(time.Hour))}
+		fake.Eps[300+id] = map[string]any{"id": 300 + id, "seriesId": id, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": arrfake.ISO(now.AddDate(0, 0, -60)), "hasFile": false, "monitored": true}
+	}
 	service.now = func() time.Time { return now.Add(2 * time.Hour) }
 	if entries, err = service.takeAll(context.Background(), cfg, entries, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := fake.Labels("radarr", fake.Films[4]["tags"]); !slices.Equal(got, []string{model.TagNew}) || fake.Films[4]["monitored"] != false || len(entries) != 2 {
-		t.Errorf("film added since: %v, %d in line", fake.Films[4], len(entries))
+	if got := fake.Labels("radarr", fake.Films[4]["tags"]); !slices.Equal(got, []string{model.TagNew}) || fake.Films[4]["monitored"] != false || len(entries) != 2 || entries[1].Source != FromHand {
+		t.Errorf("film added since: %v, in line %+v", fake.Films[4], entries)
+	}
+	states, _ = service.sonarr.States()
+	if wanted := states["s"].Wanted; !wanted[303].ByHand || wanted[304].ByHand || wanted[304].SeriesID != 4 || wanted[101].ByHand {
+		t.Errorf("wanted by hand: %+v", wanted)
 	}
 	for _, change := range fake.Mutations()[before:] {
-		if strings.Contains(change, "sonarr PUT /api/v3/series/") {
+		if strings.Contains(change, "sonarr PUT /api/v3/series/1") || strings.Contains(change, "sonarr PUT /api/v3/series/2") {
 			t.Errorf("series taken again: %s", change)
 		}
 	}
