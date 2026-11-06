@@ -531,9 +531,10 @@ func TestNewMutationInvalidatesCompletedWorkflowStep(t *testing.T) {
 }
 
 type memoryStateStore struct {
-	mu    sync.Mutex
-	value string
-	fail  bool
+	mu     sync.Mutex
+	value  string
+	fail   bool
+	writes int
 }
 
 func (store *memoryStateStore) Meta(string) (string, error) {
@@ -549,6 +550,7 @@ func (store *memoryStateStore) SetMeta(_ string, value string) error {
 		return fmt.Errorf("persistence unavailable")
 	}
 	store.value = value
+	store.writes++
 	return nil
 }
 
@@ -728,5 +730,38 @@ func TestUnknownWorkflowDoesNotHoldPlanningBack(t *testing.T) {
 	manager.createWorkflowTriggersLocked()
 	if len(manager.state.Workflows) != 0 {
 		t.Fatalf("expected the unknown workflow dropped: %#v", manager.state.Workflows)
+	}
+}
+
+// The state is written when it changed only: turns of the loop that change
+// nothing write nothing.
+func TestStateWrittenOnlyWhenChanged(t *testing.T) {
+	stateStore := &memoryStateStore{}
+	manager, err := newManager(stateStore, realClock{}, Definition{ID: "x", Name: "X", Runner: func(context.Context) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateStore.mu.Lock()
+	before := stateStore.writes
+	stateStore.mu.Unlock()
+	manager.mu.Lock()
+	for range 5 {
+		if err := manager.persistLocked(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager.mu.Unlock()
+	stateStore.mu.Lock()
+	if stateStore.writes != before {
+		t.Errorf("unchanged state written %d times", stateStore.writes-before)
+	}
+	stateStore.mu.Unlock()
+	if _, err := manager.Submit(Request{TaskID: "x", Durable: true}); err != nil {
+		t.Fatal(err)
+	}
+	stateStore.mu.Lock()
+	defer stateStore.mu.Unlock()
+	if stateStore.writes != before+1 {
+		t.Errorf("a submission wrote %d times", stateStore.writes-before)
 	}
 }
