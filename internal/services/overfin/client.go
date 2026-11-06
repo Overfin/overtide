@@ -518,3 +518,47 @@ func (client *Client) EpisodeOrders(tmdbID int) (*EpisodeOrders, error) {
 	}
 	return &answer, nil
 }
+
+// List is one of the operator's import lists, as Overfin's lists take it:
+// its films and series by TMDB ID, in the list's order.
+type List struct {
+	Name   string      `json:"name"`
+	Titles []ListTitle `json:"titles"`
+}
+
+// ListTitle is a film ("movie") or a series ("series") on a list.
+type ListTitle struct {
+	Kind string `json:"kind"`
+	TMDB string `json:"tmdbId"`
+}
+
+// SendLists gives Overfin the operator's import lists, all of them: they
+// replace those sent before. Their titles become Overfin's picks, mixed
+// into the suggestions by its lists share ("Import lists to send").
+func (client *Client) SendLists(lists []List) error {
+	if lists == nil {
+		lists = []List{}
+	}
+	b, err := json.Marshal(map[string]any{"lists": lists})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(client.requestContext(), http.MethodPut, client.base+"/apps/v1/lists", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+client.key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return fmt.Errorf("overfin refused the key: it needs \"Import lists to send\" in Overfin's Apps")
+	case resp.StatusCode/100 != 2:
+		return fmt.Errorf("overfin lists: %s", resp.Status)
+	}
+	return nil
+}
