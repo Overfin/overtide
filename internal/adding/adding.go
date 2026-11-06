@@ -62,9 +62,9 @@ const (
 const (
 	storeKey   = "adding.waiting"
 	historyKey = "adding.history"
-	// tagsKey records that Overtide's former tags were replaced by
-	// Overtide's.
-	tagsKey = "adding.tags_from_overtide"
+	// tagsKey records that the former tags (Overswell's, and Overtide's
+	// own "overtide" from before the split) were replaced, once.
+	tagsKey = "adding.tags_overtide"
 )
 
 // Source is where a title in the waiting list comes from: requests always

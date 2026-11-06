@@ -34,7 +34,7 @@ func TestDestinations(t *testing.T) {
 			case r.URL.Path == "/api/v3/qualityprofile":
 				w.Write([]byte(`[{"id":1},{"id":2}]`))
 			case r.URL.Path == "/api/v3/tag" && r.Method == http.MethodGet:
-				w.Write([]byte(`[{"id":3,"label":"overswell-added"}]`))
+				w.Write([]byte(`[{"id":3,"label":"overtide-added"}]`))
 			case r.URL.Path == "/api/v3/movie" && r.Method == http.MethodPost:
 				var film map[string]any
 				body, _ := io.ReadAll(r.Body)

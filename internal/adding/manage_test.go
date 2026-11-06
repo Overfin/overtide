@@ -23,10 +23,10 @@ func manageTestService(t *testing.T, fake *arrfake.Arrs, manage string) (*Servic
 	return service, cfg
 }
 
-// Overtide's former tags go, once: "overtide" becomes the tag of where the
-// title came from (overswell-found when it isn't in the waiting list), the
-// others their Overtide counterpart; other tags stay.
-func TestRetagReplacesOvertidesTags(t *testing.T) {
+// The former tags go, once: "overtide" becomes the tag of where the title
+// came from (overtide-found when it isn't in the waiting list), Overswell's
+// their Overtide counterpart; other tags stay.
+func TestRetagReplacesTheFormerTags(t *testing.T) {
 	now := *arrfake.Day("2026-10-30")
 	fake := arrfake.New(now)
 	legacy := fake.TagID("radarr", "overtide")
@@ -34,8 +34,8 @@ func TestRetagReplacesOvertidesTags(t *testing.T) {
 		fake.Films[id] = map[string]any{"id": id, "tmdbId": id, "tags": []int{legacy}, "monitored": true, "hasFile": true}
 	}
 	fake.Films[4]["tags"] = []int{} // never managed
-	fake.Films[5] = map[string]any{"id": 5, "tmdbId": 5, "tags": []int{fake.TagID("radarr", "overtide-new"), fake.TagID("radarr", "overtide-keep")}, "monitored": true, "hasFile": true}
-	fake.Films[6] = map[string]any{"id": 6, "tmdbId": 6, "tags": []int{fake.TagID("radarr", "overtide-ignore")}, "monitored": true, "hasFile": true}
+	fake.Films[5] = map[string]any{"id": 5, "tmdbId": 5, "tags": []int{fake.TagID("radarr", "overswell-new"), fake.TagID("radarr", "overtide-keep")}, "monitored": true, "hasFile": true}
+	fake.Films[6] = map[string]any{"id": 6, "tmdbId": 6, "tags": []int{fake.TagID("radarr", "overswell-ignore")}, "monitored": true, "hasFile": true}
 	service, cfg := manageTestService(t, fake, config.ManageOwn)
 	entries := []Entry{
 		{Key: movieKey(1), Kind: model.Movie, ServiceID: "r", Source: FromOverfin, ArrID: 1},
@@ -46,7 +46,10 @@ func TestRetagReplacesOvertidesTags(t *testing.T) {
 	}
 	want := map[int][]string{1: {model.TagAdded}, 2: {model.TagRequested}, 3: {model.TagFound}, 4: nil, 5: {model.TagNew, "overtide-keep"}, 6: {model.TagIgnore}}
 	for id, labels := range want {
-		if got := fake.Labels("radarr", fake.Films[id]["tags"]); !slices.Equal(got, labels) {
+		got := fake.Labels("radarr", fake.Films[id]["tags"])
+		slices.Sort(got)
+		slices.Sort(labels)
+		if !slices.Equal(got, labels) {
 			t.Errorf("film %d: %v, want %v", id, got, labels)
 		}
 	}

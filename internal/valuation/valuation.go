@@ -46,9 +46,9 @@ func ApplyMedia(mediaItems []model.Media, configuration config.Config) {
 	})
 }
 
-// JustAddedFor is how long what adding brought in (tagged overswell-added or
-// overswell-requested) is protected from removal, counted from its newest
-// file: a film, or each season on its own, so a download that waited still
+// JustAddedFor is how long what adding brought in (tagged overtide-added or
+// overtide-requested, or their former overswell-* names) is protected from
+// removal, counted from its newest file: a film, or each season on its own, so a download that waited still
 // gets its time to be watched.
 const JustAddedFor = 30 * 24 * time.Hour
 

@@ -62,8 +62,8 @@ func (service *Service) saveSummary(summary ManageSummary) error {
 	return service.inv.Store().SetMeta(summaryKey, string(encoded))
 }
 
-// retag replaces, once, Overtide's tags of before the split with adding's (overswell-*): each
-// with its own ("overtide-added" with "overswell-added", and so on), and
+// retag replaces, once, the former tags with adding's: Overswell's each
+// with its own ("overswell-added" with "overtide-added", and so on), and
 // the oldest, "overtide", with where the title came from: TagRequested or
 // TagAdded for the titles in the waiting list, TagFound for the others.
 func (service *Service) retag(ctx context.Context, cfg config.Config, entries []Entry) error {
@@ -134,7 +134,7 @@ func (service *Service) retag(ctx context.Context, cfg config.Config, entries []
 	for _, e := range editors {
 		labels, err := e.labels()
 		if err != nil {
-			return fmt.Errorf("replace Overtide's tags: %w", err)
+			return fmt.Errorf("replace the former tags: %w", err)
 		}
 		// legacy is each of Overtide's former tags there, by ID, with what
 		// replaces it ("" for the first one, by where the title came from).
@@ -151,7 +151,7 @@ func (service *Service) retag(ctx context.Context, cfg config.Config, entries []
 		}
 		titles, err := e.titles()
 		if err != nil {
-			return fmt.Errorf("replace Overtide's tags: %w", err)
+			return fmt.Errorf("replace the former tags: %w", err)
 		}
 		byLabel := map[string][]int{}
 		byOld := map[int][]int{}
@@ -171,17 +171,17 @@ func (service *Service) retag(ctx context.Context, cfg config.Config, entries []
 		for label, ids := range byLabel {
 			tagID, err := e.ensureTag(label)
 			if err != nil {
-				return fmt.Errorf("replace Overtide's tags: %w", err)
+				return fmt.Errorf("replace the former tags: %w", err)
 			}
 			sort.Ints(ids)
 			if err := e.editTags(ids, tagID, true); err != nil {
-				return fmt.Errorf("replace Overtide's tags: %w", err)
+				return fmt.Errorf("replace the former tags: %w", err)
 			}
 		}
 		for tag, ids := range byOld {
 			sort.Ints(ids)
 			if err := e.editTags(ids, tag, false); err != nil {
-				return fmt.Errorf("replace Overtide's tags: %w", err)
+				return fmt.Errorf("replace the former tags: %w", err)
 			}
 		}
 	}

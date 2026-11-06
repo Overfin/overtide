@@ -8,9 +8,10 @@ Overtide starts from Stewarr 0.5.0, with its full history, as the storage side o
 
 ### 0.7.0 (not released yet)
 
+- **Adding's tags are Overtide's:** `overtide-added`, `overtide-requested`, `overtide-found`, `overtide-new`, `overtide-ignore`. Overswell's names (`overswell-*`) are replaced once in Radarr and Sonarr at the first run that isn't a dry run, and read as the new ones until then. Filters of your own on these tags need the new names.
 - **Failed removals.** The menu says "N removals failed" and opens History filtered to them. Each lists what's still there of what it planned (a torrent, a title's files, unclaimed files), with **Remove again** (the removal window, its plan made anew) and **Dismiss**; one with nothing left leaves the list by itself.
 - **The torrent client through a driver.** qBittorrent is reached through a driver that tries again when the connection fails for a moment: a removal's delete about a minute and a half, reads a few seconds. A removal left a torrent behind when qBittorrent dropped the connection at sign-in.
-- **Just added.** What adding brought in (`overswell-added`, `overswell-requested`) isn't removed for 30 days after its files came: a film whole, a series season by season.
+- **Just added.** What adding brought in (`overtide-added`, `overtide-requested`) isn't removed for 30 days after its files came: a film whole, a series season by season.
 - **Services and Tasks:** Prowlarr's trackers (limits, what they were asked, searches left) on the Services page, and Prowlarr's connection checked; adding's two tasks in their own group on the Tasks page.
 - **Scheduler:** it wakes at the moment it computed, writes its state only when it changed, keeps at most 200 cancelled workflow steps, and forgets the schedules of tasks a former version had; while a task runs, its status is that run's.
 - **Gone:** Overtide's own API key (only Overswell's room check used it; a config that still has it loads).
