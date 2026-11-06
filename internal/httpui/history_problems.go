@@ -42,11 +42,34 @@ type problemJSON struct {
 	Unknown bool `json:"unknown,omitempty"`
 }
 
-// problems are the live removals that didn't go through in full, weren't
+// problemsFresh is how long a reading of the failed removals is reused:
+// every page's live status asks for their count, and reading what's left
+// copies the whole file and torrent model.
+const problemsFresh = 30 * time.Second
+
+// problems are problemsNow, read again at most every problemsFresh (or at
+// once after a dismissal).
+func (server *Server) problems() []problemJSON {
+	server.problemsMu.Lock()
+	defer server.problemsMu.Unlock()
+	if server.problemsAt.IsZero() || time.Since(server.problemsAt) > problemsFresh {
+		server.problemsCache, server.problemsAt = server.problemsNow(), time.Now()
+	}
+	return server.problemsCache
+}
+
+// forgetProblems has the next reading of the failed removals made anew.
+func (server *Server) forgetProblems() {
+	server.problemsMu.Lock()
+	server.problemsAt = time.Time{}
+	server.problemsMu.Unlock()
+}
+
+// problemsNow are the live removals that didn't go through in full, weren't
 // dismissed, and still have something left (or can't say): once what
 // failed is gone, removed again or otherwise, the operation needs nothing
 // more.
-func (server *Server) problems() []problemJSON {
+func (server *Server) problemsNow() []problemJSON {
 	out := []problemJSON{}
 	if server.inv == nil || server.inv.Store() == nil {
 		return out
@@ -152,8 +175,10 @@ func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model
 	return left, true
 }
 
-// historyProblems answers GET /api/history/problems.
+// historyProblems answers GET /api/history/problems, read anew: the page
+// is what someone looks at after removing what was left.
 func (server *Server) historyProblems(w http.ResponseWriter, r *http.Request) {
+	server.forgetProblems()
 	writeJSON(w, http.StatusOK, map[string]any{"problems": server.problems()})
 }
 
@@ -169,6 +194,7 @@ func (server *Server) historyDismiss(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, err.Error())
 		return
 	}
+	server.forgetProblems()
 	server.publishUIChange("history-dismissed")
 	done(w)
 }
