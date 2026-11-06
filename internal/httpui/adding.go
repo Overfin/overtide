@@ -16,7 +16,7 @@ const addingRowsShown = 50
 
 // addingSources are the waiting list's sources, in the order titles are
 // tried (the panel names them).
-var addingSources = []adding.Source{adding.FromRequest, adding.FromLibrary, adding.FromOverfin}
+var addingSources = []adding.Source{adding.FromHand, adding.FromRequest, adding.FromLibrary, adding.FromOverfin}
 
 type addingSourceCount struct {
 	Source string `json:"source"`

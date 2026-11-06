@@ -257,9 +257,15 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 			}
 			toUnmonitor = append(toUnmonitor, t.ID)
 			if !t.HasFile && !listed[key] && t.TMDBID > 0 {
+				// Radarr's lists add nothing (see lists.go): a film added
+				// since "Manage all" was added by hand, and goes first.
+				source, result := FromLibrary, "Taken from Radarr"
+				if labelFor(t.Added) == model.TagNew {
+					source, result = FromHand, "Added by hand in Radarr"
+				}
 				entries = append(entries, Entry{Key: movieKey(t.TMDBID), Kind: model.Movie, ServiceID: svc.ID, ExternalID: t.TMDBID,
-					Title: t.Title, Year: t.Year, Source: FromLibrary, Position: len(entries), State: Waiting, ArrID: t.ID,
-					NextTry: now, AddedAt: now, UpdatedAt: now, Result: "Taken from Radarr"})
+					Title: t.Title, Year: t.Year, Source: source, Position: len(entries), State: Waiting, ArrID: t.ID,
+					NextTry: now, AddedAt: now, UpdatedAt: now, Result: result})
 				listed[key] = true
 				summary.FilmsQueued++
 			}

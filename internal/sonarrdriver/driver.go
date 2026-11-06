@@ -96,6 +96,9 @@ type EpisodeWant struct {
 	// LastTry and Result are the last search and what came of it.
 	LastTry time.Time `json:"lastTry,omitzero"`
 	Result  string    `json:"result,omitempty"`
+	// ByHand: its series was added by hand, while Overtide manages
+	// everything: searched before anything else (SearchByHand).
+	ByHand bool `json:"byHand,omitempty"`
 }
 
 // State is what Overtide keeps for one Sonarr.

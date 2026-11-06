@@ -1,6 +1,7 @@
 // How the Adding page names what the API sends as values.
 
 export const sourceLabels: Record<string, string> = {
+  hand: 'Added by hand',
   request: 'Wishes',
   library: 'Library',
   overfin: 'Overfin',
