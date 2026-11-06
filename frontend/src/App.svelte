@@ -19,7 +19,9 @@
   import Tasks from './pages/Tasks.svelte';
   import History from './pages/History.svelte';
   import Settings from './pages/Settings.svelte';
-  import Adding from './pages/Adding.svelte';
+  import AddingNow from './pages/AddingNow.svelte';
+  import AddingWaiting from './pages/AddingWaiting.svelte';
+  import AddingSeasons from './pages/AddingSeasons.svelte';
   import RemovalWindow from './parts/removal/RemovalWindow.svelte';
 
   interface Session {
@@ -31,6 +33,8 @@
   const icons: Record<string, string[]> = {
     home: ['M3 11l9-7 9 7', 'M5 10v10h14V10', 'M10 20v-6h4v6'],
     adding: ['M12 5v14', 'M5 12h14'],
+    waiting: ['M4 6h16', 'M4 12h10', 'M4 18h6', 'M18 14v6', 'M15 17h6'],
+    seasons: ['M4 5h16v14H4z', 'M4 9h16', 'M9 13h6'],
     library: ['M4 5h16v14H4z', 'M4 9h16', 'M9 5v14'],
     torrents: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
     unmanaged: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M12 11v3', 'M12 16.5h.01'],
@@ -42,8 +46,12 @@
   };
   const nav: NavGroup[] = [
     { items: [{ href: '/', label: 'Home', icon: icons.home }] },
+    { label: 'Adding', items: [
+      { href: '/adding', label: 'Now', icon: icons.adding },
+      { href: '/adding/waiting', label: 'Waiting', icon: icons.waiting },
+      { href: '/adding/seasons', label: 'Seasons & episodes', icon: icons.seasons },
+    ] },
     { label: 'Media', items: [
-      { href: '/adding', label: 'Adding', icon: icons.adding },
       { href: '/library', label: 'Library', icon: icons.library },
       { href: '/torrents', label: 'Torrents', icon: icons.torrents },
       { href: '/unmanaged', label: 'Unmanaged files', icon: icons.unmanaged },
@@ -64,7 +72,9 @@
   const page = $derived.by(() => {
     const p = route.path;
     if (p === '/' || p === '') return { show: Home, active: '/' };
-    if (p === '/adding') return { show: Adding, active: '/adding' };
+    if (p === '/adding') return { show: AddingNow, active: '/adding' };
+    if (p === '/adding/waiting') return { show: AddingWaiting, active: '/adding/waiting' };
+    if (p === '/adding/seasons') return { show: AddingSeasons, active: '/adding/seasons' };
     if (p === '/library') return { show: Library, active: '/library' };
     if (p.startsWith('/library/') || p.startsWith('/media/')) return { show: Media, active: '/library' };
     if (p === '/torrents') return { show: Torrents, active: '/torrents' };
