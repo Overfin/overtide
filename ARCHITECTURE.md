@@ -9,7 +9,8 @@ storage: the files on disk and their physical identity, the torrents and
 their history, the space and traffic each device and connection allows. It
 combines attributable facts and authoritative actions across the *arr stack
 to decide what the server keeps, which no application can decide on its
-own. What it gets is Overswell's, a separate app.
+own. What it gets is adding's (internal/adding), which was a separate app,
+Overswell, until 2026-11.
 
 Overtide was built from Stewarr 0.5.0, a standalone coordination layer for
 the *arr stack, and keeps its model: file and storage management first,
@@ -241,7 +242,7 @@ catalog, diagnostic or future domain facts. Conversely, a feature may consume
 an adapter only when the adapter satisfies that feature's complete capability
 contract. Overfin never joins the filesystem namespace: it contributes title
 values. Later it may also receive what's leaving soon. Suggestions of what
-to add, and requests, are Overswell's.
+to add, and wishes, are read by adding.
 
 Root discovery does not by itself establish ownership. A future adapter that
 declares an exhaustive filesystem root must claim every regular File under it;

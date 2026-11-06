@@ -1,11 +1,12 @@
 # Overtide
 
-Overtide is the storage side of Overfin: it reads each title's value from
+Overtide is the library side of Overfin: it reads each title's value from
 Overfin (its apps API, `/apps/v1/titles`), weighs it against what only it
 knows (files, hardlinks, torrents, disk space), and decides what the server
-keeps and removes. Adding is Overswell's, a separate app, which asks
-Overtide whether a folder has room (`GET /api/v1/room`, with Overtide's API
-key).
+keeps and removes. It also adds: Overfin's wishes and suggestions, through
+Radarr and Sonarr (internal/adding deciding, internal/sonarrdriver and
+internal/radarrdriver doing the arr mechanics), only while the disk has room
+(inventory.Room). Adding was a separate app, Overswell, until 2026-11.
 Built from Stewarr 0.5.0, which stays a project of its own. MIT, public,
 part of the Overfin project: it works the way Overfin's server does.
 

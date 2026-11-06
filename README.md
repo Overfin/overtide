@@ -1,17 +1,17 @@
 # Overtide
 
-**The storage side of [Overfin](https://github.com/Overfin/server): it makes room on your disks, removing what your people want least, and keeps the library rolling.**
+**The library side of [Overfin](https://github.com/Overfin/server): it brings in what your people want, makes room on your disks by removing what they want least, and keeps the library rolling.**
 
-> This page describes the next release, 0.7.0, not out yet. The latest release is [0.6.0](https://github.com/overfin/overtide/releases/tag/v0.6.0), which `deploy/compose.yaml` installs; it still adds titles itself.
+> This page describes the next release, 0.7.0, not out yet. The latest release is [0.6.0](https://github.com/overfin/overtide/releases/tag/v0.6.0), which `deploy/compose.yaml` installs.
 
 Overfin knows your titles and your people: what they watch, ask for and like, and what's worth having that you don't have yet. Overtide knows what Overfin can't see: your disks, the files on them, the hardlinks between your library and your torrents, and what each torrent is doing. Together they keep a library that evolves toward the people using it:
 
 - **Removing.** When a disk goes over its target, Overtide removes the titles Overfin values least, with every torrent that shares their files.
-- **Adding** is [Overswell](https://github.com/overfin/overswell)'s job: it asks Overfin what to add, and adds it through Radarr and Sonarr. Before adding, it asks Overtide whether the folder's disk has room.
+- **Adding.** Overtide asks Overfin what people wished for and what's worth adding, and brings it in through Radarr and Sonarr, a few searches at a time, within your trackers' limits, and only while the disk has room.
 
 Overfin decides; Overtide manages. Radarr, Sonarr and qBittorrent keep doing their jobs, and Overtide works through them, never behind their backs.
 
-> **Status: early.** Overtide starts with removal in dry run: it plans and records what it would remove, and changes nothing. See [`ROADMAP.md`](ROADMAP.md) for what's next.
+> **Status: early.** Overtide starts with adding off and removal in dry run: it plans and records what it would remove, and changes nothing. See [`ROADMAP.md`](ROADMAP.md) for what's next.
 
 ## Starting it
 
@@ -24,7 +24,7 @@ curl -fsSL -o .env https://raw.githubusercontent.com/overfin/overtide/main/deplo
 docker compose up -d
 ```
 
-Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked. [`deploy/README.md`](deploy/README.md) has the details.
+Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked (and, for adding, **What came and went** and **Wishes to fetch**). Prowlarr is optional: with it, searches are paced by your trackers' limits. Adding is off until you switch it on in **Settings**: off, dry run (reads only, changes nothing), on. [`deploy/README.md`](deploy/README.md) has the details.
 
 Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a signed attestation of how they were built.
 
@@ -33,14 +33,66 @@ Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a s
 | | Overfin | Overtide |
 |---|---|---|
 | Knows | titles, people's wishes and viewing | disks, files, hardlinks, torrents |
-| Decides | each title's value | when to make room, and how |
+| Decides | each title's value, what to add first | when to add and make room, and how |
 | Gives the other | each title's value | (planned) what's leaving soon |
 
 Overfin values a title the same way whether it's on the server or not, and a title's size never counts: files and space are entirely Overtide's concern. Overfin never tells Overtide who watched or wanted what.
 
-## Room for Overswell
+## Adding
 
-Overswell, which adds titles, asks Overtide before adding one whether the folder it goes to has room: `GET /api/v1/room?folder=<path>`, with Overtide's API key (Settings) in `X-Api-Key`. The answer is `ok`, `critical` (the disk is past its critical threshold: nothing is added until removal catches up) or `unknown` (a disk Overtide can't read now, or doesn't know).
+- **One source: Overfin.** What people wished for in Overfin comes first, in the turns Overfin gives (each account in turn, never who), read at every run; Overtide tells Overfin what became of each (downloading, not found until its next try, not out yet), and a wish no one wants any more leaves the list. Then, every hour, what Overfin suggests adding, in its order: the titles your libraries lack, the most valuable first, with trending and popular titles mixed in by the discovery share set in Overfin. Overfin's key needs Values, What came and went, and Wishes to fetch.
+- **A waiting list.** Every 15 minutes, Overtide tries the titles whose turn it is, one search at a time, at most the searches set in Settings (3 by default; each season of a series counts). At most 200 of Overfin's suggestions wait.
+- **An order.** Each run's searches go to, in turn: episodes of seasons airing, seasons just finished, wishes, older incomplete seasons, what "Everything" found missing, Overfin's suggestions, then upgrades.
+- **Titles a day.** At most so many titles start downloading in 24 hours, whatever brought them (10 by default, in Settings; a series counts once per season, and one with more seasons than that still goes, alone in its day). Past it, they wait until the oldest download turns a day old, for months if need be: Overfin's suggestions only get what wishes leave. Episodes of a season airing don't wait and don't count; a season just finished (its last episode aired under 30 days ago) doesn't wait, but counts.
+- **Airing seasons.** Overtide follows the airing seasons it has files of, in either mode: each episode is monitored from 2 days before it airs until its download starts, so Sonarr's RSS gets it, and searched for from 2 days after it aired, every day for 14 days, then less and less often. Later seasons come through wishes and suggestions, unless the series was followed when "Everything" took it.
+- **Whole seasons.** People don't start a series with holes in it. 7 days after a season's last episode aired, a season with missing episodes is replaced by a whole-season pack. When the search finds no complete pack Sonarr would take (in the languages wanted, say, not every episode is out yet), the single episodes it found that Sonarr would take come at once, and the season's other missing episodes are searched one by one right after, within the run's searches (those left go first next time). None of these counts in the titles a day: the season's search did. A single episode's file list isn't read first: Sonarr matched it to its episode. Once such a season is complete, its pack is still looked for, up to 5 tries in all, as an upgrade: within the upgrades a day, so never while upgrades are off. A season with some of its files that lacks aired episodes gets the same in its turn, the most valued first, unless it lost a file in the last 6 months other than to an upgrade: that one was removed, not missed. A season with no file is one nobody wants, and is left alone. A season still short after a whole-season pack came, grabbed after its last episode aired, isn't searched again: its files may not match Sonarr's episodes, and the Adding page says it needs a look.
+- **Finished downloads.** Sonarr keeps a finished download in its queue when it refused some of its files. A file matching none of Sonarr's episodes means the numbering may differ: the download stays, and the Adding page says its season needs a look. A pack's files Sonarr thought no upgrade replace the older ones anyway, even of better quality, so a season comes from one release. Once every episode a download is for has its file, Overtide takes it off the queue; the download stays in the client, seeding.
+- **Upgrades.** Off by default. With **Upgrades a day** set in Settings, Overtide searches for a better copy of what's below its quality profile's cutoff, the most valued first, with its own limit, counting searches, and using the searches left after everything else. A season is one search; a season airing or lacking episodes waits; a title is searched again after 30 days at the earliest. A title is monitored for its search and no longer. Radarr and Sonarr's cutoff lists compare qualities only, not custom format scores. Overfin's key needs Values for the order.
+- **Monitor, never delete.** Adding never deletes anything: removal does, by its own rules (below). A title goes into Radarr or Sonarr once, unmonitored and tagged `overswell-added`, at its destination (below). A try monitors it, searches for that one title, and checks a download started. If not, the title is unmonitored again and tried later: after 1 day, then 2, 4, 8. After 5 tries that found nothing, or 60 days in the list, it leaves the list, and isn't taken from Overfin's suggestions again for 6 months. Nor is a title that left the libraries in the last 6 months, whoever removed it: Overfin keeps that history (`/apps/v1/history`). Once its download is confirmed, the title is unmonitored, so Radarr and Sonarr don't upgrade it on their own: upgrades are Overtide's, below.
+- **Releases.** A title not out yet waits, and two days before its release it's monitored without a search, so Radarr's or Sonarr's RSS catches it.
+- **What Overtide manages.** "Only what it adds" (the default), or "Everything in Radarr and Sonarr": every title is tagged, and Radarr and Sonarr no longer fetch or upgrade anything on their own; Overtide fetches what they would have, at its own pace. The two modes only differ in which titles are Overtide's.
+- **Tags.** Each title Overtide manages says where it came from: `overswell-added`, `overswell-requested` (a wish), `overswell-found` (there before Overtide took it), `overswell-new` (added from outside with "Everything"). Tag a title `overswell-ignore` in Radarr or Sonarr and Overtide never takes, tags, unmonitors or searches for it. Overtide's former tags (`overswell-added` and so on, from when Overtide also added titles) are replaced once with these.
+
+### Importing, with Sonarr's auto-import off
+
+Sonarr gives every file of a release one of its own episode numbers, whatever
+order the release is in, and reports the season complete. Turn off **Completed
+Download Handling** in Sonarr (Settings, Download Clients, then **Show
+Advanced** at the top: it's the **Enable** box in that section) and Overtide
+does the importing instead, for everything Sonarr downloads, however it started.
+Leave it on and nothing changes. Radarr isn't concerned.
+
+Each finished download is imported file by file:
+
+1. A title in the file's name that matches one episode wins over its number,
+   even in another season. Titles are compared with Sonarr's, and with TMDB's
+   in the server's language.
+2. Otherwise the number is believed when nothing else can be meant by it: no
+   other order on TMDB rearranges that season, Sonarr and TMDB agree on how
+   many of its episodes aired, and the download doesn't hold more files for
+   the season than it has episodes.
+3. Otherwise the file waits. Nothing is imported on a guess.
+
+An anime's files named by absolute number ("Show 783") go on that episode:
+such a number means one episode, whatever the seasons' order.
+
+Nothing is asked of you: Overtide keeps trying, other releases too, and a
+later release completing the season ends the wait. The Adding page lists what
+waits, where you can choose the episodes yourself, try another release, or
+ignore it.
+
+Before grabbing a whole season, Overtide also reads the file list in the
+`.torrent` of up to five releases, one at a time, and prefers what would go in
+by itself. It always grabs something. Each read counts as a grab in Prowlarr's
+history; a `.torrent` Overtide can't reach (an address only Sonarr's network
+knows) is logged and skipped.
+
+Connect Overfin for TMDB's side of this: Overtide has no TMDB token of its
+own. Without it, only titles Sonarr knows can settle a file.
+
+## Where titles go
+
+In Settings, **Where titles go** lists the destinations: a Radarr (films) or a Sonarr (series), a root folder and a quality profile, either for one of Overfin's categories or for every title of that kind. A title goes to the first destination of a category it fits (Overfin says which, by what TMDB knows of it: kind, genres, original language, age), else to its kind's "every title". Say, Anime to its own Sonarr and folder, everything else to the usual ones. With no destination for its kind, a title goes to the first Radarr or Sonarr, when that one has a single root folder and quality profile.
 
 ## Removing
 
@@ -58,13 +110,20 @@ Overswell, which adds titles, asks Overtide before adding one whether the folder
 
 Overtide finds your disks from the folders your services report, and gives each two thresholds:
 
-- **Target** (90% by default): the usage Overtide steers toward. It isn't a wall: Overswell adds first, and removal brings the disk back under its target. So your space stays used, and titles keep rolling.
-- **Critical** (95% by default): the one hard stop. Past it, Overswell adds nothing more until removal catches up, so a run of downloads can't fill the disk.
+- **Target** (90% by default): the usage Overtide steers toward. It isn't a wall: adding goes first, and removal brings the disk back under its target. So your space stays used, and titles keep rolling.
+- **Critical** (95% by default): the one hard stop. Past it, nothing more is added there (no title, no followed series' new episodes, no whole-season pack, no upgrade) until removal catches up, so a run of downloads can't fill the disk. A disk Overtide can't read or doesn't know stops adding too, except in dry run.
 
 Space used by things outside Overtide's view is set aside, not counted against it.
 
+## Trackers
+
+With Prowlarr connected, Overtide reads each tracker's query limit (set in Prowlarr, in the tracker's settings) and what Prowlarr counted against it: every search and RSS poll, whoever asked. A search goes only while every tracker with a limit has room for it, a fifth of each limit kept for Radarr's and Sonarr's RSS. A search that found nothing counts as a try only when every tracker answered. Prowlarr stays as it is: Overtide changes nothing there. The **Services** page shows each tracker's limit and use.
+
+A tracker without a limit isn't paced: set one in Prowlarr.
+
 ## The pages
 
+- **Adding**: what Overtide is doing now, what's downloading, what waits to be imported, and the waiting list.
 - **Home**: each disk's state, the library and torrent totals, services' health, what cleanup has done so far.
 - **Library**: your films and series, searchable, with Overfin's value.
 - **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds; and those qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
@@ -90,6 +149,16 @@ A torrent has no value of its own: it never adds to a title's value or takes fro
 ## Paths
 
 Overtide finds files where Radarr, Sonarr and qBittorrent say they are, so **every container that touches your media must mount it at the same path**. For example, all of them mount `/mnt/media` (on the host) at `/data` (inside). If your downloads live apart from your library, add the second folder in `compose.yaml` the same way. When a path a service reports can't be seen, the **Storage** page says so.
+
+## Coming from Overswell
+
+Adding was a separate app, Overswell, from 2026-10-30 until it came back into Overtide. To bring its settings and its state along, once: stop both apps, back up both config folders, then run Overtide's image with Overswell's config folder mounted (writable: SQLite needs it, though nothing is written there):
+
+```sh
+docker compose run --rm -v /path/to/overswell/config:/overswell overtide -config /config/config.json -import-overswell /overswell
+```
+
+Radarr and Sonarr must be in Overtide's Services already (the same IDs, or the same addresses). Overswell's Prowlarr is added, Overfin takes Overswell's key (it may also read wishes and history), and the adding settings, destinations, waiting list, followed series and counts come along. Then start Overtide, and leave Overswell stopped for good: two apps adding to the same Radarr and Sonarr would each search and monitor.
 
 ## Coming from Stewarr
 
@@ -126,7 +195,7 @@ CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detec
 
 ## Origins
 
-Overtide is built from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, with its full history. Stewarr began as a storage-pressure cleanup experiment called **Spartarr** (first proposed as the regrettable **Shovitupyoarr**), then became **Togetharr**, **Connarr** and **Stewarr**. Stewarr stays a standalone tool for any *arr stack; Overtide is the one made to work with Overfin.
+Overtide is built from [Stewarr](https://github.com/C0PT3R/stewarr) 0.5.0, with its full history. Its adding was split out into Overswell on 2026-10-30 and merged back in 2026-11. Stewarr began as a storage-pressure cleanup experiment called **Spartarr** (first proposed as the regrettable **Shovitupyoarr**), then became **Togetharr**, **Connarr** and **Stewarr**. Stewarr stays a standalone tool for any *arr stack; Overtide is the one made to work with Overfin.
 
 ## How it's made
 
