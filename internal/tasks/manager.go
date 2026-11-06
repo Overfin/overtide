@@ -553,12 +553,23 @@ func (manager *Manager) admitReadyLocked(appContext context.Context) {
 }
 
 func (manager *Manager) nextReadyIntentLocked() *pendingIntent {
+	return manager.pickReadyLocked(true)
+}
+
+// pickReadyLocked is the ready intent to admit next, nil when none can be.
+// A ready intent blocked on a resource it claims exclusively reserves it:
+// intents after it claiming that resource wait, so a stream of shared
+// claims can't keep it waiting (writer preference). mark records why each
+// waits on its triggers; without it, nothing changes (for the wake-up).
+func (manager *Manager) pickReadyLocked(mark bool) *pendingIntent {
 	now := manager.clock.Now()
 	ready := []*pendingIntent{}
 	for key, intent := range manager.state.Pending {
 		if _, exists := manager.definitions[intent.TaskID]; !exists {
-			manager.requireAttentionLocked(intent, "registered task definition no longer exists")
-			delete(manager.state.Pending, key)
+			if mark {
+				manager.requireAttentionLocked(intent, "registered task definition no longer exists")
+				delete(manager.state.Pending, key)
+			}
 			continue
 		}
 		readyAt := intent.NotBefore
@@ -584,19 +595,45 @@ func (manager *Manager) nextReadyIntentLocked() *pendingIntent {
 		}
 		return idSequence(ready[first].ID) < idSequence(ready[second].ID)
 	})
+	reserved := map[string]string{} // resource → the waiting task ahead
+	wait := func(intent *pendingIntent, why string) {
+		if !mark {
+			return
+		}
+		for _, triggerID := range intent.TriggerIDs {
+			trigger := manager.state.Triggers[triggerID]
+			trigger.State = "waiting"
+			trigger.Error = "Waiting for " + why
+		}
+	}
 	for _, intent := range ready {
 		definition := manager.definitions[intent.TaskID]
-		if conflict := manager.resourceConflictLocked(definition.Resources); conflict == "" {
+		if resource, ahead := reservedBy(definition.Resources, reserved); resource != "" {
+			wait(intent, ahead+", ahead of it on "+resource)
+			continue
+		}
+		conflict := manager.resourceConflictLocked(definition.Resources)
+		if conflict == "" {
 			return intent
-		} else {
-			for _, triggerID := range intent.TriggerIDs {
-				trigger := manager.state.Triggers[triggerID]
-				trigger.State = "waiting"
-				trigger.Error = "Waiting for " + conflict
+		}
+		wait(intent, conflict)
+		for _, claim := range definition.Resources {
+			if _, taken := reserved[claim.Resource]; claim.Mode == ClaimExclusive && !taken {
+				reserved[claim.Resource] = definition.Name
 			}
 		}
 	}
 	return nil
+}
+
+// reservedBy is the first of claims' resources reserved, and by whom.
+func reservedBy(claims []ResourceClaim, reserved map[string]string) (string, string) {
+	for _, claim := range claims {
+		if ahead, ok := reserved[claim.Resource]; ok {
+			return claim.Resource, ahead
+		}
+	}
+	return "", ""
 }
 
 // runningLocked tells whether the intent's own task, with the same key, is
@@ -888,10 +925,12 @@ func (manager *Manager) preemptForPriorityLocked() {
 
 func (manager *Manager) nextWakeDelayLocked() time.Duration {
 	now := manager.clock.Now()
+	if manager.pickReadyLocked(false) != nil {
+		return 0
+	}
 	var next time.Time
 	for _, intent := range manager.state.Pending {
-		definition, exists := manager.definitions[intent.TaskID]
-		if !exists {
+		if _, exists := manager.definitions[intent.TaskID]; !exists {
 			return 0
 		}
 		candidate := intent.NotBefore
@@ -899,9 +938,8 @@ func (manager *Manager) nextWakeDelayLocked() time.Duration {
 			candidate = intent.Deadline
 		}
 		if candidate.IsZero() || !candidate.After(now) {
-			if !manager.runningLocked(intent) && manager.resourceConflictLocked(definition.Resources) == "" {
-				return 0
-			}
+			// Ready now: whether one can be admitted is pickReadyLocked's
+			// (above), reservations included.
 			continue
 		}
 		next = earlierNonZero(next, candidate)
@@ -967,6 +1005,9 @@ func (manager *Manager) Snapshot() []Status {
 			}
 			if conflict := manager.resourceConflictLocked(definition.Resources); conflict != "" {
 				status.Waiting, status.State = "Resource: "+conflict, "Waiting"
+			} else if trigger := manager.state.Triggers[intent.TriggerIDs[0]]; trigger != nil && trigger.State == "waiting" {
+				// Held by a reservation (see pickReadyLocked).
+				status.Waiting, status.State = trigger.Error, "Waiting"
 			}
 		}
 		var latest *Execution
