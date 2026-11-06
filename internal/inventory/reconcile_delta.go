@@ -11,10 +11,10 @@ import (
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
 	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/torrentdriver"
 )
 
 // inventoryDelta is the set of media/torrent identities whose base-catalog
@@ -234,7 +234,7 @@ func (service *Service) reconcileInventoryDelta(ctx context.Context, delta inven
 	}
 	type qbittorrentFilesFetch struct {
 		svcID string
-		files map[string][]qbittorrent.File
+		files map[string][]torrentdriver.File
 		err   error
 	}
 	radFetches := make([]radarrFilesFetch, 0, len(movieIDsByInstance))
@@ -281,7 +281,7 @@ func (service *Service) reconcileInventoryDelta(ctx context.Context, delta inven
 		go func(i int) {
 			defer wait.Done()
 			id := qbFetches[i].svcID
-			qbFetches[i].files, qbFetches[i].err = qbClients[id].WithContext(ctx).AllFiles(scopedTorrentsByInstance[id])
+			qbFetches[i].files, qbFetches[i].err = qbClients[id].WithContext(ctx).Files(scopedTorrentsByInstance[id])
 		}(i)
 	}
 	wait.Wait()
@@ -323,7 +323,7 @@ func (service *Service) reconcileInventoryDelta(ctx context.Context, delta inven
 			if !ok {
 				continue
 			}
-			root := qbittorrent.TorrentFileRoot(t, xs)
+			root := torrentdriver.FileRoot(t, xs)
 			for _, x := range xs {
 				p := filepath.Clean(filepath.Join(root, filepath.FromSlash(x.Name)))
 				replacementTorrentRefs = append(replacementTorrentRefs, model.TorrentFileRef{

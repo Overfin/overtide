@@ -255,7 +255,7 @@ func (service *Service) syncTorrents(ctx context.Context) (map[string]model.Torr
 				rid = 0
 			}
 		}
-		next, newRID, err := qbClients[svc.ID].WithContext(ctx).Sync(previousByInstance[svc.ID], rid)
+		next, newRID, err := qbClients[svc.ID].WithContext(ctx).Torrents(previousByInstance[svc.ID], rid)
 		if err != nil {
 			return nil, nil, fmt.Errorf("qbittorrent (%s): %w", svc.Name, err)
 		}

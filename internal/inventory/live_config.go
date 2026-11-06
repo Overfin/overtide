@@ -14,9 +14,9 @@ import (
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/prowlarr"
-	"github.com/overfin/overtide/internal/services/qbittorrent"
 	"github.com/overfin/overtide/internal/services/radarr"
 	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/torrentdriver"
 	"github.com/overfin/overtide/internal/valuation"
 )
 
@@ -533,10 +533,10 @@ func buildSonarrClients(configuration config.Config) map[string]*sonarr.Client {
 	return out
 }
 
-func buildQBittorrentClients(configuration config.Config) map[string]*qbittorrent.Client {
-	out := map[string]*qbittorrent.Client{}
+func buildQBittorrentClients(configuration config.Config) map[string]torrentdriver.Driver {
+	out := map[string]torrentdriver.Driver{}
 	for _, svc := range configuration.ServicesOfType("qbittorrent") {
-		out[svc.ID] = qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
+		out[svc.ID] = torrentdriver.QBittorrent(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
 	}
 	return out
 }
@@ -564,7 +564,7 @@ func (service *Service) activateClientLocked(svc config.Service) {
 		service.reliability.Valuation = false
 	case "qbittorrent":
 		service.qb = maps.Clone(service.qb)
-		service.qb[svc.ID] = qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
+		service.qb[svc.ID] = torrentdriver.QBittorrent(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey)
 	case "prowlarr":
 		service.prowlarr = prowlarr.New(svc.URL, svc.APIKey)
 	}
@@ -615,7 +615,7 @@ func validateServiceConnection(ctx context.Context, svc config.Service) error {
 	case "overfin":
 		return overfin.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	case "qbittorrent":
-		return qbittorrent.New(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey).WithContext(ctx).Validate()
+		return torrentdriver.QBittorrent(svc.Name, svc.URL, svc.Username, svc.Password, svc.APIKey).WithContext(ctx).Check()
 	case "prowlarr":
 		return prowlarr.New(svc.URL, svc.APIKey).WithContext(ctx).Validate()
 	default:

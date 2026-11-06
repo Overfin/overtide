@@ -61,7 +61,7 @@ func (service *Service) ForgetMissingTorrents(ctx context.Context) []MissingTorr
 				result.Removed = true
 			} else if client, err := service.qbittorrentClient(t.ServiceID); err != nil {
 				result.Reason = err.Error()
-			} else if err := client.WithContext(ctx).DeleteKeepFiles(t.Hash); err != nil {
+			} else if err := client.WithContext(ctx).Remove(t.Hash, false); err != nil {
 				result.Reason = err.Error()
 			} else {
 				result.Removed = true
