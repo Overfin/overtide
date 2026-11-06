@@ -983,8 +983,11 @@ func (manager *Manager) Snapshot() []Status {
 				status.Waiting = execution.Waiting
 			}
 		}
+		// A running execution is the latest: the last finished one would
+		// show its start, error and duration as if they were the current
+		// run's.
 		for _, execution := range manager.state.Executions {
-			if execution.TaskID != taskID {
+			if status.Running || execution.TaskID != taskID {
 				continue
 			}
 			if latest == nil || execution.FinishedAt.After(latest.FinishedAt) {

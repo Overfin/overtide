@@ -805,3 +805,33 @@ func TestStartForgetsUnknownSchedules(t *testing.T) {
 		return !stale && kept
 	})
 }
+
+// While a task runs, its status shows this run's start, not the last
+// finished run's error.
+func TestSnapshotShowsTheRunningExecution(t *testing.T) {
+	clock := NewFakeClock(time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC))
+	release := make(chan struct{})
+	started := make(chan struct{}, 2)
+	var calls atomic.Int32
+	manager := NewWithClock(clock, Definition{ID: "x", Name: "X", Runner: func(context.Context) error {
+		started <- struct{}{}
+		if calls.Add(1) == 1 {
+			return fmt.Errorf("first run failed")
+		}
+		<-release
+		return nil
+	}})
+	startManager(t, manager)
+	receipt, _ := manager.Submit(Request{TaskID: "x"})
+	receive(t, started)
+	_, _ = manager.Await(context.Background(), receipt.TriggerID)
+	clock.Advance(time.Minute)
+	_, _ = manager.Submit(Request{TaskID: "x"})
+	receive(t, started)
+	waitUntil(t, func() bool { return manager.Snapshot()[0].Running })
+	status := manager.Snapshot()[0]
+	close(release)
+	if status.LastError != "" || !status.LastStarted.Equal(clock.Now()) {
+		t.Fatalf("running status shows the last run: %+v", status)
+	}
+}
