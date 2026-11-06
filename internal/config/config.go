@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -212,6 +213,8 @@ type Config struct {
 		RefreshInterval string `json:"refresh_interval"`
 	} `json:"server"`
 	Services []Service `json:"services"`
+	// Adding is how Overtide brings titles in.
+	Adding AddingConfig `json:"adding"`
 	// Radarr, Sonarr, Overfin and QBittorrent are not config keys; they
 	// are populated below from Services for the current single-adapter-per-
 	// type runtime.
@@ -800,6 +803,8 @@ func RemoveService(configuration Config, id string) (Config, error) {
 	}
 	updated := configuration
 	updated.Services = append(append([]Service(nil), configuration.Services[:index]...), configuration.Services[index+1:]...)
+	// Its destinations go with it.
+	updated.Adding.Destinations = slices.DeleteFunc(slices.Clone(configuration.Adding.Destinations), func(d Destination) bool { return d.ServiceID == id })
 	updated.populateDerivedServiceFields()
 	return updated, nil
 }
