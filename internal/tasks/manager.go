@@ -414,13 +414,14 @@ func (manager *Manager) Start(ctx context.Context) {
 		manager.preemptForPriorityLocked()
 		manager.admitReadyLocked(ctx)
 		delay := manager.nextWakeDelayLocked()
+		wakeAt := manager.clock.Now().Add(delay)
 		if err := manager.persistLocked(); err != nil {
 			log.Printf("[scheduler] state: %v", err)
 		}
 		manager.mu.Unlock()
 		var timer <-chan time.Time
 		if delay >= 0 {
-			timer = manager.clock.After(delay)
+			timer = manager.clock.At(wakeAt)
 		}
 		select {
 		case <-ctx.Done():

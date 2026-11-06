@@ -9,12 +9,16 @@ import (
 type Clock interface {
 	Now() time.Time
 	After(time.Duration) <-chan time.Time
+	// At fires at that moment: a wake-up computed under a lock stays where
+	// it was meant to be, however the clock moved before the timer started.
+	At(time.Time) <-chan time.Time
 }
 
 type realClock struct{}
 
 func (realClock) Now() time.Time                             { return time.Now() }
 func (realClock) After(delay time.Duration) <-chan time.Time { return time.After(delay) }
+func (realClock) At(at time.Time) <-chan time.Time           { return time.After(time.Until(at)) }
 
 // FakeClock is exported for deterministic scheduler and integration tests.
 type FakeClock struct {
@@ -45,6 +49,18 @@ func (clock *FakeClock) After(delay time.Duration) <-chan time.Time {
 		return channel
 	}
 	clock.waiters = append(clock.waiters, &fakeWaiter{at: clock.now.Add(delay), channel: channel})
+	return channel
+}
+
+func (clock *FakeClock) At(at time.Time) <-chan time.Time {
+	clock.mu.Lock()
+	defer clock.mu.Unlock()
+	channel := make(chan time.Time, 1)
+	if !at.After(clock.now) {
+		channel <- clock.now
+		return channel
+	}
+	clock.waiters = append(clock.waiters, &fakeWaiter{at: at, channel: channel})
 	return channel
 }
 
