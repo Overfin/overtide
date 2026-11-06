@@ -408,6 +408,13 @@ func (manager *Manager) Start(ctx context.Context) {
 		return
 	}
 	manager.started, manager.appCtx = true, ctx
+	// Every task is registered by now: the schedules of tasks a former
+	// version had go.
+	for taskID := range manager.state.PeriodicNext {
+		if _, registered := manager.definitions[taskID]; !registered {
+			delete(manager.state.PeriodicNext, taskID)
+		}
+	}
 	manager.signalLocked()
 	manager.mu.Unlock()
 	for {

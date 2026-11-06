@@ -789,3 +789,19 @@ func TestOrphanTriggersAreBounded(t *testing.T) {
 		t.Errorf("%d triggers kept", len(manager.state.Triggers))
 	}
 }
+
+// At start, the schedules of tasks no longer registered go.
+func TestStartForgetsUnknownSchedules(t *testing.T) {
+	manager := NewWithClock(NewFakeClock(time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)), Definition{ID: "x", Name: "X", Interval: time.Hour, Runner: func(context.Context) error { return nil }})
+	manager.mu.Lock()
+	manager.state.PeriodicNext["imdb"] = time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	manager.mu.Unlock()
+	startManager(t, manager)
+	waitUntil(t, func() bool {
+		manager.mu.Lock()
+		defer manager.mu.Unlock()
+		_, stale := manager.state.PeriodicNext["imdb"]
+		_, kept := manager.state.PeriodicNext["x"]
+		return !stale && kept
+	})
+}
