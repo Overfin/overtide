@@ -3,6 +3,7 @@
      candidate takes its place) or kept (it goes on the Kept list). Clean
      removes the rows shown, after a confirmation; dry run only simulates. -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Modal, Loading, Notice, Status, ask } from '@overfin/ui';
   import { get, post } from '../../lib/api';
   import { human, identity, type CleanupPlan, type CleanupRow } from '../../lib/types-storage';
@@ -65,8 +66,11 @@
     close();
   });
 
+  // Loaded once when the window opens: load reads and sets excluded, which
+  // would otherwise load it again, and again (each time reading Overfin's
+  // scores).
   $effect(() => {
-    load();
+    untrack(load);
   });
 </script>
 
