@@ -131,5 +131,9 @@ func (client *Client) AddImportListExclusion(title string, year, tmdbID int) err
 		TMDBID     int    `json:"tmdbId"`
 		MovieYear  int    `json:"movieYear"`
 	}{MovieTitle: title, TMDBID: tmdbID, MovieYear: year}
-	return client.Send(http.MethodPost, "/api/v3/exclusions", body, nil)
+	err := client.Send(http.MethodPost, "/api/v3/exclusions", body, nil)
+	if arr.ExclusionAlreadyAdded(err) {
+		return nil
+	}
+	return err
 }

@@ -45,3 +45,22 @@ func TestInventoryFailsClosedWhenTagsAreUnavailable(t *testing.T) {
 		t.Fatal("missing protection tags must make inventory unreliable")
 	}
 }
+
+// Asked again for an exclusion it has, Radarr answers 400 (this body is a real
+// Radarr 6's): the exclusion is there, as wanted. Any other 400 is a failure.
+func TestExclusionAlreadyThere(t *testing.T) {
+	body := `[{"propertyName":"TmdbId","errorMessage":"This exclusion has already been added.","errorCode":"ImportListExclusionExistsValidator"}]`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(body))
+	}))
+	defer server.Close()
+	client := New(server.URL, "k")
+	if err := client.AddImportListExclusion("A", 2001, 42); err != nil {
+		t.Errorf("already there: %v", err)
+	}
+	body = `[{"errorMessage":"Something else"}]`
+	if err := client.AddImportListExclusion("A", 2001, 42); err == nil {
+		t.Error("another refusal should be an error")
+	}
+}

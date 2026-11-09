@@ -383,3 +383,26 @@ func (client *Client) ImportsSince(since time.Time, add func(HistoryRecord, time
 		}
 	}
 }
+
+// ExclusionAlreadyAdded says whether an error is an arr refusing an
+// import-list exclusion that already exists: the state wanted, so no failure.
+// Without this, a retried removal (after a transient error elsewhere in the
+// same batch) keeps failing on an exclusion that succeeded the first time.
+func ExclusionAlreadyAdded(err error) bool {
+	var status *StatusError
+	if !errors.As(err, &status) || status.Code != http.StatusBadRequest {
+		return false
+	}
+	var errs []struct {
+		ErrorMessage string `json:"errorMessage"`
+	}
+	if json.Unmarshal(status.Body, &errs) != nil {
+		return false
+	}
+	for _, e := range errs {
+		if strings.Contains(e.ErrorMessage, "already been added") {
+			return true
+		}
+	}
+	return false
+}

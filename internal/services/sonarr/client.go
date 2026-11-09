@@ -6,8 +6,6 @@ package sonarr
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -172,33 +170,8 @@ func (client *Client) AddImportListExclusion(title string, tvdbID int) error {
 		Title  string `json:"title"`
 	}{TVDBID: tvdbID, Title: title}
 	err := client.Send(http.MethodPost, "/api/v3/importlistexclusion", body, nil)
-	var status *arr.StatusError
-	if errors.As(err, &status) && status.Code == http.StatusBadRequest && importListExclusionAlreadyAdded(status.Body) {
-		// Sonarr's own FluentValidation rejects a TvdbId that already
-		// carries an exclusion with this exact 400 — the exclusion is
-		// already in the state we wanted, so this isn't a real failure.
-		// Without this, a retried removal (e.g. after a transient error
-		// elsewhere in the same batch) keeps failing forever on an
-		// exclusion that already succeeded the first time.
+	if arr.ExclusionAlreadyAdded(err) {
 		return nil
 	}
 	return err
-}
-
-// importListExclusionAlreadyAdded reports whether a 400 response body from
-// POST /api/v3/importlistexclusion is Sonarr's ImportListExclusionExistsValidator
-// rejecting a duplicate TvdbId, rather than some other validation failure.
-func importListExclusionAlreadyAdded(body []byte) bool {
-	var errs []struct {
-		ErrorMessage string `json:"errorMessage"`
-	}
-	if err := json.Unmarshal(body, &errs); err != nil {
-		return false
-	}
-	for _, e := range errs {
-		if strings.Contains(e.ErrorMessage, "already been added") {
-			return true
-		}
-	}
-	return false
 }
