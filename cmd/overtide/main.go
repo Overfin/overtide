@@ -100,7 +100,7 @@ func main() {
 		return false
 	}
 	taskManager, err := tasks.NewPersistent(db,
-		tasks.Definition{ID: "inventory", Name: "Base inventory", Description: "Refresh Radarr, Sonarr, qBittorrent and import provenance.", Interval: cfg.RefreshInterval, Preflight: retryable(inv.ValidateReconciliation), AttachCompatible: fullScanAttachCompatible, Runner: retryable(func(ctx context.Context) error {
+		tasks.Definition{ID: "inventory", Name: "Base inventory", Description: "Refresh Radarr, Sonarr, qBittorrent and import provenance.", Interval: cfg.RefreshInterval, Preflight: retryable(inv.ValidateRefresh), AttachCompatible: fullScanAttachCompatible, Runner: retryable(func(ctx context.Context) error {
 			var err error
 			if tasks.TriggeredOnlyBy(ctx, tasks.TriggerWorkflow) {
 				err = inv.RefreshAfterMutation(ctx)

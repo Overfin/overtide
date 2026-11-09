@@ -119,6 +119,15 @@ func (service *Service) ValidateReconciliation(ctx context.Context) error {
 	return service.ValidateBaseServices(ctx)
 }
 
+// ValidateRefresh is a refresh's first step, ValidateReconciliation: a service
+// it finds out of reach is a refresh that failed, and pauses removal as one.
+func (service *Service) ValidateRefresh(ctx context.Context) error {
+	if err := service.ValidateReconciliation(ctx); err != nil {
+		return service.fail(err)
+	}
+	return nil
+}
+
 func (service *Service) QueueReconciliation(scope ReconciliationScope) error {
 	if service.db == nil {
 		return fmt.Errorf("reconciliation scope requires durable state")
