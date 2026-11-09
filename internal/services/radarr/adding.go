@@ -83,8 +83,12 @@ func (client *Client) SearchMovie(movieID int) (int, error) {
 
 // QueueItem is a download in Radarr's queue.
 type QueueItem struct {
-	MovieID int    `json:"movieId"`
-	Title   string `json:"title"`
+	// ID is the queue item's; DownloadID, its download's (the torrent's
+	// hash).
+	ID         int    `json:"id"`
+	DownloadID string `json:"downloadId"`
+	MovieID    int    `json:"movieId"`
+	Title      string `json:"title"`
 	// Status is the download's (queued, downloading, completed, failed…);
 	// TrackedDownloadState is Radarr's import of it.
 	Status               string `json:"status"`

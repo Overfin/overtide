@@ -8,6 +8,7 @@ Overtide starts from Stewarr 0.5.0, with its full history, as the storage side o
 
 ### 0.7.0 (not released yet)
 
+- **A download stuck for 48 hours is given up.** A download of Overtide's titles whose size left hasn't moved for 48 hours (paused and queued ones aside) is removed from Radarr's or Sonarr's queue with its torrent and its data, and its release blocklisted: the title or season goes back in line, and the next search picks another release. The wait is kept across restarts.
 - **Without Overfin, nothing is removed automatically.** Cleanup plans and automatic removal no longer propose torrents that back nothing in the library or spare copies when no Overfin is set: they stay paused, and say why. Removing one title or torrent by hand still works.
 - **Radarr and Sonarr tell Overtide what they add.** While Overtide manages everything, it gives each Radarr and Sonarr a webhook named "Overtide" (Connect settings) for the titles they add, so the next run starts at once and takes them. It finds the address they reach it at itself (its name, "overtide", or their machine, kept once a test event comes through), or takes the one set in its Adding settings. The webhook signs in with a secret Overtide keeps in its database.
 - **What you add by hand goes first.** While Overtide manages everything, a film or a series added in Radarr or Sonarr since "Manage all" (by hand, by an import list or by another app) is searched for before anything else in each run: you want it now.

@@ -375,6 +375,7 @@ func (service *Service) Run(ctx context.Context) error {
 	// What people wished for, in Overfin's turns, before anything else.
 	entries = service.readWishes(ctx, cfg, entries)
 	service.phase("Following the downloads")
+	service.giveUpStalled(ctx, cfg, dryRun)
 	service.sonarr.ImportDownloads(ctx, cfg, dryRun)
 	entries = service.match(entries)
 	service.follow(ctx, entries, dryRun)

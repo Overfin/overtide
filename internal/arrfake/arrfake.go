@@ -38,8 +38,10 @@ type Arrs struct {
 	Imported [][]string
 	// Below their cutoff, per app, and series' history by series ID.
 	FullQueue []map[string]any
-	Cutoff    map[string][]map[string]any
-	History   map[string][]map[string]any
+	// RadarrQueue is Radarr's whole queue, as FullQueue is Sonarr's.
+	RadarrQueue []map[string]any
+	Cutoff      map[string][]map[string]any
+	History     map[string][]map[string]any
 	// With auto-import off: the setting, the grabs, each download's events
 	// and files. A download without files listed errors, as Sonarr does for
 	// one still going.
@@ -218,6 +220,11 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(f.Queue)
 	case path == "/api/v3/queue/bulk":
 		f.Changes = append(f.Changes, fmt.Sprintf("forget %v removeFromClient=%s", ints(body["ids"]), r.URL.Query().Get("removeFromClient")))
+	case strings.HasPrefix(path, "/api/v3/queue/") && r.Method == http.MethodDelete:
+		q := r.URL.Query()
+		f.Changes = append(f.Changes, fmt.Sprintf("%s give up %s removeFromClient=%s blocklist=%s", app, strings.TrimPrefix(path, "/api/v3/queue/"), q.Get("removeFromClient"), q.Get("blocklist")))
+	case path == "/api/v3/queue/details" && app == "radarr" && f.RadarrQueue != nil:
+		write(f.RadarrQueue)
 	case path == "/api/v3/queue/details" && f.FullQueue != nil:
 		if app == "sonarr" {
 			write(f.FullQueue)

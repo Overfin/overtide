@@ -316,6 +316,13 @@ func (client *Client) RemoveQueueItem(id int) error {
 	return client.Send(http.MethodDelete, fmt.Sprintf("/api/v3/queue/%d?removeFromClient=true&blocklist=false", id), nil, nil)
 }
 
+// GiveUpQueueItem removes a download that isn't going anywhere: from the
+// queue and the download client, its data with it, and its release
+// blocklisted, so the app marks it failed and a search finds another.
+func (client *Client) GiveUpQueueItem(id int) error {
+	return client.Send(http.MethodDelete, fmt.Sprintf("/api/v3/queue/%d?removeFromClient=true&blocklist=true&skipRedownload=false", id), nil, nil)
+}
+
 // HistoryRecord is one event of the app's whole history.
 type HistoryRecord struct {
 	ID          int    `json:"id"`
