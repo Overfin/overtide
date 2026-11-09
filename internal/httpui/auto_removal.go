@@ -45,6 +45,10 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 	if !server.overTarget(cfg) {
 		return nil
 	}
+	if cfg.Overfin.URL == "" {
+		log.Printf("[auto-removal] skipped this cycle: no Overfin is set, so nothing is removed")
+		return nil
+	}
 	if err := server.refreshScores(ctx, "Automatic removal plans"); err != nil {
 		log.Printf("[auto-removal] skipped this cycle: Overfin's scores: %v", err)
 		return nil

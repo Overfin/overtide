@@ -56,7 +56,9 @@ func (server *Server) dashboardSnapshot() homeData {
 		HasMovieLibrary: len(cfg.ServicesOfType("radarr")) > 0, HasSeriesLibrary: len(cfg.ServicesOfType("sonarr")) > 0,
 	}
 	if !planningReliable && d.LastErr == nil {
-		if server.tasks != nil && server.tasks.ConsistencyPending() {
+		if !server.overfinConfigured() {
+			d.LastErr = notice("Automatic removal planning paused. No Overfin is set: without its scores, Overtide removes nothing automatically")
+		} else if server.tasks != nil && server.tasks.ConsistencyPending() {
 			d.LastErr = notice("Automatic removal planning paused. Post-removal synchronization is pending")
 		} else {
 			d.LastErr = notice(fmt.Sprintf("Automatic removal planning paused. Overfin: %s; File topology: %s", reliability.Overfin, reliability.FileModel))

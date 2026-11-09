@@ -130,8 +130,22 @@ type notice string
 func (n notice) Error() string { return string(n) }
 
 func (server *Server) planningReliable(r inventory.Reliability) bool {
+	if !server.overfinConfigured() {
+		return false
+	}
 	return r.Inventory && r.Valuation && r.FileModel == "reliable" && (server.tasks == nil || !server.tasks.ConsistencyPending())
 }
+
+// overfinConfigured is whether an Overfin is set: without one, cleanup plans
+// propose nothing, not even lone torrents or spare copies, and automatic
+// removal removes nothing. A by-hand removal of one title or torrent still
+// works: it's the operator's own choice, not a plan's.
+func (server *Server) overfinConfigured() bool {
+	return server.inv != nil && server.inv.Config().Overfin.URL != ""
+}
+
+// noOverfinMessage is what a plan says when no Overfin is set.
+const noOverfinMessage = "Cleanup planning paused: no Overfin is set, and without its scores Overtide removes nothing automatically"
 
 // deviceViews builds one cleanup plan per known storage device, since there
 // is no longer a single global storage path to build one plan against.
@@ -162,6 +176,9 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 			// disabled check already skipping evaluation entirely rather than
 			// just withholding submission.
 			p = cleanup.Plan{Path: device.RepresentativePath, TargetUsagePercent: target, CriticalUsagePercent: critical}
+		}
+		if enabled && planErr == nil && p.Available && p.NeedBytes > 0 && !server.overfinConfigured() {
+			p.Message = noOverfinMessage
 		}
 		views = append(views, deviceView{Storage: device, Plan: p, PlanErr: planErr, Name: cfg.DeviceName(device.RepresentativePath), Enabled: enabled})
 	}
