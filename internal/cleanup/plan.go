@@ -84,14 +84,17 @@ func ActionKey(action Action) string {
 }
 
 type Plan struct {
-	TargetUsagePercent   float64 `json:"targetUsagePercent"`
-	CriticalUsagePercent float64 `json:"criticalUsagePercent"`
-	Reliable             bool    `json:"reliable"`
-	Available            bool    `json:"available"`
-	Path                 string  `json:"path"`
-	TotalBytes           uint64  `json:"totalBytes"`
-	UsedBytes            uint64  `json:"usedBytes"`
-	FreeBytes            uint64  `json:"freeBytes"`
+	// Ordered is every action possible, in order; Actions is as many of them
+	// as reach the target.
+	Ordered              []Action `json:"-"`
+	TargetUsagePercent   float64  `json:"targetUsagePercent"`
+	CriticalUsagePercent float64  `json:"criticalUsagePercent"`
+	Reliable             bool     `json:"reliable"`
+	Available            bool     `json:"available"`
+	Path                 string   `json:"path"`
+	TotalBytes           uint64   `json:"totalBytes"`
+	UsedBytes            uint64   `json:"usedBytes"`
+	FreeBytes            uint64   `json:"freeBytes"`
 	// OtherBytes is the real disk usage this plan was told to set aside as
 	// outside Overtide's own view (see inventory.StorageDevice.OtherBytes) —
 	// carried through so a caller can see what UsableBytes/UsagePercent were
@@ -372,6 +375,12 @@ func enforceSeasonOrder(actions []Action) {
 	}
 }
 
+// Enough is what a plan takes of the actions a caller allows, from its
+// Ordered ones: what's left out then doesn't count toward the need.
+func (plan Plan) Enough(allowed []Action) []Action {
+	return takeUntil(allowed, plan.NeedBytes)
+}
+
 // takeUntil takes actions in order until they reclaim need bytes.
 func takeUntil(ordered []Action, need uint64) []Action {
 	var taken []Action
@@ -472,6 +481,7 @@ func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, m
 	enforceSeasonOrder(ordered)
 	final := takeUntil(ordered, plan.NeedBytes)
 	plan.Actions = final
+	plan.Ordered = ordered
 	for _, action := range final {
 		plan.SelectedBytes += uint64(action.ReclaimableBytes)
 	}

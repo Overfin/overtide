@@ -369,3 +369,16 @@ func TestAutomaticRemovalStopsWithItsMode(t *testing.T) {
 		t.Errorf("with the mode on: %v", err)
 	}
 }
+
+// A lone torrent automatic mode may not touch doesn't count toward the need:
+// a title after it is what goes (seen on real arrs: nothing went, for good).
+func TestAutomaticRemovalPassesWhatItMayNotTouch(t *testing.T) {
+	lone := cleanup.Action{Kind: cleanup.StandaloneTorrent, ReclaimableBytes: 100, Torrents: []model.Torrent{{Hash: "a", AssociationStatus: model.TorrentUnassociated}}}
+	title := cleanup.Action{Kind: cleanup.StandaloneMedia, ReclaimableBytes: 50, Media: model.Media{Title: "T"}}
+	plan := cleanup.Plan{NeedBytes: 40, Ordered: []cleanup.Action{lone, title}}
+	cfg := config.Config{Removal: config.RemovalConfig{AutoMode: config.RemovalAutoAuto}}
+	got := plan.Enough(autoActions(plan.Ordered, cfg))
+	if len(got) != 1 || got[0].Kind != cleanup.StandaloneMedia {
+		t.Errorf("got %+v, want the title", got)
+	}
+}

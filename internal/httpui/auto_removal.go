@@ -67,7 +67,8 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		if err != nil || !plan.Available {
 			continue
 		}
-		for _, group := range autoActions(plan.Actions, cfg) {
+		// What it may not touch doesn't count toward what it has to free.
+		for _, group := range plan.Enough(autoActions(plan.Ordered, cfg)) {
 			if err := server.queueCleanup(group, cfg, automaticCause); err != nil {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
@@ -234,6 +235,11 @@ func (server *Server) cleanupNotKeptNow(ctx context.Context, form url.Values) er
 	// Queued by automatic mode, which was turned off since: it stays.
 	if form.Get(formAutomatic) == "1" && server.inv.Config().Removal.AutoMode != config.RemovalAutoAuto {
 		return fmt.Errorf("automatic removal is off")
+	}
+	// With qBittorrent out of reach, a title's file would go and its torrent
+	// stay: nothing freed. The next refresh pauses plans, this one waits too.
+	if err := server.inv.ValidateBaseServices(ctx); err != nil {
+		return fmt.Errorf("a service is out of reach: %w", err)
 	}
 	if form.Get("kind") != "media" {
 		return nil
