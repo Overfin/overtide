@@ -125,6 +125,7 @@ export interface CleanupPlan {
   filesystem: string;
   dryRun: boolean;
   message: string;
+  oldScores?: boolean;
   selectedBytes: number;
   excluded: string[];
   torrents: CleanupRow[];

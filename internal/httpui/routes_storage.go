@@ -240,11 +240,14 @@ type cleanupRowJSON struct {
 }
 
 type cleanupPlanJSON struct {
-	Path          string           `json:"path"`
-	RootLabels    []string         `json:"rootLabels"`
-	Filesystem    string           `json:"filesystem"`
-	DryRun        bool             `json:"dryRun"`
-	Message       string           `json:"message"`
+	Path       string   `json:"path"`
+	RootLabels []string `json:"rootLabels"`
+	Filesystem string   `json:"filesystem"`
+	DryRun     bool     `json:"dryRun"`
+	Message    string   `json:"message"`
+	// OldScores: Overfin couldn't be asked just now, so the plan is made on
+	// the scores last read.
+	OldScores     bool             `json:"oldScores,omitempty"`
 	SelectedBytes uint64           `json:"selectedBytes"`
 	Excluded      []string         `json:"excluded"`
 	Torrents      []cleanupRowJSON `json:"torrents"`
@@ -320,13 +323,17 @@ func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
 // empty plan.
 func (server *Server) apiCleanupPlan(w http.ResponseWriter, r *http.Request) {
 	excluded := excludedSetFrom(r.URL.Query()["excluded"])
+	oldScores := false
 	if excluded == nil && server.tasks != nil {
 		if err := server.refreshScores(r.Context(), "A cleanup plan was opened"); err != nil {
 			log.Printf("[cleanup-plan] Overfin's scores: %v", err)
+			oldScores = true
 		}
 	}
 	data, _ := server.planForDevice(r.URL.Query().Get("path"), excluded)
-	writeJSON(w, http.StatusOK, cleanupPlanJSONFrom(data))
+	out := cleanupPlanJSONFrom(data)
+	out.OldScores = oldScores
+	writeJSON(w, http.StatusOK, out)
 }
 
 type cleanupPlanRequest struct {

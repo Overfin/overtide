@@ -15,6 +15,7 @@
   let busy = $state(false);
   // excluded: the rows skipped so far in this window.
   let excluded = $state<string[]>([]);
+  let oldScores = $state(false);
 
   const rows = $derived(plan ? [...plan.torrents, ...plan.media] : []);
 
@@ -24,6 +25,8 @@
     try {
       plan = await get<CleanupPlan>(`/api/storage/plan?${query}`);
       excluded = plan.excluded;
+      // Asked when the window opens: it stays true for the rows skipped after.
+      oldScores = oldScores || !!plan.oldScores;
     } catch (err) {
       failure = (err as Error).message;
     }
@@ -80,6 +83,7 @@
     {#if failure}<Notice warn>{failure}</Notice>{:else}<Loading text="Asking Overfin for current scores…" />{/if}
   {:else if rows.length}
     {#if plan.dryRun}<Notice warn>Dry run — nothing will be removed.</Notice>{/if}
+    {#if oldScores}<Notice warn>Overfin couldn't be reached: this plan uses the scores it last gave.</Notice>{/if}
     <p class="bad"><b>Cleanup active.</b><br />{plan.message}<br />{rows.length} action(s) selected · {human(plan.selectedBytes)} planned.</p>
     <p class="muted">Skip anything you don't want cleaned this time (➖ — a different candidate immediately takes its place so the target is still met), or keep it (🛡️): it goes on the Kept list on the Storage page and stops being a candidate until you take it off.</p>
     {#each [['Torrents', plan.torrents], ['Media', plan.media]] as [label, group] (label)}
