@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -82,11 +83,12 @@ func TestConnect(t *testing.T) {
 	fake, service, cfg = setup(true)
 	receiverPort := strings.TrimPrefix(cfg.Server.Listen, ":")
 	cfg.Server.Listen = ":1"
-	service.SeenAt("http://127.0.0.1:" + receiverPort)
+	panel := "http://" + net.JoinHostPort(serverHost(t, cfg), receiverPort)
+	service.SeenAt(panel)
 	if err := service.connect(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := service.inv.Config().Adding.EventsURL; got != "http://127.0.0.1:"+receiverPort || len(fake.Notifications["sonarr"]) != 1 {
+	if got := service.inv.Config().Adding.EventsURL; got != panel || len(fake.Notifications["sonarr"]) != 1 {
 		t.Errorf("from the panel's address: %q, %v", got, fake.Notifications)
 	}
 
@@ -115,4 +117,15 @@ func TestOwnAddRecent(t *testing.T) {
 	if service.OwnAddRecent() {
 		t.Error("long after")
 	}
+}
+
+// serverHost is the host the test's servers listen on: 127.0.0.1, or ::1
+// when a busy machine has no IPv4 port left.
+func serverHost(t *testing.T, cfg config.Config) string {
+	t.Helper()
+	u, err := url.Parse(cfg.Services[0].URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Hostname()
 }
