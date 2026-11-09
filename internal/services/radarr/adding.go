@@ -126,7 +126,7 @@ func (client *Client) GrabbedSince(movieID int, since time.Time) (bool, error) {
 		return false, err
 	}
 	for _, event := range history {
-		if event.EventType == "grabbed" && !event.Date.Before(since) {
+		if event.EventType == "grabbed" && !event.Date.Before(since.Truncate(time.Second)) {
 			return true, nil
 		}
 	}
