@@ -224,6 +224,24 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 	return nil
 }
 
+// cleanupNotKeptNow asks Radarr or Sonarr whether a title about to go from
+// the cleanup plan carries the keep tag: cleanupStillEligible knows only
+// what the last refresh saw. An app that can't say keeps its title.
+func (server *Server) cleanupNotKeptNow(ctx context.Context, form url.Values) error {
+	if form.Get("kind") != "media" {
+		return nil
+	}
+	id, _ := strconv.Atoi(form.Get("media_id"))
+	kept, err := server.inv.KeptNow(ctx, model.MediaType(form.Get("media_type")), form.Get("service_id"), id)
+	if err != nil {
+		return fmt.Errorf("couldn't check whether it's kept: %w", err)
+	}
+	if kept {
+		return fmt.Errorf("it carries %s", model.TagKeep)
+	}
+	return nil
+}
+
 func mediaFor(items []model.Media, kind model.MediaType, id int, serviceID string) (model.Media, bool) {
 	for _, m := range items {
 		if m.Type == kind && m.SourceID == id && (serviceID == "" || m.ServiceID == serviceID) {

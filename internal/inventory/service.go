@@ -13,6 +13,7 @@ import (
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/arr"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/prowlarr"
 	"github.com/overfin/overtide/internal/services/radarr"
@@ -352,9 +353,13 @@ func (service *Service) StatusSnapshot() []ServiceStatus {
 
 func (service *Service) Store() *store.Store { return service.db }
 
+// fail records a refresh that failed. What's kept is now older than a
+// removal may trust (a keep tag put on since goes unseen): automatic and
+// planned removal pause until a refresh succeeds.
 func (service *Service) fail(e error) error {
 	service.mu.Lock()
 	service.lastErr = e
+	service.reliability.Inventory = false
 	service.mu.Unlock()
 	return e
 }
@@ -507,6 +512,51 @@ func (service *Service) RemoveManagedFile(ctx context.Context, ref model.MediaFi
 	default:
 		return fmt.Errorf("unsupported managed-file owner %q", ref.Source)
 	}
+}
+
+// KeptNow asks the title's Radarr or Sonarr, not what's kept here, whether
+// it carries model.TagKeep: a tag put on there shows here only at the next
+// refresh, up to half an hour on, too late for a removal running now.
+func (service *Service) KeptNow(ctx context.Context, kind model.MediaType, serviceID string, id int) (bool, error) {
+	var tags []int
+	var labels map[int]string
+	switch kind {
+	case model.Movie:
+		client, err := service.radarrClient(serviceID)
+		if err != nil {
+			return false, err
+		}
+		client = client.WithContext(ctx)
+		var title struct {
+			Tags []int `json:"tags"`
+		}
+		if err := client.Get(fmt.Sprintf("/api/v3/movie/%d", id), &title); err != nil {
+			return false, err
+		}
+		tags = title.Tags
+		if labels, err = client.TagLabels(); err != nil {
+			return false, err
+		}
+	case model.Series:
+		client, err := service.sonarrClient(serviceID)
+		if err != nil {
+			return false, err
+		}
+		client = client.WithContext(ctx)
+		var title struct {
+			Tags []int `json:"tags"`
+		}
+		if err := client.Get(fmt.Sprintf("/api/v3/series/%d", id), &title); err != nil {
+			return false, err
+		}
+		tags = title.Tags
+		if labels, err = client.TagLabels(); err != nil {
+			return false, err
+		}
+	default:
+		return false, fmt.Errorf("unknown kind of title %q", kind)
+	}
+	return model.HasTag(arr.Labels(tags, labels), model.TagKeep), nil
 }
 
 // RemoveTorrent delegates torrent and torrent-owned data removal to the

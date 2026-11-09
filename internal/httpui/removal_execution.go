@@ -340,6 +340,10 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 			http.Error(w, "No longer a cleanup candidate: "+err.Error(), http.StatusConflict)
 			return
 		}
+		if err := server.cleanupNotKeptNow(ctx, r.Form); err != nil {
+			http.Error(w, "No longer a cleanup candidate: "+err.Error(), http.StatusConflict)
+			return
+		}
 	}
 	results := []string{}
 	errs := []string{}
@@ -405,6 +409,12 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 			}
 			for _, rt := range d.Related {
 				if !rt.Selected {
+					continue
+				}
+				// The library's file stays: its torrent stays too, or nothing
+				// is freed and its seeding is lost.
+				if ownerFailed {
+					recordError("torrent " + rt.Torrent.Name + ": kept, as the library's file couldn't be removed")
 					continue
 				}
 				if e := server.inv.RemoveTorrent(ctx, rt.Torrent.Hash, rt.Torrent.ServiceID); e != nil {
