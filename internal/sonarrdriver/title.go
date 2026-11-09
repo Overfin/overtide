@@ -26,7 +26,11 @@ func Title(client *sonarr.Client, tvdbID int, seasons []int, now func() time.Tim
 		},
 		Destination: client.Destination,
 		Add: func(root string, profile, tag int) (int, error) {
-			return client.AddSeries(lookup, root, profile, tag)
+			id, err := client.AddSeries(lookup, root, profile, tag)
+			if err == nil {
+				client.WaitAdded(id)
+			}
+			return id, err
 		},
 		Tag:       client.TagSeries,
 		EnsureTag: client.EnsureTag,

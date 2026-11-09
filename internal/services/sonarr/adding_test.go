@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/overfin/overtide/internal/services/arr"
+	"sync/atomic"
+	"time"
 )
 
 // Adding sends the lookup back with the folder and profile, tagged, no
@@ -62,5 +64,37 @@ func TestAddingCalls(t *testing.T) {
 	}
 	if has, _ := client.SeasonsHaveFiles(42, []int{1, 2}); has {
 		t.Fatal("season 2 has no file")
+	}
+}
+
+// A refresh still running holds it back; once over, it goes on.
+func TestWaitAdded(t *testing.T) {
+	var asked atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		status := "started"
+		if asked.Add(1) >= 3 {
+			status = "completed"
+		}
+		json.NewEncoder(w).Encode([]map[string]any{
+			{"name": "RefreshSeries", "status": "started", "body": map[string]any{"seriesIds": []int{99}}},
+			{"name": "RssSync", "status": "started", "body": map[string]any{}},
+			{"name": "RefreshSeries", "status": status, "body": map[string]any{"seriesIds": []int{7}}},
+		})
+	}))
+	defer server.Close()
+	New(server.URL, "k").WaitAdded(7)
+	if asked.Load() != 3 {
+		t.Errorf("asked %d times, want until it completed, 3", asked.Load())
+	}
+}
+
+// A Sonarr that can't say doesn't hold anything up.
+func TestWaitAddedUnknown(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	started := time.Now()
+	New(server.URL, "k").WaitAdded(7)
+	if time.Since(started) > time.Second {
+		t.Errorf("waited %s", time.Since(started))
 	}
 }

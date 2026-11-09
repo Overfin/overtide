@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/overfin/overtide/internal/services/arr"
@@ -12,6 +13,15 @@ import (
 // What adding series needs from Sonarr: a series' details before it's
 // added, where it goes, adding it, searching for it, and whether that
 // search started a download. Where it goes is arr's Destination.
+
+// How long WaitAdded waits, and how often it looks: the refresh takes
+// seconds, more when Sonarr is busy; it's listed by the time the series is
+// added, so the grace is only for a Sonarr that doesn't say.
+const (
+	addedRefreshLimit = 45 * time.Second
+	addedRefreshGrace = 2 * time.Second
+	addedRefreshPoll  = 200 * time.Millisecond
+)
 
 // updateSeries reads the series whole, lets change edit it, and saves it
 // unless change says there's nothing to save.
@@ -76,6 +86,41 @@ func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityP
 		ID int `json:"id"`
 	}
 	return added.ID, client.Send(http.MethodPost, "/api/v3/series", body, &added)
+}
+
+// WaitAdded waits for the refresh Sonarr starts on a series just added, at
+// most a little while: at its end, it applies the added "monitor: none" to
+// the seasons, undoing any monitoring done before, and a season search then
+// searches nothing. Unknown or too long, whatever comes next is tried anyway.
+func (client *Client) WaitAdded(seriesID int) {
+	deadline := time.Now().Add(addedRefreshLimit)
+	notSeen := time.Now().Add(addedRefreshGrace)
+	seen := false
+	for time.Now().Before(deadline) {
+		var commands []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Body   struct {
+				SeriesIDs []int `json:"seriesIds"`
+			} `json:"body"`
+		}
+		if err := client.Get("/api/v3/command", &commands); err != nil {
+			return
+		}
+		running, listed := false, false
+		for _, command := range commands {
+			if command.Name != "RefreshSeries" || !slices.Contains(command.Body.SeriesIDs, seriesID) {
+				continue
+			}
+			listed = true
+			running = running || command.Status == "queued" || command.Status == "started"
+		}
+		seen = seen || listed
+		if (seen && !running) || (!seen && time.Now().After(notSeen)) {
+			return
+		}
+		time.Sleep(addedRefreshPoll)
+	}
 }
 
 // SetSeasonsMonitored monitors some of a series' seasons, or stops (Sonarr
