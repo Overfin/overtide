@@ -245,8 +245,7 @@ func (client *Client) LibraryValues() (Values, error) {
 }
 
 // Suggestions are at most max of the titles the libraries lack, in the
-// order Overfin says to add them (list=suggestions: its picks by value,
-// with trending and popular titles mixed in by its discovery share). A
+// order Overfin says to add them (list=suggestions: its picks by value). A
 // series comes once, at its first season's place.
 func (client *Client) Suggestions(max int) ([]Missing, error) {
 	if client.base == "" || client.key == "" {

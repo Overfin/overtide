@@ -20,18 +20,18 @@ This file separates implemented behavior from intended direction. It is not a pr
 **Adding back in (2026-11).** The split was undone: Overswell's adding, its Sonarr driver and a Radarr driver are packages of Overtide again, its jobs scheduler tasks, the room check a function call. `-import-overswell` brings an Overswell's settings and state along once.
 
 **With Overfin** (user, 2026-10-25). Overfin gives its opinion, the least valuable titles in the libraries; Overtide decides what actually goes out, and when, from space and the rules above.
-- **Removing:** when it needs space, Overtide asks Overfin for the least valuable titles the libraries have and removes from there (skipping what it can't remove), asking for more when needed.
+- **Removing:** when it needs space, Overtide removes from the titles Overfin values least (it reads every title's score, and skips what it can't remove).
 - **The goal:** use the space up to each disk's target and keep titles rolling, so the library keeps evolving toward the people using it. A title's size never matters in choosing.
 - **The target is soft:** adding goes first, and removal brings the disk back under its target. Only the critical threshold stops adding, until removal catches up.
 - **Import lists are the operator's business** (user, 2026-11-06): Overtide never reads or changes them, and nothing of them goes to Overfin; what a list adds is taken like anything added by hand. Radarr's and Sonarr's add events (a webhook Overtide makes, its address found by a test event or set in the Adding settings) start a run at once, which takes the title; what's added from outside since "Manage all" (by hand, by a list, by another app) is searched before anything else. The removal form's optional import-list exclusion stays for operators who use lists.
 - **Thresholds** (built 2026-10-25): each disk's target and critical are set in its settings on the Storage page; critical must be above the target.
-- **Removing** (built 2026-10-25): files deleted through Radarr or Sonarr, the entry kept, always unmonitored (a series, its removed episodes), untagged. Overfin's scores are read again before every plan, opened by hand or made by automatic removal (and at startup).
+- **Removing** (built 2026-10-25): files deleted through Radarr or Sonarr, the entry kept, always unmonitored (a series, its removed episodes), its tags left as they are. Overfin's scores are read again before every plan, opened by hand or made by automatic removal (and at startup).
 
 **Safety.** Dry run first and by default ("would remove Y and Z, 12 GB"); then confirm (proposals approved by hand) and automatic.
 
 **Look.** Overfin's control panel: the menu on the left, the same colours, cards, tables, forms and sliders, light and dark, no operator branding. The pages are a Svelte app on Overfin UI, the panels' shared kit.
 
-**To try first, then adjust.** Disks are kept between their threshold and a few points under it (5 by default); automatic removal stays available, as the third mode.
+**To try first, then adjust.** Not built: keeping disks a few points under their threshold (plans stop at the target). Automatic removal is available, as the third mode.
 
 ## Building it
 
@@ -40,9 +40,9 @@ This file separates implemented behavior from intended direction. It is not a pr
 3. ~~**Built like Overfin.**~~ Done (0.6.0): module, pure-Go SQLite, distroless image, CI and releases, `deploy/`.
 4. ~~**Overfin's look.**~~ Done (0.7.0): the menu on the left, Overfin's theme values, light and dark.
 5. ~~**No valuation of its own.**~~ Done (0.7.0): the Jellyfin, Seerr, TMDB and IMDb adapters, their tasks and settings, the IMDb table and the Retention Value weights are gone. A title's value is Overfin's score, unchanged; what Overfin didn't score is protected, and without Overfin nothing is removed automatically. Overtide keeps a copy of Overfin's scores between reads (decided 2026-11-01): its pages show them, and asking only the least valuable titles couldn't fill those.
-6. ~~**The removal planner.**~~ Done (0.7.0): lone torrents first, then titles by Overfin's score with their hardlinked torrents; no torrent care and no share per service; the Kept list replaces keep tags; private torrents recognized, with an optional seeding time.
-7. **Adding** (moved to Overswell, 2026-10-30), in dry run: following titles through the stack (states); trying a title (monitor, search, keep it monitored if a download started, else unmonitor it and retry later: monitor, never delete); Overfin's suggestions as the only source; pace; every action covered by dry run (built 2026-10-25). Then the gap. Download limits come after.
-8. **Requests from Overfin** (moved to Overswell, 2026-11-01; to become Overfin's wishlists, in turns Overfin decides): they're added, so Overswell takes them, first; Overtide only sees them in Overfin's scores.
+6. ~~**The removal planner.**~~ Done (0.7.0): lone torrents first, then titles by Overfin's score with their hardlinked torrents; no torrent care and no share per service; titles are kept by the `overtide-keep` tag, torrents by the Kept list; private torrents recognized, with an optional seeding time.
+7. **Adding** (built; apart in Overswell from 2026-10-30, back in Overtide in 2026-11): following titles through the stack (states); trying a title (monitor, search, keep it monitored if a download started, else unmonitor it and retry later: monitor, never delete); Overfin's suggestions as the only source; pace; every action covered by dry run (built 2026-10-25). Then the gap. Download limits come after.
+8. **Requests from Overfin** (built, as Overfin's wishlists, in turns Overfin decides): they're added first; Overtide only sees them in Overfin's scores.
 9. **Leaving soon**, told to Overfin before a removal, so people get a last chance to watch.
 
 ## Implemented through 0.4.8
