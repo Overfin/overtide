@@ -25,7 +25,7 @@ curl -fsSL -o .env https://raw.githubusercontent.com/overfin/overtide/main/deplo
 docker compose up -d
 ```
 
-Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked (and, for adding, **What came and went** and **Wishes to fetch**). Prowlarr is optional: with it, searches are paced by your trackers' limits. Adding is off until you switch it on in **Settings**: off, dry run (reads only, changes nothing), on. [`deploy/README.md`](deploy/README.md) has the details.
+Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked (and, for adding, **What came and went**, **Wishes to fetch**, and **Categories and episode orders**). Prowlarr is optional: with it, searches are paced by your trackers' limits. Adding is off until you switch it on in **Settings**: off, dry run (reads only, changes nothing), on. [`deploy/README.md`](deploy/README.md) has the details.
 
 Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a signed attestation of how they were built.
 

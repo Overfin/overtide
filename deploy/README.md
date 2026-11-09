@@ -23,7 +23,8 @@ docker compose up -d
 Open this machine's address on port 8088: the first screen creates the admin
 account. Then, under **Services**, add Radarr, Sonarr, your torrent client,
 and Overfin (its control panel address, and a key made there under **Apps**
-with **Values** ticked).
+with **Values** ticked; for adding, also **What came and went**, **Wishes to
+fetch**, and **Categories and episode orders**).
 
 Give each service the address it answers on itself. Overtide follows a
 redirect only on the same host and port (or from http to https), so its keys
