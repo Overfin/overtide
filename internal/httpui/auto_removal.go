@@ -68,13 +68,16 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 			continue
 		}
 		for _, group := range autoActions(plan.Actions, cfg) {
-			if err := server.queueCleanup(group, cfg, "Automatic cleanup: "); err != nil {
+			if err := server.queueCleanup(group, cfg, automaticCause); err != nil {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
 		}
 	}
 	return nil
 }
+
+// automaticCause is what automatic removal's work says in history and tasks.
+const automaticCause = "Automatic cleanup: "
 
 // autoActions are the plan's actions automatic removal submits: none but
 // in Auto mode, and never an unassociated or incomplete torrent unless the
@@ -228,6 +231,10 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 // the cleanup plan carries the keep tag: cleanupStillEligible knows only
 // what the last refresh saw. An app that can't say keeps its title.
 func (server *Server) cleanupNotKeptNow(ctx context.Context, form url.Values) error {
+	// Queued by automatic mode, which was turned off since: it stays.
+	if form.Get(formAutomatic) == "1" && server.inv.Config().Removal.AutoMode != config.RemovalAutoAuto {
+		return fmt.Errorf("automatic removal is off")
+	}
 	if form.Get("kind") != "media" {
 		return nil
 	}
@@ -360,7 +367,7 @@ func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause 
 
 // queueRemoval records an admitted removal in history, then schedules it.
 func (server *Server) queueRemoval(database *store.Store, form url.Values, descriptor removalAdmission, cause string) error {
-	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun, Cleanup: true}
+	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun, Cleanup: true, Automatic: cause == automaticCause}
 	queuedPayload, err := json.Marshal(queuedRemovalPayload{Command: command})
 	if err != nil {
 		return err

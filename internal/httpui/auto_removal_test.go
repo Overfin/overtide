@@ -351,3 +351,21 @@ func TestAutoActions(t *testing.T) {
 		}
 	}
 }
+
+// A removal automatic mode queued doesn't run once the mode is turned off.
+func TestAutomaticRemovalStopsWithItsMode(t *testing.T) {
+	server := &Server{inv: inventory.New(config.Config{Removal: config.RemovalConfig{AutoMode: config.RemovalAutoConfirm}}, nil)}
+	form := scheduledRemovalCommand{Form: url.Values{"kind": {"torrent"}}, Automatic: true}.runForm()
+	if err := server.cleanupNotKeptNow(context.Background(), form); err == nil {
+		t.Error("ran with the mode off")
+	}
+	form = scheduledRemovalCommand{Form: url.Values{"kind": {"torrent"}}}.runForm()
+	if err := server.cleanupNotKeptNow(context.Background(), form); err != nil {
+		t.Errorf("a manual one: %v", err)
+	}
+	server = &Server{inv: inventory.New(config.Config{Removal: config.RemovalConfig{AutoMode: config.RemovalAutoAuto}}, nil)}
+	form = scheduledRemovalCommand{Form: url.Values{"kind": {"torrent"}}, Automatic: true}.runForm()
+	if err := server.cleanupNotKeptNow(context.Background(), form); err != nil {
+		t.Errorf("with the mode on: %v", err)
+	}
+}

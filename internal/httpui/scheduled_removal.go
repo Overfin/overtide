@@ -29,6 +29,9 @@ type scheduledRemovalCommand struct {
 	// automatic mode): just before it runs, its title or torrents must still
 	// be eligible (not kept, no obligation, their service allowing removal).
 	Cleanup bool `json:"cleanup,omitempty"`
+	// Automatic marks one automatic mode queued: it runs only if the mode
+	// is still on then.
+	Automatic bool `json:"automatic,omitempty"`
 }
 
 // Form fields the scheduler adds to a queued removal's form when it runs it;
@@ -37,6 +40,7 @@ const (
 	formHistoryID = "_history_id"
 	formDryRun    = "_dry_run"
 	formCleanup   = "_cleanup"
+	formAutomatic = "_automatic"
 )
 
 // runForm is the form the removal runs with: the one admitted, plus the
@@ -47,6 +51,10 @@ func (command scheduledRemovalCommand) runForm() url.Values {
 	form.Set(formHistoryID, strconv.FormatInt(command.HistoryID, 10))
 	form.Del(formDryRun)
 	form.Del(formCleanup)
+	form.Del(formAutomatic)
+	if command.Automatic {
+		form.Set(formAutomatic, "1")
+	}
 	if command.DryRun {
 		form.Set(formDryRun, "1")
 	}
