@@ -69,6 +69,13 @@ func (service *Service) readWishes(ctx context.Context, cfg config.Config, entri
 		if i, ok := byID[entry.id()]; ok {
 			old := &entries[i]
 			old.Source, old.Position, old.WishTMDB = FromRequest, position, m.TMDB
+			// Imported a while ago and wished for again: it left (removed
+			// since), or seasons are new. Overfin only lists what it lacks,
+			// and has had time to see what arrived.
+			if old.State == Imported && now.Sub(old.UpdatedAt) > seenByOverfin {
+				old.State, old.Tries, old.NextTry, old.UpdatedAt = Waiting, 0, now, now
+				old.Result, old.Reported, old.Unmonitored = "Wished for again", "", false
+			}
 			// A series waiting gets the seasons wished now as well.
 			if old.waiting() {
 				for _, n := range entry.Seasons {
@@ -93,6 +100,10 @@ func (service *Service) readWishes(ctx context.Context, cfg config.Config, entri
 	}
 	return entries
 }
+
+// seenByOverfin is how long Overfin may take to see a title imported, its
+// library read again; before that, a wish it still lists says nothing.
+const seenByOverfin = 24 * time.Hour
 
 // wishState is what to tell Overfin of a wish: downloading, not out yet
 // (with its release day), not found yet (with its next try) or waiting;

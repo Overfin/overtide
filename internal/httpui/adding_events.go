@@ -37,7 +37,7 @@ func (server *Server) arrEvents(w http.ResponseWriter, r *http.Request) {
 	case "Test":
 		server.adder.HeardTest()
 	case "MovieAdded", "SeriesAdd":
-		if server.tasks != nil {
+		if server.tasks != nil && !server.adder.OwnAddRecent() {
 			if _, err := server.tasks.Submit(tasks.Request{TaskID: addingTaskID, Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: "A title was added in Radarr or Sonarr"}); err != nil {
 				log.Printf("[adding] a title added: the run couldn't start: %v", err)
 			}

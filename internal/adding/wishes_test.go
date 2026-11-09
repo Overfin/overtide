@@ -14,6 +14,7 @@ import (
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
+	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/store"
 )
 
@@ -151,5 +152,31 @@ func TestWishNoLongerListed(t *testing.T) {
 	entries = service.reportWishes(ctx, cfg, service.readWishes(ctx, cfg, entries), false)
 	if len(entries) != 1 || entries[0].Key != movieKey(2) {
 		t.Fatalf("kept: %+v", entries)
+	}
+}
+
+// A title imported long ago and wished for again is fetched again: it left
+// since. Just imported, it waits: Overfin hasn't seen it arrive yet.
+func TestWishedAgainAfterImport(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	cases := []struct {
+		name    string
+		updated time.Time
+		want    State
+	}{
+		{"long ago", now.Add(-2 * seenByOverfin), Waiting},
+		{"just now", now.Add(-time.Hour), Imported},
+	}
+	for _, tc := range cases {
+		service, cfg := wishService(t, &fakeWishes{list: []map[string]any{{"kind": "movie", "name": "Back", "tmdbId": "7"}}})
+		service.now = func() time.Time { return now }
+		entries := service.readWishes(context.Background(), cfg, []Entry{{Key: movieKey(7), Kind: model.Movie, ServiceID: "r", ExternalID: 7, ArrID: 3,
+			Source: FromOverfin, State: Imported, Unmonitored: true, Tries: 2, UpdatedAt: tc.updated}})
+		if len(entries) != 1 || entries[0].State != tc.want {
+			t.Errorf("%s: %+v", tc.name, entries)
+		}
+		if tc.want == Waiting && (entries[0].Tries != 0 || entries[0].Unmonitored) {
+			t.Errorf("%s: starts over: %+v", tc.name, entries[0])
+		}
 	}
 }

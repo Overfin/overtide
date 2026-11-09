@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
@@ -95,5 +96,23 @@ func TestConnect(t *testing.T) {
 	}
 	if service.EventsProblem() == "" || service.inv.Config().Adding.EventsURL != "" || len(fake.Notifications["radarr"]) != 0 {
 		t.Errorf("no address works: problem %q, address %q, %v", service.EventsProblem(), service.inv.Config().Adding.EventsURL, fake.Notifications)
+	}
+}
+
+// An add event just after adding a title is taken for Overtide's own, and
+// starts no run; after that, it's someone else's.
+func TestOwnAddRecent(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	service := newTestService(t, config.Config{}, now)
+	if service.OwnAddRecent() {
+		t.Error("nothing added yet")
+	}
+	service.notedAdd()
+	if !service.OwnAddRecent() {
+		t.Error("just added")
+	}
+	service.now = func() time.Time { return now.Add(ownAddWindow + time.Second) }
+	if service.OwnAddRecent() {
+		t.Error("long after")
 	}
 }

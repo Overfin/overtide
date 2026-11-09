@@ -259,3 +259,23 @@ func (service *Service) findAddress(app eventsApp, cfg config.Config, secret str
 	}
 	return ""
 }
+
+// ownAddWindow is how long after adding a title an add event is taken for
+// that title's own: Radarr and Sonarr tell of every title added, Overtide's
+// too. A title added by hand in that window is taken at the next run.
+const ownAddWindow = 2 * time.Minute
+
+func (service *Service) notedAdd() {
+	service.addedMu.Lock()
+	defer service.addedMu.Unlock()
+	service.added = service.now()
+}
+
+// OwnAddRecent says whether an add event may be Overtide's own: starting a
+// run for it would give every title added a fresh budget of searches, and
+// the pace between runs would be lost.
+func (service *Service) OwnAddRecent() bool {
+	service.addedMu.Lock()
+	defer service.addedMu.Unlock()
+	return !service.added.IsZero() && service.now().Sub(service.added) < ownAddWindow
+}

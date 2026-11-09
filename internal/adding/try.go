@@ -115,6 +115,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 		}
 		if entry.ArrID == 0 {
 			service.step(entry.Title, "Adding it to "+a.Name+", in "+rootFolder)
+			service.notedAdd()
 			id, err := a.Add(rootFolder, profileID, tagID)
 			if err != nil {
 				service.later(entry, "Couldn't add it: "+err.Error())

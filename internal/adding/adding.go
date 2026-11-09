@@ -197,6 +197,10 @@ type Service struct {
 	Ready  func() (bool, string)
 	liveMu sync.Mutex
 	live   Live
+	// added is when this service last added a title to Radarr or Sonarr
+	// (see OwnAddRecent).
+	addedMu sync.Mutex
+	added   time.Time
 	// trackersDown is why this run's searches stopped: the trackers were
 	// unavailable.
 	trackersDown string
