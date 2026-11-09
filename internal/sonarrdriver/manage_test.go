@@ -284,3 +284,48 @@ func TestReplaceSeasonsWaitsForRoom(t *testing.T) {
 		t.Fatalf("with room: %d searches, %v, %v", used, err, fake.Mutations())
 	}
 }
+
+// Past a disk's critical, a followed series' new episodes wait: none stays
+// monitored, or Sonarr's RSS keeps grabbing them.
+func TestAiringWindowWaitsOnAFullDisk(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	fake.Series[5] = map[string]any{"id": 5, "title": "Airing", "path": "/data/Series/Airing", "monitored": true, "seasons": []any{}}
+	fake.Eps[1] = map[string]any{"id": 1, "seriesId": 5, "seasonNumber": 1, "episodeNumber": 1, "airDateUtc": arrfake.ISO(now.Add(time.Hour)), "hasFile": false, "monitored": false}
+	driver, _ := testDriver(t, fake, config.ManageAll)
+	client, err := driver.inv.SonarrClient("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &State{Follow: map[int]bool{5: true}, Wanted: map[int]EpisodeWant{}}
+	full := true
+	window := func() int {
+		n, err := driver.airingWindow(client, state, map[string]bool{}, map[string]bool{}, "s", false, func(int) bool { return full })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := window(); n != 0 || fake.Eps[1]["monitored"] != false {
+		t.Errorf("full: %d monitored, episode %v", n, fake.Eps[1]["monitored"])
+	}
+	full = false
+	if n := window(); n != 1 || fake.Eps[1]["monitored"] != true {
+		t.Errorf("with room: %d monitored, episode %v", n, fake.Eps[1]["monitored"])
+	}
+	full = true
+	if n := window(); n != 0 || fake.Eps[1]["monitored"] != false {
+		t.Errorf("full again: %d monitored, episode %v", n, fake.Eps[1]["monitored"])
+	}
+}
+
+// A disk check can't be switched off by a failure: a series whose folder
+// nobody can say counts as full.
+func TestFullDiskWhenSonarrCantSay(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	driver, cfg := testDriver(t, arrfake.New(now), config.ManageAll)
+	driver.Room = func(config.Config, string) string { return "" }
+	if !driver.fullDisk(cfg, "nobody")(5) {
+		t.Error("an unknown service's series let through")
+	}
+}

@@ -306,3 +306,19 @@ func TestSeasonWithoutPack(t *testing.T) {
 		t.Errorf("past the upgrades a day: %d", used)
 	}
 }
+
+// A film just taken from Radarr stays on the list though the inventory
+// doesn't have it yet (it was unmonitored, and is never taken again); one
+// gone for longer than a refresh takes has left Radarr.
+func TestJustTakenSurvivesAnOldInventory(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	service, _ := manageTestService(t, arrfake.New(now), config.ManageAll)
+	entries := []Entry{
+		{Key: movieKey(1), Kind: model.Movie, ServiceID: "r", Source: FromHand, State: Waiting, ArrID: 1, AddedAt: now},
+		{Key: movieKey(2), Kind: model.Movie, ServiceID: "r", Source: FromHand, State: Waiting, ArrID: 2, AddedAt: now.Add(-justTaken - time.Minute)},
+	}
+	got := service.match(entries)
+	if len(got) != 1 || got[0].ArrID != 1 {
+		t.Errorf("kept: %+v", got)
+	}
+}

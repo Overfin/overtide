@@ -2,6 +2,7 @@ package sonarrdriver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -48,14 +49,22 @@ type Taken struct {
 // monitors itself for a release: they're left as they are. In dry run,
 // nothing changes: Taken says what would. After an error, it says what was
 // done until then.
-func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[string]bool, labelFor func(added time.Time) string, dryRun bool) (Taken, error) {
+func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[string]bool, labelFor func(added time.Time) string, dryRun bool) (taken Taken, err error) {
 	driver.preview = nil
 	now := driver.now()
-	var taken Taken
 	states, err := driver.States()
 	if err != nil {
 		return taken, err
 	}
+	// A failure halfway: what was read and taken so far is kept, or a series
+	// already taken is never read again, and its wanted episodes are lost.
+	defer func() {
+		if err != nil && !dryRun {
+			if saveErr := driver.SaveStates(states); saveErr != nil {
+				err = errors.Join(err, saveErr)
+			}
+		}
+	}()
 	for _, svc := range cfg.ServicesOfType("sonarr") {
 		client, err := driver.inv.SonarrClient(svc.ID)
 		if err != nil {
@@ -149,7 +158,7 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 				return taken, err
 			}
 		}
-		monitored, err := driver.tendSeries(client, state, titles, labels, active, svc.ID, true, dryRun)
+		monitored, err := driver.tendSeries(client, state, titles, labels, active, svc.ID, true, dryRun, driver.fullDisk(cfg, svc.ID))
 		if err != nil {
 			return taken, err
 		}
@@ -190,7 +199,7 @@ func (driver *Driver) Tend(ctx context.Context, cfg config.Config, active map[st
 				titles, err = client.Titles()
 			}
 			if err == nil {
-				_, err = driver.tendSeries(client, stateFor(states, svc.ID), titles, labels, active, svc.ID, false, dryRun)
+				_, err = driver.tendSeries(client, stateFor(states, svc.ID), titles, labels, active, svc.ID, false, dryRun, driver.fullDisk(cfg, svc.ID))
 			}
 		}
 		if err != nil {
@@ -207,7 +216,7 @@ func (driver *Driver) Tend(ctx context.Context, cfg config.Config, active map[st
 // tendSeries keeps the airing seasons coming and finds incomplete ones, for
 // the series Overtide manages (all of them with manageAll). It returns how
 // many episodes are monitored.
-func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []sonarr.Title, labels map[int]string, active map[string]bool, serviceID string, manageAll, dryRun bool) (int, error) {
+func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []sonarr.Title, labels map[int]string, active map[string]bool, serviceID string, manageAll, dryRun bool, full func(seriesID int) bool) (int, error) {
 	var managed []sonarr.Title
 	holds := map[string]bool{}
 	for _, t := range titles {
@@ -221,7 +230,7 @@ func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []s
 			}
 		}
 	}
-	monitored, err := driver.airingWindow(client, state, holds, active, serviceID, dryRun)
+	monitored, err := driver.airingWindow(client, state, holds, active, serviceID, dryRun, full)
 	if err != nil {
 		return 0, err
 	}
@@ -551,8 +560,10 @@ func followsNew(t sonarr.Title) bool {
 // tries.ReleaseWindow without its file, until tries.ReleaseGrace after it
 // aired or its download is confirmed, so Sonarr's RSS grabs it; and
 // unmonitors the others. One that aired SearchAfter ago without coming goes
-// in the wanted episodes too. It returns how many episodes are monitored.
-func (driver *Driver) airingWindow(client *sonarr.Client, state *State, holds, active map[string]bool, serviceID string, dryRun bool) (int, error) {
+// in the wanted episodes too. A series on a disk with no room (full) has none
+// monitored: past critical, its new episodes wait. It returns how many
+// episodes are monitored.
+func (driver *Driver) airingWindow(client *sonarr.Client, state *State, holds, active map[string]bool, serviceID string, dryRun bool, full func(seriesID int) bool) (int, error) {
 	now := driver.now()
 	episodes, err := client.Calendar(now.Add(-tries.ReleaseGrace-2*24*time.Hour), now.Add(tries.ReleaseWindow))
 	if err != nil {
@@ -569,7 +580,7 @@ func (driver *Driver) airingWindow(client *sonarr.Client, state *State, holds, a
 			continue
 		}
 		inWindow := !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now.Add(tries.ReleaseWindow)) && !e.AirDateUTC.Before(now.Add(-tries.ReleaseGrace))
-		want := inWindow && !e.HasFile && !queued[e.ID]
+		want := inWindow && !e.HasFile && !queued[e.ID] && !full(e.SeriesID)
 		if want {
 			monitored++
 		}

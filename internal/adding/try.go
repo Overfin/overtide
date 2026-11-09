@@ -84,7 +84,13 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 	if service.disk != nil {
 		disk = service.disk
 	}
-	if stop := disk(cfg, rootFolder, dryRun); stop != "" {
+	// A title already in Radarr or Sonarr fills its own folder's disk, which
+	// may not be the destination's.
+	folder := rootFolder
+	if entry.ArrID != 0 {
+		folder = service.folderOf(entry, rootFolder)
+	}
+	if stop := disk(cfg, folder, dryRun); stop != "" {
 		service.later(entry, stop)
 		return 0
 	}
@@ -190,4 +196,18 @@ func (service *Service) diskStop(cfg config.Config, rootFolder string, dryRun bo
 		return ""
 	}
 	return service.Room(rootFolder, dryRun)
+}
+
+// folderOf is a title's folder, as last read, else the folder given.
+func (service *Service) folderOf(entry *Entry, fallback string) string {
+	items, _, err := service.inv.Snapshot()
+	if err != nil {
+		return fallback
+	}
+	for _, m := range items {
+		if m.ServiceID == entry.ServiceID && m.Type == entry.Kind && m.SourceID == entry.ArrID && m.Path != "" {
+			return m.Path
+		}
+	}
+	return fallback
 }

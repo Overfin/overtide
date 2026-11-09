@@ -13,6 +13,7 @@ package adding
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -354,6 +355,13 @@ func (service *Service) Run(ctx context.Context) error {
 	if cfg.Adding.ManagesAll() {
 		service.phase("Taking what Radarr and Sonarr have")
 		if entries, err = service.takeAll(ctx, cfg, entries, dryRun); err != nil {
+			// What was taken before it failed is unmonitored by now, and
+			// never taken again: it's kept.
+			if !dryRun {
+				if saveErr := service.save(entries); saveErr != nil {
+					return errors.Join(err, saveErr)
+				}
+			}
 			return err
 		}
 	} else {
@@ -545,6 +553,11 @@ func sortForTries(entries []Entry) {
 	})
 }
 
+// justTaken is how long a title taken from Radarr stays on the list without
+// the inventory having it: longer than a refresh takes to come (30 minutes
+// by default).
+const justTaken = 2 * time.Hour
+
 // match checks the waiting list against Radarr and Sonarr. A title there
 // that isn't Overtide's is the operator's: it leaves the list, as does a
 // film that has its file already. One that's Overtide's is tried in place
@@ -569,7 +582,12 @@ func (service *Service) match(entries []Entry) []Entry {
 		m, there := present[entry.id()]
 		switch {
 		case !there && (entry.Source == FromLibrary || entry.Source == FromHand):
-			continue // taken from Radarr, and gone from it since
+			// Taken from Radarr, and gone from it since; unless just taken:
+			// the inventory hasn't caught up with a title just added, and
+			// it was unmonitored, so it's never taken again.
+			if entry.ArrID == 0 || service.now().Sub(entry.AddedAt) > justTaken {
+				continue
+			}
 		case there && model.HasTag(m.Tags, model.TagIgnore):
 			continue // left alone by the operator
 		case !there:

@@ -17,6 +17,7 @@ import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/services/sonarr"
 )
 
 // episodesKey keeps, per Sonarr, the series whose new episodes are wanted
@@ -203,8 +204,10 @@ func (driver *Driver) Upgradable() (func(ctx context.Context, serviceID string, 
 }
 
 // fullDisk says whether a Sonarr series' folder is on a disk with no room
-// (Room, asked once per series): nothing more is fetched for it then.
-// A series whose folder isn't read yet from Sonarr is let through.
+// (Room, asked once per series): nothing more is fetched for it then. A
+// series whose folder isn't read yet (just added) is asked of Sonarr; if it
+// can't say, it counts as full, or a failed refresh would switch the disk
+// checks off.
 func (driver *Driver) fullDisk(cfg config.Config, serviceID string) func(seriesID int) bool {
 	folders := map[int]string{}
 	if items, _, err := driver.inv.Snapshot(); err == nil {
@@ -219,7 +222,15 @@ func (driver *Driver) fullDisk(cfg config.Config, serviceID string) func(seriesI
 		if checked, ok := full[seriesID]; ok {
 			return checked
 		}
-		full[seriesID] = folders[seriesID] != "" && driver.Room(cfg, folders[seriesID]) != ""
+		folder := folders[seriesID]
+		var unknown error
+		if folder == "" {
+			var client *sonarr.Client
+			if client, unknown = driver.inv.SonarrClient(serviceID); unknown == nil {
+				folder, unknown = client.SeriesPath(seriesID)
+			}
+		}
+		full[seriesID] = unknown != nil || (folder != "" && driver.Room(cfg, folder) != "")
 		return full[seriesID]
 	}
 }
