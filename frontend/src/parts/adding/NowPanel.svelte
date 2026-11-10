@@ -2,6 +2,7 @@
      page is shown. -->
 <script lang="ts">
   import { Card, Progress } from '@overfin/ui';
+  import '../../styles/adding.css';
   import { get } from '../../lib/api';
   import type { Now } from '../../lib/types-adding';
 
@@ -59,7 +60,7 @@
       <div class="download">
         <div><b>{d.title}</b> <span class="muted">· {d.kind === 'series' ? 'Series' : 'Film'}</span></div>
         {#if d.queued}<Progress value={d.percent} label={`${d.title}: ${d.percent}%`} />{/if}
-        <div class="hint">{#if d.queued}{d.percent}% · {/if}{d.status}{#if d.done} · {d.done}{/if}</div>
+        <div class="hint">{#if d.queued}{d.percent}%{' · '}{/if}{d.status}{#if d.done}{' · '}{d.done}{/if}</div>
       </div>
     {:else}
       <p class="muted">Nothing of Overtide's is downloading.</p>

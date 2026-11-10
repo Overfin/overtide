@@ -6,6 +6,7 @@
   import type { AddingSettings, Destination } from '../../lib/types-adding';
   import { short } from '../../lib/words-adding';
   import DestinationForm from '../adding/DestinationForm.svelte';
+  import '../../styles/adding.css';
 
   let data = $state<AddingSettings | null>(null);
   let failure = $state('');

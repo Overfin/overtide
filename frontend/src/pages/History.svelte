@@ -144,7 +144,7 @@
 
 {#if shown}
   <div class="card shown-operation">
-    <p><b>{shown.label || 'Removal'}</b> · {stamp(shown.createdAt)}{#if shown.dryRun && shown.status !== 'dry_run'} · <span class="dry">dry run</span>{/if}
+    <p><b>{shown.label || 'Removal'}</b> · {stamp(shown.createdAt)}{#if shown.dryRun && shown.status !== 'dry_run'}{' · '}<span class="dry">dry run</span>{/if}
       · <Badge kind={statusKind(shown.status)}>{statuses[shown.status] ?? shown.status}</Badge> · {shown.reclaimable}
       · <a href={url({})}>Close</a></p>
     {@render details(shown)}

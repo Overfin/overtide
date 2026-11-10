@@ -138,13 +138,13 @@
             <div class="mono" title={s.path}>{s.short}{#if s.owner} <span class="muted owner">· {s.owner}</span>{/if}</div>
           {/each}
           <div class="hint">
-            {f.size}{#if f.exists}{#if f.identityKnown && (f.links || 0) > 1} · <strong>hardlinked · {f.links} paths / 1 physical file</strong>{/if}{:else} · missing{/if}
+            {f.size}{#if f.exists}{#if f.identityKnown && (f.links || 0) > 1}{' · '}<strong>hardlinked · {f.links} paths / 1 physical file</strong>{/if}{:else}{' · '}missing{/if}
           </div>
         </div>
       {/each}
       {#if data.fileCount > data.files.length}<p class="muted">Showing first {data.files.length} of {data.fileCount} files.</p>{/if}
       <p class="hint spaced">
-        {#if data.removeMedia}Removing media frees <strong>{data.removeMedia}</strong>{/if}{#if data.removeWithCurrent} · Removing media and current torrents frees <strong>{data.removeWithCurrent}</strong>{/if}
+        {#if data.removeMedia}Removing media frees <strong>{data.removeMedia}</strong>{/if}{#if data.removeWithCurrent}{' · '}Removing media and current torrents frees <strong>{data.removeWithCurrent}</strong>{/if}
       </p>
     {/if}
   </Card>
@@ -157,7 +157,7 @@
           <li>
             <div>
               <div class="name breakable">{t.name}</div>
-              <div class="hint">{t.size} · ratio {t.ratio.toFixed(2)} · {t.seeds} seeds · {t.leechers} leechers{#if t.reclaimable} · {t.reclaimable} reclaimable{/if}</div>
+              <div class="hint">{t.size} · ratio {t.ratio.toFixed(2)} · {t.seeds} seeds · {t.leechers} leechers{#if t.reclaimable}{' · '}{t.reclaimable} reclaimable{/if}</div>
             </div>
             <a href={`/torrents/${t.hash}`}>View →</a>
           </li>

@@ -60,7 +60,7 @@
       <dd>{#if t.protected}{t.protectionReason}{#if t.obligation} <span class="muted">· holds its title back too</span>{/if}{:else}no{/if}</dd>
       {#if t.crossSeeds}
         <dt>Cross-seeds</dt>
-        <dd>{t.crossSeeds} torrent{s(t.crossSeeds)} with the same files{#if t.groupKnown} · removing them together frees {t.groupReclaimable}{/if}</dd>
+        <dd>{t.crossSeeds} torrent{s(t.crossSeeds)} with the same files{#if t.groupKnown}{' · '}removing them together frees {t.groupReclaimable}{/if}</dd>
       {/if}
       {#if t.filesMissing}<dt>Files</dt><dd class="warn">gone from disk; it takes no space</dd>{/if}
       <dt>Last activity</dt>
@@ -104,7 +104,7 @@
           {#each f.peers as peer, j (j)}
             <div class="mono" title={peer.path}>{peer.short}{#if peer.owner} <span class="muted">· {peer.owner}</span>{/if}</div>
           {/each}
-          <span class="muted">{f.size}{#if f.exists}{#if f.identityKnown && f.links > 1} · <strong>hardlinked · {f.links} paths / 1 physical file</strong>{/if}{:else} · missing{/if}</span>
+          <span class="muted">{f.size}{#if f.exists}{#if f.identityKnown && f.links > 1}{' · '}<strong>hardlinked · {f.links} paths / 1 physical file</strong>{/if}{:else}{' · '}missing{/if}</span>
         </div>
       {:else}
         <p class="muted">No files.</p>

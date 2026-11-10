@@ -125,7 +125,7 @@
 {:else}
   {#if data.scanError}<p class="warn">Scan unavailable: {data.scanError}</p>{/if}
   <p class="list-summary">
-    <b>{data.allItems}</b> files · <b>{data.totalBytes}</b>{#if data.reclaimable} · <b>{data.reclaimable}</b> physically reclaimable if an authorized owner removes every link{/if}{#if data.shared} · {data.shared} shared through hardlinks{/if}
+    <b>{data.allItems}</b> files · <b>{data.totalBytes}</b>{#if data.reclaimable}{' · '}<b>{data.reclaimable}</b> physically reclaimable if an authorized owner removes every link{/if}{#if data.shared}{' · '}{data.shared} shared through hardlinks{/if}
   </p>
 
   <div class="toolbar">
@@ -171,7 +171,7 @@
             <td class="nowrap">{f.size}</td>
             <td class="nowrap">{f.reclaimableKnown ? f.reclaimable : '—'}</td>
             <td>
-              {#if f.paths.length > 1}hardlinked · {f.paths.length} paths to the same physical file{:else if f.links > 1}hardlinked{:else}—{/if}{#if f.missingLinks > 0} · {f.missingLinks} hardlink{f.missingLinks > 1 ? 's' : ''} outside known topology{/if}
+              {#if f.paths.length > 1}hardlinked · {f.paths.length} paths to the same physical file{:else if f.links > 1}hardlinked{:else}—{/if}{#if f.missingLinks > 0}{' · '}{f.missingLinks} hardlink{f.missingLinks > 1 ? 's' : ''} outside known topology{/if}
             </td>
             <td class="nowrap">{f.modified}</td>
             <td class="row-actions">
