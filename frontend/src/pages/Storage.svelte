@@ -116,7 +116,7 @@
         {:else if !d.enabled}
           <p class="muted">Automatic removal is off for this device. Enable it in Device settings (🔧) to see suggestions.</p>
         {:else if d.plan && d.plan.needBytes > 0}
-          <p class="bad"><b>Cleanup active.</b><br />{d.plan.message}<br />{d.plan.actions} action(s) selected · {human(d.plan.selectedBytes)} planned.{#if d.plan.actions} See the cleanup plan (📋) for the full list.{/if}</p>
+          <p class="bad"><b>Cleanup active.</b><br />{d.plan.message}<br />{d.plan.actions} action(s) selected · {human(d.plan.selectedBytes)} planned.{#if d.plan.actions}{' '}See the cleanup plan (📋) for the full list.{/if}</p>
         {:else}
           <p class="good"><b>Cleanup inactive.</b><br />{d.plan?.message}</p>
         {/if}
