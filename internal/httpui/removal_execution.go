@@ -374,10 +374,15 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 	// mediaBytes is the raw sum of every selected file's own size, before
 	// hardlink deduplication ("Library bytes removed"). Unlike
 	// d.Plan.SelectedPathBytes/ReclaimableBytes, it counts a selected file
-	// even when another hardlink to the same data survives the removal.
+	// even when another hardlink to the same data survives the removal. A
+	// path counts once, and only when every owner it has goes: a file
+	// another torrent keeps isn't removed.
 	var mediaBytes int64
+	counted := map[string]bool{}
 	for _, file := range d.Plan.Files {
-		if file.Selected {
+		path := filepath.Clean(file.Path)
+		if file.Selected && !counted[path] && !d.Plan.Kept(path) {
+			counted[path] = true
 			mediaBytes += file.SizeBytes
 		}
 	}
@@ -426,7 +431,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 					recordError("torrent " + rt.Torrent.Name + ": kept, as the library's file couldn't be removed")
 					continue
 				}
-				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent, selectedHashes(d))
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent)
 				for _, result := range rr {
 					recordResult(result)
 				}
@@ -468,7 +473,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				}
 			}
 			for _, t := range removing {
-				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, t, selectedHashes(d))
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, t)
 				for _, result := range rr {
 					recordResult(result)
 				}
@@ -490,7 +495,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				if !rt.Selected {
 					continue
 				}
-				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent, selectedHashes(d))
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent)
 				for _, result := range rr {
 					recordResult(result)
 				}
@@ -666,48 +671,56 @@ func (server *Server) schedulePostRemovalConsistency(historyID int64) error {
 	return err
 }
 
-// selectedHashes are the torrents a removal takes: its target and the
-// related torrents ticked.
-func selectedHashes(d removalData) map[string]bool {
-	out := map[string]bool{}
-	if d.TorrentSelected && d.Hash != "" {
-		out[strings.ToLower(d.Hash)] = true
-	}
-	for _, rt := range d.Related {
-		if rt.Selected {
-			out[strings.ToLower(rt.Torrent.Hash)] = true
-		}
-	}
-	return out
-}
-
 // removeTorrentKeepingShared removes a torrent, and its files unless another
-// torrent uses them: the plan keeps a path some owner it lists stays with,
-// and qBittorrent is asked, now, whether a torrent not being removed uses
-// one (a cross-seed added since the plan). With any file kept, the torrent
-// goes without its data, and Overtide deletes the files only it used,
-// each checked again first. qBittorrent out of reach: nothing is removed.
-func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan removal.RemovalPlan, t model.Torrent, selected map[string]bool) (results, errs []string, mutated, uncertain bool) {
+// torrent uses them. Its files are the plan's and those qBittorrent lists
+// for it now (the plan may know none: a torrent added again since the last
+// refresh, a folder moved). Kept is a path some owner the plan lists stays
+// with, or one any other torrent in qBittorrent uses now: a cross-seed
+// added since the plan, or the next torrent of the same removal. So in a
+// group removed together, each goes without the files the others still
+// use, and the last one takes them: a failure midway leaves them in place.
+// With any file kept, the torrent goes without its data, and Overtide
+// deletes the files only it used, each checked again. When qBittorrent
+// can't list the torrent's files, or say who uses them, nothing is removed.
+func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan removal.RemovalPlan, t model.Torrent) (results, errs []string, mutated, uncertain bool) {
 	hash := strings.ToLower(t.Hash)
 	label := t.Name
 	if label == "" {
 		label = hash
 	}
+	livePaths, found, err := server.inv.TorrentLivePaths(ctx, t.ServiceID, hash)
+	if err != nil {
+		return nil, []string{"torrent " + label + ": kept, as qBittorrent couldn't list its files: " + err.Error()}, false, true
+	}
+	if !found {
+		// Not listed: removing it again is harmless, and never with data
+		// nobody checked.
+		if err := server.inv.RemoveTorrentKeepFiles(ctx, hash, t.ServiceID); err != nil {
+			return nil, []string{"torrent " + label + ": " + err.Error()}, false, true
+		}
+		return []string{"torrent removed, qBittorrent no longer listed it: " + label}, nil, true, false
+	}
 	var own []removal.FileState
+	seen := map[string]bool{}
 	var paths []string
 	for _, f := range plan.Files {
 		if f.Owner == removal.TorrentOwner && strings.EqualFold(f.OwnerKey, hash) && f.Exists {
 			own = append(own, f)
-			paths = append(paths, filepath.Clean(f.Path))
+			if p := filepath.Clean(f.Path); !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
 		}
 	}
-	except := map[string]bool{hash: true}
-	for h := range selected {
-		except[strings.ToLower(h)] = true
+	for _, p := range livePaths {
+		if p = filepath.Clean(p); !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
 	}
 	kept := map[string]bool{}
 	if len(paths) > 0 {
-		live, err := server.inv.TorrentPathsClaimedByOthers(ctx, t.ServiceID, paths, except)
+		live, err := server.inv.TorrentPathsClaimedByOthers(ctx, t.ServiceID, paths, map[string]bool{hash: true})
 		if err != nil {
 			return nil, []string{"torrent " + label + ": kept, as qBittorrent couldn't say whether another torrent uses its files: " + err.Error()}, false, true
 		}

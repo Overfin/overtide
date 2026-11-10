@@ -41,11 +41,21 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 		case "/api/v2/torrents/delete":
 			mu.Lock()
 			deletes = append(deletes, r.Form.Get("hashes")[:1]+" deleteFiles="+r.Form.Get("deleteFiles"))
+			var left []string
+			for _, h := range live {
+				if h != r.Form.Get("hashes") {
+					left = append(left, h)
+				}
+			}
+			live = left
 			mu.Unlock()
 		case "/api/v2/torrents/info":
 			mu.Lock()
 			var xs []string
 			for _, h := range live {
+				if only := r.Form.Get("hashes"); only != "" && only != h {
+					continue
+				}
 				xs = append(xs, fmt.Sprintf(`{"hash":%q,"name":"Release.mkv","save_path":%q,"content_path":%q,"progress":1}`, h, dir, path))
 			}
 			mu.Unlock()
@@ -95,9 +105,10 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	run := func(form url.Values) (results, errs []string) {
+	run := func(form url.Values, inClient ...string) (results, errs []string) {
 		mu.Lock()
 		deletes = nil
+		live = inClient
 		mu.Unlock()
 		server := &Server{inv: inventory.New(cfg, database)}
 		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(form.Encode()))
@@ -132,7 +143,7 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 	}
 
 	// Removing one: without its data, and the file stays.
-	results, errs := run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}})
+	results, errs := run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}}, a, b)
 	if len(errs) != 0 || len(deletes) != 1 || deletes[0] != "a deleteFiles=false" {
 		t.Fatalf("one: %v %v %v", results, errs, deletes)
 	}
@@ -140,16 +151,17 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 		t.Fatalf("the shared file went: %v", err)
 	}
 
-	// Both: with their data.
+	// Both: the first without the file the second still uses, the last
+	// one with it.
 	publish(a, b)
-	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}, "torrent": {b}})
-	if len(errs) != 0 || len(deletes) != 2 || deletes[0] != "a deleteFiles=true" || deletes[1] != "b deleteFiles=true" {
+	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}, "torrent": {b}}, a, b)
+	if len(errs) != 0 || len(deletes) != 2 || deletes[0] != "a deleteFiles=false" || deletes[1] != "b deleteFiles=true" {
 		t.Fatalf("both: %v %v %v", results, errs, deletes)
 	}
 
 	// The plan knows only a, but qBittorrent has b on the file now.
 	publish(a)
-	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}})
+	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}}, a, b)
 	if len(errs) != 0 || len(deletes) != 1 || deletes[0] != "a deleteFiles=false" {
 		t.Fatalf("new cross-seed: %v %v %v", results, errs, deletes)
 	}
@@ -158,11 +170,8 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 	}
 
 	// Alone for real: with its data.
-	mu.Lock()
-	live = []string{a}
-	mu.Unlock()
 	publish(a)
-	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}})
+	results, errs = run(url.Values{"kind": {"torrent"}, "hash": {a}, "service_id": {"qbittorrent-1"}, "target": {"1"}}, a)
 	if len(errs) != 0 || len(deletes) != 1 || deletes[0] != "a deleteFiles=true" {
 		t.Fatalf("alone: %v %v %v", results, errs, deletes)
 	}

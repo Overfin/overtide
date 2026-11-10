@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -596,6 +597,39 @@ func (service *Service) RemoveTorrentKeepFiles(ctx context.Context, hash, svcID 
 		return err
 	}
 	return client.WithContext(ctx).Remove(hash, false)
+}
+
+// TorrentLivePaths returns a torrent's files as qBittorrent lists them now,
+// as paths; found is false when qBittorrent no longer has it.
+func (service *Service) TorrentLivePaths(ctx context.Context, svcID, hash string) (paths []string, found bool, err error) {
+	client, err := service.qbittorrentClient(svcID)
+	if err != nil {
+		return nil, false, err
+	}
+	c := client.WithContext(ctx)
+	t, err := c.Detail(hash)
+	if errors.Is(err, torrentdriver.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	files, err := c.Files(map[string]model.Torrent{strings.ToLower(hash): t})
+	if err != nil {
+		return nil, true, err
+	}
+	list, ok := files[strings.ToLower(hash)]
+	if !ok {
+		return nil, true, fmt.Errorf("qBittorrent gave no file list for %s", hash)
+	}
+	root := torrentdriver.FileRoot(t, list)
+	if root == "" && len(list) > 0 {
+		return nil, true, fmt.Errorf("qBittorrent gave no folder for %s", hash)
+	}
+	for _, f := range list {
+		paths = append(paths, filepath.Join(root, filepath.FromSlash(f.Name)))
+	}
+	return paths, true, nil
 }
 
 // TorrentPathsClaimedByOthers returns which of paths a torrent of svcID's
