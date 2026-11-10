@@ -40,6 +40,9 @@ type Driver interface {
 	// NotClaimed fails when one of the paths is a file of one of the
 	// client's torrents now, asked of the client itself.
 	NotClaimed(paths []string) error
+	// ClaimedByOthers returns which of the paths a torrent not in except
+	// (hashes, lower case) uses now, asked of the client itself.
+	ClaimedByOthers(paths []string, except map[string]bool) ([]string, error)
 	// Check tests the address and the sign-in, once.
 	Check() error
 }

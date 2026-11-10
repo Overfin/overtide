@@ -89,6 +89,17 @@ func Build(kind ObjectKind, key, label string, dryRun bool, candidates []Candida
 		DryRun:         dryRun,
 	}
 	physicalFiles := make(map[physicalFileIdentity]*physicalFileGroup)
+	// A path goes only when every owner listed for it is selected: two
+	// torrents can use the very same file, and removing one keeps it.
+	allOwnersSelected := map[string]bool{}
+	for _, candidate := range candidates {
+		path := filepath.Clean(candidate.Path)
+		if previous, seen := allOwnersSelected[path]; seen {
+			allOwnersSelected[path] = previous && candidate.Selected
+		} else {
+			allOwnersSelected[path] = candidate.Selected
+		}
+	}
 
 	for _, candidate := range candidates {
 		candidate.Path = filepath.Clean(candidate.Path)
@@ -118,7 +129,7 @@ func Build(kind ObjectKind, key, label string, dryRun bool, candidates []Candida
 		if !identityAvailable {
 			// Without physical identity, Overtide cannot determine whether another
 			// path references this File. Count a selected existing File once.
-			if candidate.Selected {
+			if candidate.Selected && allOwnersSelected[candidate.Path] {
 				plan.SelectedPathBytes += fileState.SizeBytes
 			}
 			plan.Files = append(plan.Files, fileState)
@@ -144,7 +155,7 @@ func Build(kind ObjectKind, key, label string, dryRun bool, candidates []Candida
 		}
 
 		physicalFile.knownPaths[fileState.Path] = true
-		if candidate.Selected {
+		if candidate.Selected && allOwnersSelected[candidate.Path] {
 			physicalFile.selectedPaths[fileState.Path] = true
 		}
 		plan.Files = append(plan.Files, fileState)
@@ -193,4 +204,17 @@ func Build(kind ObjectKind, key, label string, dryRun bool, candidates []Candida
 	})
 
 	return plan
+}
+
+// Kept reports whether a path stays after the plan runs: it exists and at
+// least one owner listed for it isn't selected (another torrent seeding the
+// very same file, say). An owner removing it must then leave it in place.
+func (plan RemovalPlan) Kept(path string) bool {
+	path = filepath.Clean(path)
+	for _, file := range plan.Files {
+		if file.Path == path && !file.Selected {
+			return true
+		}
+	}
+	return false
 }

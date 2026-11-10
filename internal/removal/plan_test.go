@@ -108,3 +108,30 @@ func testTempHardlinkPath(t *testing.T, keepSibling bool) string {
 	}
 	return primaryPath
 }
+
+// Two owners of the very same path (two torrents seeding one file): the
+// path goes, and its bytes count, only when both are selected, in
+// whichever order they're listed.
+func TestSharedPathNeedsEveryOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Release.mkv")
+	if err := os.WriteFile(path, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, firstSelected := range []bool{true, false} {
+		one := []CandidateFile{
+			{Path: path, Owner: TorrentOwner, OwnerKey: "a", Selected: firstSelected},
+			{Path: path, Owner: TorrentOwner, OwnerKey: "b", Selected: !firstSelected},
+		}
+		plan := Build(TorrentObject, "a", "a", false, one)
+		if plan.SelectedPathBytes != 0 || plan.ReclaimableBytes != 0 || !plan.Kept(path) {
+			t.Errorf("one owner selected (first %v): freed %d, kept %v", firstSelected, plan.SelectedPathBytes, plan.Kept(path))
+		}
+	}
+	both := Build(TorrentObject, "a", "a", false, []CandidateFile{
+		{Path: path, Owner: TorrentOwner, OwnerKey: "a", Selected: true},
+		{Path: path, Owner: TorrentOwner, OwnerKey: "b", Selected: true},
+	})
+	if both.SelectedPathBytes != 4 || both.Kept(path) {
+		t.Errorf("both selected: freed %d, kept %v", both.SelectedPathBytes, both.Kept(path))
+	}
+}

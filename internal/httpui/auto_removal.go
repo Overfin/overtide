@@ -227,7 +227,26 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 			}
 		}
 	case "torrent":
-		return checkTorrent(form.Get("hash"), true)
+		if err := checkTorrent(form.Get("hash"), true); err != nil {
+			return err
+		}
+		selected := map[string]bool{strings.ToLower(strings.TrimSpace(form.Get("hash"))): true}
+		for _, hash := range form["torrent"] {
+			if err := checkTorrent(hash, true); err != nil {
+				return err
+			}
+			selected[strings.ToLower(strings.TrimSpace(hash))] = true
+		}
+		// The group it was planned with, whole: a torrent that started
+		// sharing its files since (a new cross-seed) holds it back, as a
+		// group goes only all together, every one past its seeding time.
+		for hash := range selected {
+			for _, other := range torrents[hash].SharesFilesWith {
+				if !selected[strings.ToLower(other)] {
+					return fmt.Errorf("%s now shares files with a torrent the plan didn't include", torrents[hash].Name)
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -266,23 +285,6 @@ func mediaFor(items []model.Media, kind model.MediaType, id int, serviceID strin
 		}
 	}
 	return model.Media{}, false
-}
-
-// expandGroup turns a cross-seed group (a lone-torrent action with several
-// torrents sharing files) into one action per torrent, submitted together:
-// each removal deletes its own links, and the last one frees the data.
-// Any other action comes back as it is.
-func expandGroup(action cleanup.Action) []cleanup.Action {
-	if action.Kind != cleanup.StandaloneTorrent || len(action.Torrents) < 2 {
-		return []cleanup.Action{action}
-	}
-	singles := make([]cleanup.Action, 0, len(action.Torrents))
-	for _, t := range action.Torrents {
-		single := action
-		single.Torrents = []model.Torrent{t}
-		singles = append(singles, single)
-	}
-	return singles
 }
 
 // formForAction builds the exact url.Values shape a browser's manual removal
@@ -327,6 +329,10 @@ func (server *Server) formForAction(action cleanup.Action) (url.Values, error) {
 		form.Set("hash", strings.ToLower(action.Torrents[0].Hash))
 		form.Set("service_id", action.Torrents[0].ServiceID)
 		form.Set("target", "1")
+		// The rest of a group sharing files: removed with it, or not at all.
+		for _, t := range action.Torrents[1:] {
+			form.Add("torrent", strings.ToLower(t.Hash))
+		}
 	default:
 		return nil, fmt.Errorf("unsupported action kind %q", action.Kind)
 	}
@@ -349,7 +355,9 @@ func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause 
 		descriptor removalAdmission
 	}
 	var removals []admitted
-	for _, action := range expandGroup(row) {
+	// A group of torrents sharing files is one removal: removed one at a
+	// time, each would keep the files the next one still uses.
+	for _, action := range []cleanup.Action{row} {
 		form, err := server.formForAction(action)
 		if err != nil {
 			return err

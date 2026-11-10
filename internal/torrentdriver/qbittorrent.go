@@ -106,6 +106,16 @@ func (d *qbDriver) NotClaimed(paths []string) error {
 	return retry(d.ctx, ReadWaits, func() error { return d.client.VerifyPathsUnmanaged(paths) })
 }
 
+func (d *qbDriver) ClaimedByOthers(paths []string, except map[string]bool) ([]string, error) {
+	var out []string
+	err := retry(d.ctx, ReadWaits, func() error {
+		var err error
+		out, err = d.client.ClaimedByOthers(paths, except)
+		return err
+	})
+	return out, err
+}
+
 // Check isn't tried again: it answers someone adding the service, who
 // wants to know now.
 func (d *qbDriver) Check() error { return d.client.Validate() }

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,17 +206,17 @@ func TestFormForActionErrorsWhenMediaHasNoManagedFiles(t *testing.T) {
 	}
 }
 
-// A cross-seed group is removed as one removal per torrent; other actions
-// stay whole.
-func TestExpandGroup(t *testing.T) {
-	group := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Hash: "a"}, {Hash: "b"}}}
-	singles := expandGroup(group)
-	if len(singles) != 2 || singles[0].Torrents[0].Hash != "a" || singles[1].Torrents[0].Hash != "b" || len(singles[1].Torrents) != 1 {
-		t.Fatalf("%#v", singles)
+// A group of torrents sharing files is one removal: the first is its
+// target, the others go with it.
+func TestFormForGroup(t *testing.T) {
+	server := &Server{}
+	group := cleanup.Action{Kind: cleanup.StandaloneTorrent, Torrents: []model.Torrent{{Hash: "A", ServiceID: "qb"}, {Hash: "B", ServiceID: "qb"}, {Hash: "C", ServiceID: "qb"}}}
+	form, err := server.formForAction(group)
+	if err != nil {
+		t.Fatal(err)
 	}
-	bundle := cleanup.Action{Kind: cleanup.HardlinkedBundle, Torrents: []model.Torrent{{Hash: "a"}, {Hash: "b"}}}
-	if got := expandGroup(bundle); len(got) != 1 || len(got[0].Torrents) != 2 {
-		t.Fatalf("a bundle stays whole: %#v", got)
+	if form.Get("kind") != "torrent" || form.Get("hash") != "a" || form.Get("target") != "1" || strings.Join(form["torrent"], ",") != "b,c" {
+		t.Fatalf("%v", form)
 	}
 }
 

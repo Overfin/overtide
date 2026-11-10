@@ -608,6 +608,47 @@ func (client *Client) VerifyPathsUnmanaged(paths []string) error {
 	return nil
 }
 
+// ClaimedByOthers returns which of paths a torrent other than those in
+// except uses now, asked of qBittorrent itself: two torrents can seed the
+// very same file, and removing one with its data would delete the other's.
+func (client *Client) ClaimedByOthers(paths []string, except map[string]bool) ([]string, error) {
+	torrents, err := client.Inventory()
+	if err != nil {
+		return nil, err
+	}
+	candidates := map[string]model.Torrent{}
+	for h, t := range torrents {
+		if except[strings.ToLower(h)] {
+			continue
+		}
+		root := strings.TrimSpace(t.ContentPath)
+		if root == "" {
+			candidates[h] = t
+			continue
+		}
+		for _, p := range paths {
+			if pathInside(root, p) {
+				candidates[h] = t
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	claimed, _, err := client.ClaimedFiles(candidates)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range paths {
+		if claimed[filepath.Clean(p)] {
+			out = append(out, filepath.Clean(p))
+		}
+	}
+	return out, nil
+}
+
 // AllFiles returns authoritative file lists for all supplied torrents. It is a
 // reconciliation operation, not a normal refresh primitive: qBittorrent does
 // not include file membership in its incremental main-data feed.

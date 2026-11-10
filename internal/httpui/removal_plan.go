@@ -16,7 +16,10 @@ type relatedRemovalTorrent struct {
 	Selected        bool
 	Selectable      bool
 	PhysicallyBacks bool
-	FileCount       int
+	// SharesFiles: it uses some of the same files as the torrent being
+	// removed (the same path, or a hardlink).
+	SharesFiles bool
+	FileCount   int
 }
 
 type relatedRemovalTorrentGroup struct {
@@ -28,6 +31,13 @@ type relatedRemovalTorrentGroup struct {
 // shown the way it is: what physically ties it to the media (if anything),
 // or why it's only ever a historical fact rather than proof.
 func relatedTorrentMeta(rt relatedRemovalTorrent) string {
+	if rt.SharesFiles {
+		meta := "shares files with this torrent · they stay while it does"
+		if rt.Torrent.Obligation != "" {
+			meta += " · " + rt.Torrent.Obligation
+		}
+		return meta
+	}
 	if rt.PhysicallyBacks {
 		return "physically backs this media"
 	}
@@ -164,7 +174,7 @@ func validateRemovalScope(form url.Values) error {
 			return err
 		}
 	case "torrent":
-		if err := forbidden("managed_file", "unmanaged_path", "torrent", "path", "exclude_movies", "exclude_series"); err != nil {
+		if err := forbidden("managed_file", "unmanaged_path", "path", "exclude_movies", "exclude_series"); err != nil {
 			return err
 		}
 		if form.Get("target") != "1" {
@@ -367,7 +377,7 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 	}, nil
 }
 
-func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSelected bool, selectedManaged map[string]bool, selectedUnmanaged map[string]bool) (removalData, error) {
+func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSelected bool, selectedManaged map[string]bool, selectedUnmanaged map[string]bool, selectedOthers map[string]bool) (removalData, error) {
 	h := strings.ToLower(strings.TrimSpace(hash))
 	var found *model.Torrent
 	for _, t := range server.inv.TorrentSnapshot() {
@@ -391,6 +401,22 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 	if found == nil {
 		return removalData{}, fmt.Errorf("torrent not found")
 	}
+	// The torrents it shares files with (the very same path, or a hardlink):
+	// listed, each with its box, only the asked one ticked by default. A
+	// file goes only when every torrent using it is removed.
+	group := sharingGroup(*found, server.inv.TorrentSnapshot())
+	inGroup := map[string]bool{}
+	for _, t := range group {
+		inGroup[strings.ToLower(t.Hash)] = true
+	}
+	for other := range selectedOthers {
+		if other == h {
+			continue
+		}
+		if !inGroup[other] {
+			return removalData{}, fmt.Errorf("torrent doesn't share files with this one: %s", other)
+		}
+	}
 	files, mrefs, trefs, _, ferr := server.inv.FileSnapshot()
 	if ferr != nil {
 		return removalData{}, ferr
@@ -407,6 +433,20 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 		mergeRemovalCandidate(cm, removal.CandidateFile{Path: r.Path, Owner: removal.MediaOwner, OwnerKey: managedFileKey(r), Selected: sel})
 	}
 	selectedTorrents := map[string]bool{h: targetSelected}
+	relatedTorrents := []relatedRemovalTorrent{}
+	for _, t := range group {
+		th := strings.ToLower(t.Hash)
+		selected := selectedOthers[th]
+		selectedTorrents[th] = selected
+		otherFiles, _, _ := server.inv.TorrentFiles(th)
+		for _, f := range otherFiles {
+			mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: th, Label: t.Name, Selected: selected, Selectable: true})
+		}
+		relatedTorrents = append(relatedTorrents, relatedRemovalTorrent{Torrent: t, Selected: selected, Selectable: true, SharesFiles: true, FileCount: len(otherFiles)})
+	}
+	sort.Slice(relatedTorrents, func(i, j int) bool {
+		return strings.ToLower(relatedTorrents[i].Torrent.Name) < strings.ToLower(relatedTorrents[j].Torrent.Name)
+	})
 	cm = physicalCandidates(files, mrefs, trefs, cm, selectedManaged, selectedTorrents, selectedUnmanaged)
 	items, _, _ := server.inv.Snapshot()
 	mediaMap := map[string]model.MediaRef{}
@@ -474,12 +514,24 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 	actions := len(selectedRefs) + len(selectedUF)
 	if targetSelected {
 		actions++
+		p.Warnings = append(p.Warnings, obligationWarning(*found)...)
+	}
+	selectedTorrentCount := 0
+	for _, rt := range relatedTorrents {
+		if rt.Selected {
+			actions++
+			selectedTorrentCount++
+			p.Warnings = append(p.Warnings, obligationWarning(rt.Torrent)...)
+		}
 	}
 	moviesOpt, episodesOpt := ownerOptions(selectedRefs)
 	canExcludeMovies, canExcludeSeries, exclusionMedia := exclusionOptions(selectedRefs, items)
 	selectedFileCount, selectedLogicalBytes := selectedFileSummary(p)
 	return removalData{
-		Plan: p, FileGroups: groupRemovalFiles(p, files), TorrentTarget: true,
+		Related: relatedTorrents, RelatedGroups: groupRelatedTorrents(relatedTorrents),
+		RelatedTorrentCount: len(relatedTorrents), SelectedTorrentCount: selectedTorrentCount,
+		PreservedTorrentCount: len(relatedTorrents) - selectedTorrentCount,
+		Plan:                  p, FileGroups: groupRemovalFiles(p, files), TorrentTarget: true,
 		TorrentSelected: targetSelected, SelectedActions: actions, PotentialBytes: potential,
 		RelatedManaged: related, RelatedUnmanaged: relatedUnmanaged, SelectedUnmanaged: selectedUF,
 		SelectedManaged: selectedRefs, CanUnmonitorMovies: moviesOpt, CanUnmonitorEpisodes: episodesOpt,
@@ -557,4 +609,31 @@ func (server *Server) buildUnmanagedRemovalPlan(paths []string, selectedTorrents
 		BackURL: "/unmanaged", UnmanagedPaths: clean, Related: torrents,
 		RelatedGroups: groupRelatedTorrents(torrents), SelectedActions: actions,
 	}, nil
+}
+
+// sharingGroup is every other torrent of t's client that shares files with
+// it, as the last refresh found them: the very same path, or a hardlink
+// (see inventory's share groups, which are transitive).
+func sharingGroup(t model.Torrent, torrents []model.Torrent) []model.Torrent {
+	wanted := map[string]bool{}
+	for _, hash := range t.SharesFilesWith {
+		wanted[strings.ToLower(hash)] = true
+	}
+	var out []model.Torrent
+	for _, other := range torrents {
+		if wanted[strings.ToLower(other.Hash)] && other.ServiceID == t.ServiceID && !strings.EqualFold(other.Hash, t.Hash) {
+			out = append(out, other)
+		}
+	}
+	return out
+}
+
+// obligationWarning says when a torrent removed by hand still owes its
+// seeding (kept, a private tracker's time, the minimum ratio): allowed, but
+// said.
+func obligationWarning(t model.Torrent) []string {
+	if t.Obligation == "" {
+		return nil
+	}
+	return []string{t.Name + ": " + t.Obligation + ". Removing it now goes against that."}
 }

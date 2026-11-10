@@ -119,7 +119,7 @@ func (server *Server) buildRemovalFor(kind string, query url.Values) (removalDat
 		serviceID := strings.TrimSpace(query.Get("service_id"))
 		return server.buildMediaRemovalPlan(mediaType, id, serviceID, query.Get("selection") == "1", selectedManagedSet(query["managed_file"]), selectedTorrentQuery(query), selectedUnmanagedSet(query["unmanaged_path"]))
 	case "torrent":
-		return server.buildTorrentRemovalPlan(query.Get("hash"), strings.TrimSpace(query.Get("service_id")), targetQuery(query), selectedManagedSet(query["managed_file"]), selectedUnmanagedSet(query["unmanaged_path"]))
+		return server.buildTorrentRemovalPlan(query.Get("hash"), strings.TrimSpace(query.Get("service_id")), targetQuery(query), selectedManagedSet(query["managed_file"]), selectedUnmanagedSet(query["unmanaged_path"]), selectedTorrentQuery(query))
 	case "unmanaged":
 		return server.buildUnmanagedRemovalPlan(query["path"], selectedTorrentQuery(query))
 	}
@@ -251,6 +251,15 @@ func (server *Server) admitRemoval(form url.Values) (removalAdmission, error) {
 		if found == nil {
 			return removalAdmission{}, fmt.Errorf("torrent not found")
 		}
+		known := map[string]bool{}
+		for _, torrent := range server.inv.TorrentSnapshot() {
+			known[strings.ToLower(torrent.Hash)] = true
+		}
+		for other := range mapFromValues(form["torrent"]) {
+			if !known[other] {
+				return removalAdmission{}, fmt.Errorf("torrent not found: %s", other)
+			}
+		}
 		return removalAdmission{Kind: removal.TorrentObject, Key: hash, Label: found.Name, DryRun: dryRun, ServiceName: found.Client}, nil
 	case "unmanaged":
 		paths := form["path"]
@@ -321,7 +330,7 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 		serviceID := strings.TrimSpace(r.FormValue("service_id"))
 		d, err = server.buildMediaRemovalPlan(mt, id, serviceID, true, selectedManagedSet(r.Form["managed_file"]), mapFromValues(r.Form["torrent"]), map[string]bool{})
 	case "torrent":
-		d, err = server.buildTorrentRemovalPlan(r.FormValue("hash"), strings.TrimSpace(r.FormValue("service_id")), true, map[string]bool{}, map[string]bool{})
+		d, err = server.buildTorrentRemovalPlan(r.FormValue("hash"), strings.TrimSpace(r.FormValue("service_id")), true, map[string]bool{}, map[string]bool{}, mapFromValues(r.Form["torrent"]))
 	case "unmanaged":
 		d, err = server.buildUnmanagedRemovalPlan(r.Form["path"], map[string]bool{})
 	default:
@@ -417,13 +426,17 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 					recordError("torrent " + rt.Torrent.Name + ": kept, as the library's file couldn't be removed")
 					continue
 				}
-				if e := server.inv.RemoveTorrent(ctx, rt.Torrent.Hash, rt.Torrent.ServiceID); e != nil {
-					recordError("torrent " + rt.Torrent.Name + ": " + e.Error())
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent, selectedHashes(d))
+				for _, result := range rr {
+					recordResult(result)
+				}
+				for _, operationError := range ee {
+					recordError(operationError)
+				}
+				mutated = mutated || changed
+				if uncertain {
 					ownerFailed = true
 					mutationUncertain = true
-				} else {
-					mutated = true
-					recordResult("torrent removed: " + rt.Torrent.Name)
 				}
 			}
 			if !ownerFailed {
@@ -437,13 +450,35 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				mutated = mutated || len(rr) > 0
 			}
 		case "torrent":
+			removing := []model.Torrent{}
 			if d.TorrentSelected {
-				if e := server.inv.RemoveTorrent(ctx, d.Hash, d.TorrentServiceID); e != nil {
-					recordError(e.Error())
+				for _, t := range server.inv.TorrentSnapshot() {
+					if strings.EqualFold(t.Hash, d.Hash) && t.ServiceID == d.TorrentServiceID {
+						removing = append(removing, t)
+						break
+					}
+				}
+				if len(removing) == 0 {
+					removing = append(removing, model.Torrent{Hash: d.Hash, ServiceID: d.TorrentServiceID, Name: d.Plan.RequestedLabel})
+				}
+			}
+			for _, rt := range d.Related {
+				if rt.Selected {
+					removing = append(removing, rt.Torrent)
+				}
+			}
+			for _, t := range removing {
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, t, selectedHashes(d))
+				for _, result := range rr {
+					recordResult(result)
+				}
+				for _, operationError := range ee {
+					recordError(operationError)
+				}
+				mutated = mutated || changed
+				if uncertain {
 					mutationUncertain = true
-				} else {
-					mutated = true
-					recordResult("torrent removed by qBittorrent")
+					break
 				}
 			}
 		case "unmanaged":
@@ -455,13 +490,17 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 				if !rt.Selected {
 					continue
 				}
-				if e := server.inv.RemoveTorrent(ctx, rt.Torrent.Hash, rt.Torrent.ServiceID); e != nil {
-					recordError("torrent " + rt.Torrent.Name + ": " + e.Error())
+				rr, ee, changed, uncertain := server.removeTorrentKeepingShared(ctx, d.Plan, rt.Torrent, selectedHashes(d))
+				for _, result := range rr {
+					recordResult(result)
+				}
+				for _, operationError := range ee {
+					recordError(operationError)
+				}
+				mutated = mutated || changed
+				if uncertain {
 					ownerFailed = true
 					mutationUncertain = true
-				} else {
-					mutated = true
-					recordResult("torrent removed: " + rt.Torrent.Name)
 				}
 			}
 			if !ownerFailed {
@@ -625,4 +664,78 @@ func (server *Server) schedulePostRemovalConsistency(historyID int64) error {
 		fmt.Sprintf("Removal operation %d", historyID),
 	)
 	return err
+}
+
+// selectedHashes are the torrents a removal takes: its target and the
+// related torrents ticked.
+func selectedHashes(d removalData) map[string]bool {
+	out := map[string]bool{}
+	if d.TorrentSelected && d.Hash != "" {
+		out[strings.ToLower(d.Hash)] = true
+	}
+	for _, rt := range d.Related {
+		if rt.Selected {
+			out[strings.ToLower(rt.Torrent.Hash)] = true
+		}
+	}
+	return out
+}
+
+// removeTorrentKeepingShared removes a torrent, and its files unless another
+// torrent uses them: the plan keeps a path some owner it lists stays with,
+// and qBittorrent is asked, now, whether a torrent not being removed uses
+// one (a cross-seed added since the plan). With any file kept, the torrent
+// goes without its data, and Overtide deletes the files only it used,
+// each checked again first. qBittorrent out of reach: nothing is removed.
+func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan removal.RemovalPlan, t model.Torrent, selected map[string]bool) (results, errs []string, mutated, uncertain bool) {
+	hash := strings.ToLower(t.Hash)
+	label := t.Name
+	if label == "" {
+		label = hash
+	}
+	var own []removal.FileState
+	var paths []string
+	for _, f := range plan.Files {
+		if f.Owner == removal.TorrentOwner && strings.EqualFold(f.OwnerKey, hash) && f.Exists {
+			own = append(own, f)
+			paths = append(paths, filepath.Clean(f.Path))
+		}
+	}
+	except := map[string]bool{hash: true}
+	for h := range selected {
+		except[strings.ToLower(h)] = true
+	}
+	kept := map[string]bool{}
+	if len(paths) > 0 {
+		live, err := server.inv.TorrentPathsClaimedByOthers(ctx, t.ServiceID, paths, except)
+		if err != nil {
+			return nil, []string{"torrent " + label + ": kept, as qBittorrent couldn't say whether another torrent uses its files: " + err.Error()}, false, true
+		}
+		for _, p := range live {
+			kept[filepath.Clean(p)] = true
+		}
+	}
+	for _, p := range paths {
+		if plan.Kept(p) {
+			kept[p] = true
+		}
+	}
+	if len(kept) == 0 {
+		if err := server.inv.RemoveTorrent(ctx, hash, t.ServiceID); err != nil {
+			return nil, []string{"torrent " + label + ": " + err.Error()}, false, true
+		}
+		return []string{"torrent removed by qBittorrent: " + label}, nil, true, false
+	}
+	if err := server.inv.RemoveTorrentKeepFiles(ctx, hash, t.ServiceID); err != nil {
+		return nil, []string{"torrent " + label + ": " + err.Error()}, false, true
+	}
+	results = append(results, fmt.Sprintf("torrent removed, %d file(s) kept, used by another torrent: %s", len(kept), label))
+	var alone []removal.FileState
+	for _, f := range own {
+		if !kept[filepath.Clean(f.Path)] {
+			alone = append(alone, f)
+		}
+	}
+	rr, ee := server.unlinkVerified(ctx, alone)
+	return append(results, rr...), ee, true, false
 }

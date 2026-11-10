@@ -51,6 +51,13 @@ export interface Consequences {
 /** consequences is what removing the selected actions would do. */
 export function consequences(model: RemovalModel, actions: Set<string>): Consequences {
   interface Group { size: number; links: number; known: Set<string>; selected: Set<string>; facts: { owner: string; ownerKey: string; selected: boolean }[] }
+  // A path goes only when every owner listed for it is selected: two
+  // torrents can seed the very same file.
+  const pathAll = new Map<string, boolean>();
+  for (const file of model.files || []) {
+    const selected = file.always || actions.has(actionKey(file.actionName, file.actionValue));
+    pathAll.set(file.path, (pathAll.get(file.path) ?? true) && selected);
+  }
   const groups = new Map<string, Group>();
   const logicalMedia = new Map<string, number>();
   let selectedFiles = 0;
@@ -71,7 +78,7 @@ export function consequences(model: RemovalModel, actions: Set<string>): Consequ
     group.links = Math.max(group.links, Number(file.links) || 0);
     group.known.add(file.path);
     group.facts.push({ owner: file.owner, ownerKey: file.ownerKey, selected });
-    if (selected) group.selected.add(file.path);
+    if (selected && pathAll.get(file.path)) group.selected.add(file.path);
   }
 
   let reclaimed = 0;

@@ -586,6 +586,28 @@ func (service *Service) RemoveTorrent(ctx context.Context, hash, svcID string) e
 	return client.WithContext(ctx).Remove(hash, true)
 }
 
+// RemoveTorrentKeepFiles removes a torrent from its qBittorrent instance and
+// leaves its files on disk: another torrent seeds some of them, and Overtide
+// deletes the rest itself. It skips the Radarr/Sonarr queue path, which
+// would have the client delete the data.
+func (service *Service) RemoveTorrentKeepFiles(ctx context.Context, hash, svcID string) error {
+	client, err := service.qbittorrentClient(svcID)
+	if err != nil {
+		return err
+	}
+	return client.WithContext(ctx).Remove(hash, false)
+}
+
+// TorrentPathsClaimedByOthers returns which of paths a torrent of svcID's
+// qBittorrent other than those in except uses now, asked of the client.
+func (service *Service) TorrentPathsClaimedByOthers(ctx context.Context, svcID string, paths []string, except map[string]bool) ([]string, error) {
+	client, err := service.qbittorrentClient(svcID)
+	if err != nil {
+		return nil, err
+	}
+	return client.WithContext(ctx).ClaimedByOthers(paths, except)
+}
+
 // removeIncompleteTorrentViaQueue attempts the Radarr/Sonarr queue removal
 // path described on RemoveTorrent. The bool return reports whether it
 // actually removed the torrent; a nil error with false means there was no

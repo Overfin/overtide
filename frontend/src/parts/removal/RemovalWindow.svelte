@@ -189,7 +189,8 @@
 
     {#if v.relatedGroups.length}
       <section class="removal-section">
-        <h3>{v.kind === 'media' ? `Media torrents · ${v.relatedTorrentCount}` : 'Related torrents'}</h3>
+        <h3>{v.kind === 'media' ? `Media torrents · ${v.relatedTorrentCount}` : v.kind === 'torrent' ? 'Torrents using the same files' : 'Related torrents'}</h3>
+        {#if v.kind === 'torrent'}<p class="muted">A file goes only when every torrent using it goes. Tick these to remove them too; left alone, they keep seeding and their files stay.</p>{/if}
         {#if v.kind === 'media'}<p class="muted">{v.selectedTorrentCount} selected for removal · {v.preservedTorrentCount} preserved. Every related torrent may be selected; only the one proven to physically back this media is pre-selected.</p>{/if}
         {#each v.relatedGroups as group, g (g)}
           <div class="removal-group">
