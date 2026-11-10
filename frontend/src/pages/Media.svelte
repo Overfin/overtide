@@ -76,7 +76,7 @@
       <h1>{m.title} {#if m.year}({m.year}){/if}</h1>
       <div class="muted">{m.type}</div>
     </div>
-    <div>
+    <div class="value-block">
       <div class="value">{m.value.toFixed(1)}</div>
       <div class="muted">Overfin value</div>
     </div>

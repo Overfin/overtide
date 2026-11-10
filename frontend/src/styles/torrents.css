@@ -7,7 +7,7 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; }
 .file-row { padding: .5rem 0; border-top: 1px solid var(--border); }
 .file-row:first-of-type { border-top: none; }
 .title-row { display: flex; align-items: center; gap: .75rem; }
-.title-row h1 { flex: 1; }
+.title-row h1 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .selection-bar { display: flex; justify-content: flex-end; margin-top: .75rem; }
 .breakable.name-col { min-width: 11rem; }
 /* Titles have spaces: they wrap between words, never inside one. */

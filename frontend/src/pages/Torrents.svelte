@@ -185,8 +185,8 @@
               <td>{#if t.filesMissing}<span class="warn">files missing</span>{:else}{t.size}{/if}</td>
               <td>
                 {#if t.filesMissing}—
-                {:else if t.crossSeeds && t.groupKnown}{t.groupReclaimable}<br /><span class="muted">with {t.crossSeeds} cross-seed{s(t.crossSeeds)}</span>
-                {:else if t.crossSeeds}{t.reclaimableKnown ? t.reclaimable : '—'}<br /><span class="muted">{t.crossSeeds} cross-seed{s(t.crossSeeds)}</span>
+                {:else if t.crossSeeds && t.groupKnown}{t.groupReclaimable}<br /><span class="muted">with {t.crossSeeds} cross&#8209;seed{s(t.crossSeeds)}</span>
+                {:else if t.crossSeeds}{t.reclaimableKnown ? t.reclaimable : '—'}<br /><span class="muted">{t.crossSeeds} cross&#8209;seed{s(t.crossSeeds)}</span>
                 {:else if t.reclaimableKnown}{t.reclaimable}{:else}—{/if}
               </td>
               <td class="num">{t.ratio}</td>
