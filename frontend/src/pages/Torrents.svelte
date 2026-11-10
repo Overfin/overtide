@@ -174,7 +174,7 @@
             <tr>
               <td><Badge kind={statusKinds[t.status] ?? 'plain'}>{t.status}</Badge></td>
               <td class="breakable name-col"><a href={`/torrents/${t.hash}?service_id=${encodeURIComponent(t.serviceId)}`}><strong>{t.name}</strong></a></td>
-              <td class="breakable">
+              <td class="media-col">
                 {#if t.media.length}
                   {#each t.media as m, i (i)}{#if i}<br />{/if}<a href={mediaHref(m)}>{m.title} {#if m.year}({m.year}){/if}</a>{/each}
                 {:else if t.formerMedia.length}
