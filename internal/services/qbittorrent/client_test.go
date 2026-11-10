@@ -358,6 +358,28 @@ func TestSyncReadsPrivateFlag(t *testing.T) {
 	}
 }
 
+// A torrent removed and added again since the last sync comes in both
+// lists: it's there now, with what qBittorrent says of it now.
+func TestSyncKeepsATorrentAddedAgain(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"rid": 2, "torrents": map[string]any{
+			"aaa": map[string]any{"name": "Again", "save_path": "/data/downloads/complete"},
+		}, "torrents_removed": []string{"aaa", "bbb"}})
+	}))
+	defer srv.Close()
+	previous := map[string]model.Torrent{"aaa": {Hash: "aaa", Name: "Before", SavePath: "/old"}, "bbb": {Hash: "bbb"}, "ccc": {Hash: "ccc"}}
+	torrents, _, err := New("qBittorrent", srv.URL, "", "", "token").Sync(previous, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := torrents["aaa"]; !ok || got.Name != "Again" || got.SavePath != "/data/downloads/complete" {
+		t.Fatalf("added again: %+v %v", got, ok)
+	}
+	if _, ok := torrents["bbb"]; ok || len(torrents) != 2 {
+		t.Fatalf("removed: %v", torrents)
+	}
+}
+
 // Torrents each in a folder of their own, side by side under one base
 // folder (qui's cross-seeds), are stored in that base folder; a lone save
 // folder stays as it is.

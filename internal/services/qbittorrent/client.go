@@ -382,6 +382,11 @@ func (client *Client) Sync(previous map[string]model.Torrent, rid int64) (map[st
 	if sr.FullUpdate {
 		out = map[string]model.Torrent{}
 	}
+	// Removals first: a torrent removed and added again since the last
+	// sync is in both lists, and it's there now.
+	for _, h := range sr.TorrentsRemoved {
+		delete(out, strings.ToLower(strings.TrimSpace(h)))
+	}
 	for h, x := range sr.Torrents {
 		key := strings.ToLower(strings.TrimSpace(h))
 		t := out[key]
@@ -389,9 +394,6 @@ func (client *Client) Sync(previous map[string]model.Torrent, rid int64) (map[st
 		t.Hash = key
 		applySync(&t, x)
 		out[key] = t
-	}
-	for _, h := range sr.TorrentsRemoved {
-		delete(out, strings.ToLower(strings.TrimSpace(h)))
 	}
 	return out, sr.RID, nil
 }
