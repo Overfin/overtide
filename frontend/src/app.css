@@ -12,3 +12,5 @@
 /* Long names without spaces (torrent and file names) break anywhere, so a
    table or a card keeps to the page instead of pushing out of it. */
 .breakable { overflow-wrap: anywhere; min-width: 6rem; }
+/* A filter bar's Clear link sits level with the fields' text. */
+.toolbar > a { line-height: 2.5rem; }

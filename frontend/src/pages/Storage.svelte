@@ -88,7 +88,7 @@
           {#if d.name}<h2>{d.name}</h2>{/if}
           <p>{identity(d)}</p>
         </div>
-        <div class="actions-row">
+        <div class="actions-row device-actions">
           {#if planShown(d)}
             <button type="button" class="small ghost" aria-label="Cleanup plan" title="Cleanup plan" onclick={() => (planFor = d.path)}>📋</button>
           {/if}
