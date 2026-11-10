@@ -40,13 +40,13 @@
   {#each data.groups as g (g.name)}
     <h2>{g.name}</h2>
     <div class="table-wrap">
-      <table>
+      <table class="task-table">
         <thead><tr><th>Task</th><th>Schedule</th><th>Last run</th><th>Duration</th><th>Next run</th><th>Status</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
         <tbody>
           {#each g.tasks as t (t.id)}
             <tr>
               <td><b>{t.name}</b><br /><span class="muted">{t.description}</span></td>
-              <td>{t.schedule}</td>
+              <td class="nowrap">{t.schedule}</td>
               <td class="nowrap">{stamp(t.lastFinished)}</td>
               <td>{t.duration}</td>
               <td class="nowrap">{t.scheduled ? stamp(t.nextRun) : '—'}</td>
@@ -69,7 +69,7 @@
   {#if data.workflows.length}
     <h2>Consistency workflows</h2>
     <div class="table-wrap">
-      <table>
+      <table class="workflow-table">
         <thead><tr><th>Workflow</th><th>Revision</th><th>Progress</th><th>Status</th><th>Updated</th></tr></thead>
         <tbody>
           {#each data.workflows as w, i (i)}

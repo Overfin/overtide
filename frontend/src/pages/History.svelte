@@ -193,7 +193,7 @@
         <tbody>
           {#each data.rows as r (rowKey(r))}
             <tr class:opened={open === rowKey(r)}>
-              <td class="when">{stamp(r.at)}</td>
+              <td class="when">{#each stamp(r.at).split(' ') as part, i (i)}{#if i}{' '}{/if}<span class="nowrap">{part}</span>{/each}</td>
               <td class="what">{#if r.action === 'added'}<span class="added">Added</span>{:else}<span class="removed">Removed</span>{/if}</td>
               <td class="title">
                 <button type="button" class="link" aria-expanded={open === rowKey(r)} onclick={() => toggle(r)}>{named(r)}</button>

@@ -144,7 +144,7 @@
             <td><a href={`/library/${m.type}/${m.sourceId}?service_id=${encodeURIComponent(m.serviceId)}`}>{m.title} {#if m.year}({m.year}){/if}</a></td>
             <td class="num">{m.value.toFixed(1)}</td>
             <td>{m.type}</td>
-            <td class="num">{m.size}</td>
+            <td class="num nowrap">{m.size}</td>
             <td class="num">{m.torrents}</td>
             <td class="row-actions">
               {#if m.removable}

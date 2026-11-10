@@ -167,7 +167,7 @@
         {#each data.files as f, i (f.paths[0]?.path ?? i)}
           <tr class:selected={picked.includes(i)}>
             <td><input type="checkbox" value={i} bind:group={picked} aria-label={`Select ${f.paths[0]?.short ?? ''}`} /></td>
-            <td>{#each f.paths as p (p.path)}<div class="mono" title={p.path}>{p.short}</div>{/each}</td>
+            <td class="breakable name-col">{#each f.paths as p (p.path)}<div class="mono" title={p.path}>{p.short}</div>{/each}</td>
             <td class="nowrap">{f.size}</td>
             <td class="nowrap">{f.reclaimableKnown ? f.reclaimable : '—'}</td>
             <td>

@@ -12,3 +12,14 @@
    table keeps to the page. */
 .history-object, .history-files { overflow-wrap: anywhere; }
 .history-object { min-width: 14rem; }
+/* Tasks: a task's name and description keep a readable width on a phone
+   (the table scrolls), and the groups' tables share their columns, so
+   they line up. */
+.task-table td:first-child, .workflow-table td:first-child { min-width: 11rem; }
+@media (min-width: 861px) {
+  .task-table th:nth-child(2) { width: 8.5rem; }
+  .task-table th:nth-child(3), .task-table th:nth-child(5) { width: 11.5rem; }
+  .task-table th:nth-child(4) { width: 6.5rem; }
+  .task-table th:nth-child(6) { width: 9rem; }
+  .task-table th:nth-child(7) { width: 7.5rem; }
+}

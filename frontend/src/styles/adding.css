@@ -8,3 +8,12 @@
 @media (prefers-reduced-motion: reduce) { .pulse.on { animation: none; } }
 .download + .download, .next + .next { margin-top: .6rem; }
 .how p { color: var(--muted); font-size: .9rem; }
+/* Waiting, Seasons & episodes: on a phone, a row is its title and date,
+   with the last result under them, instead of four squeezed columns. */
+@media (max-width: 600px) {
+  .waiting-table thead { display: none; }
+  .waiting-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .75rem; padding: .6rem .8rem; border-top: 1px solid var(--border); }
+  .waiting-table tbody tr:first-child { border-top: none; }
+  .waiting-table td { padding: 0; border: none; }
+  .waiting-table td:last-child { grid-column: 1 / -1; margin-top: .25rem; font-size: .88rem; }
+}

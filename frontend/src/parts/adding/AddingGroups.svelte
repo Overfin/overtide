@@ -7,6 +7,7 @@
   import { get } from '../../lib/api';
   import type { Adding } from '../../lib/types-adding';
   import { groups, kindLabels, sourceLabels, short } from '../../lib/words-adding';
+  import '../../styles/adding.css';
 
   let {
     states,
@@ -70,7 +71,7 @@
       <summary>{about.label} <Badge kind="plain">{group.count}</Badge></summary>
       {#if about.hint}<p class="hint">{about.hint}</p>{/if}
       <div class="table-wrap">
-        <table>
+        <table class="waiting-table">
           <thead><tr><th>Title</th><th class="hide-narrow">Source</th><th>{about.when}</th><th>Last result</th></tr></thead>
           <tbody>
             {#each group.rows as row, i (i)}
