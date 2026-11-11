@@ -36,7 +36,7 @@ type homeData struct {
 	Services             []inventory.ServiceStatus
 	// ServiceTypes are the services' types, by ID.
 	ServiceTypes map[string]string
-	Stats                store.CleanupStats
+	Stats        store.CleanupStats
 }
 
 func (server *Server) dashboardSnapshot() homeData {

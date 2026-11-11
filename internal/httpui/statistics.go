@@ -148,7 +148,7 @@ func periodStarts(since, today string, period store.Period) []string {
 	to, _ := time.Parse(time.DateOnly, today)
 	switch period {
 	case store.ByWeek:
-		from = from.AddDate(0, 0, -((int(from.Weekday())+6)%7))
+		from = from.AddDate(0, 0, -((int(from.Weekday()) + 6) % 7))
 	case store.ByMonth:
 		from = time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC)
 	}
