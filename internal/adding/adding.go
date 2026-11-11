@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -126,6 +127,10 @@ type Entry struct {
 	Source     Source          `json:"source"`
 	// Seasons are a series' seasons to add, as Overfin suggests them.
 	Seasons []int `json:"seasons,omitempty"`
+	// Grabbed are the seasons of a series Overfin suggested sent to
+	// download already: such a series comes a season at a time, the lowest
+	// first (bySeason).
+	Grabbed []int `json:"grabbed,omitempty"`
 	// Categories are Overfin's categories it fits: where it goes depends
 	// on them (config.DestinationFor).
 	Categories []string `json:"categories,omitempty"`
@@ -155,13 +160,57 @@ type Entry struct {
 
 func (entry Entry) id() string { return entry.ServiceID + "|" + entry.Key }
 
-// searches is how many searches a try of the entry asks for: one for a
-// film, one per season for a series.
+// searches is how many searches a try of the entry asks for, and how many
+// titles it counts for in the day's limit: one for a film, one per season
+// tried for a series.
 func (entry Entry) searches() int {
-	if entry.Kind == model.Series && len(entry.Seasons) > 0 {
-		return len(entry.Seasons)
+	if seasons := entry.trySeasons(); entry.Kind == model.Series && len(seasons) > 0 {
+		return len(seasons)
 	}
 	return 1
+}
+
+// bySeason reports whether the entry is a series Overfin suggested: it
+// comes a season at a time, the lowest first, each counted as a title, so
+// a long series never comes all at once. A wish keeps its seasons
+// together, in its turn.
+func (entry Entry) bySeason() bool {
+	return entry.Kind == model.Series && entry.Source == FromOverfin
+}
+
+// left are the suggested seasons not grabbed yet, the lowest first.
+func (entry Entry) left() []int {
+	var out []int
+	for _, n := range entry.Seasons {
+		if !slices.Contains(entry.Grabbed, n) && !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// trySeasons are the seasons a try of the entry is about: all of them, or
+// for a series that comes a season at a time, the lowest not grabbed yet
+// (once all are, the last one, followed until it's imported).
+func (entry Entry) trySeasons() []int {
+	if !entry.bySeason() {
+		return entry.Seasons
+	}
+	if left := entry.left(); len(left) > 0 {
+		return left[:1]
+	}
+	if len(entry.Grabbed) > 0 {
+		return entry.Grabbed[len(entry.Grabbed)-1:]
+	}
+	return entry.Seasons
+}
+
+// filling reports whether a series that comes a season at a time is on
+// its way: a season grabbed, more to come, and none failed since. It goes
+// first among Overfin's suggestions until it's done.
+func (entry Entry) filling() bool {
+	return entry.bySeason() && entry.waiting() && len(entry.Grabbed) > 0 && len(entry.left()) > 0 && entry.Tries == 0
 }
 
 // waiting reports whether the entry still waits to be added: what the
@@ -571,6 +620,10 @@ func sortForTries(entries []Entry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].Source.rank() != entries[j].Source.rank() {
 			return entries[i].Source.rank() < entries[j].Source.rank()
+		}
+		// A series on its way, a season at a time, before the others.
+		if entries[i].filling() != entries[j].filling() {
+			return entries[i].filling()
 		}
 		return entries[i].Position < entries[j].Position
 	})

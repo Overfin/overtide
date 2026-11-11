@@ -176,9 +176,8 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 		}
 		keys := slices.Sorted(maps.Keys(seasons))
 		if !fresh {
-			sort.SliceStable(keys, func(i, j int) bool {
-				a, b := seasons[keys[i]], seasons[keys[j]]
-				return driver.SeasonValue(ctx, cfg, svc.ID, a.SeriesID, a.Season) > driver.SeasonValue(ctx, cfg, svc.ID, b.SeriesID, b.Season)
+			keys = seasonTurns(state, seasons, keys, func(seriesID, season int) float64 {
+				return driver.SeasonValue(ctx, cfg, svc.ID, seriesID, season)
 			})
 		}
 		for _, key := range keys {
@@ -551,4 +550,43 @@ func (driver *Driver) packFailed(pack *SeasonPack) {
 	pack.Tries++
 	pack.NextTry = driver.now().Add(tries.RetryDelay(pack.Tries))
 	pack.Release, pack.GrabbedAt, pack.DownloadID = "", time.Time{}, ""
+}
+
+// seasonTurns orders a series' incomplete seasons so a series comes a
+// season at a time, the lowest first: of each series, only its lowest
+// season still to search has its turn (the next once it's grabbed), and
+// the series on their way (a season grabbed or done already) go before the
+// others, then the most valued first.
+func seasonTurns(state *State, seasons map[string]*SeasonPack, keys []string, value func(seriesID, season int) float64) []string {
+	lowest := map[int]*SeasonPack{}
+	started := map[int]bool{}
+	for _, pack := range state.Seasons {
+		if pack.Done || !pack.GrabbedAt.IsZero() {
+			started[pack.SeriesID] = true
+		}
+	}
+	for _, key := range keys {
+		pack := seasons[key]
+		if pack.Done || pack.short() || !pack.GrabbedAt.IsZero() || pack.Tries >= tries.Max {
+			continue // not searched for now: no turn to hold
+		}
+		if l := lowest[pack.SeriesID]; l == nil || pack.Season < l.Season {
+			lowest[pack.SeriesID] = pack
+		}
+	}
+	var out []string
+	for _, pack := range lowest {
+		out = append(out, seasonKey(pack.SeriesID, pack.Season))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := seasons[out[i]], seasons[out[j]]
+		if started[a.SeriesID] != started[b.SeriesID] {
+			return started[a.SeriesID]
+		}
+		if va, vb := value(a.SeriesID, a.Season), value(b.SeriesID, b.Season); va != vb {
+			return va > vb
+		}
+		return out[i] < out[j]
+	})
+	return out
 }

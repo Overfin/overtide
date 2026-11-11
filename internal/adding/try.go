@@ -24,7 +24,7 @@ func (service *Service) arrFor(ctx context.Context, entry *Entry) (tries.Title, 
 		if err != nil {
 			return tries.Title{}, err
 		}
-		return sonarrdriver.Title(client.WithContext(ctx), entry.ExternalID, entry.Seasons, service.now), nil
+		return sonarrdriver.Title(client.WithContext(ctx), entry.ExternalID, entry.trySeasons(), service.now), nil
 	}
 	client, err := service.inv.RadarrClient(entry.ServiceID)
 	if err != nil {
@@ -169,10 +169,29 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 // comes in. It's imported all the same (neither checks monitoring to
 // import). If unmonitoring fails, follow tries again.
 func (service *Service) downloading(entry *Entry, a tries.Title, dryRun bool) {
-	entry.State, entry.Result = Downloading, "Downloading"
 	if !dryRun {
 		if err := service.recordStarted(entry.searches()); err != nil {
 			log.Printf("[adding] count the download of %s: %v", entry.Title, err)
+		}
+	}
+	// A series that comes a season at a time, with seasons left: this one
+	// goes its way (Sonarr imports it), and the next is tried at once, the
+	// series first among the suggestions.
+	if season := entry.trySeasons(); entry.bySeason() && len(entry.left()) > 1 {
+		if !dryRun {
+			if err := a.Monitor(entry.ArrID, false); err != nil {
+				log.Printf("[adding] unmonitor %s season %d once grabbed: %v", entry.Title, season[0], err)
+			}
+		}
+		entry.Grabbed = append(entry.Grabbed, season[0])
+		entry.State, entry.Tries, entry.NextTry = Waiting, 0, service.now()
+		entry.Result = fmt.Sprintf("Season %d downloading; season %d next", season[0], entry.left()[0])
+		return
+	}
+	entry.State, entry.Result = Downloading, "Downloading"
+	if entry.bySeason() {
+		if season := entry.trySeasons(); len(season) == 1 && len(entry.left()) == 1 {
+			entry.Result = fmt.Sprintf("Downloading season %d, the last", season[0])
 		}
 	}
 	entry.Unmonitored = !dryRun && a.Monitor(entry.ArrID, false) == nil

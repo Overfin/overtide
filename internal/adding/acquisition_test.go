@@ -54,13 +54,14 @@ func TestSeasonsAndTheDailyLimit(t *testing.T) {
 	if times, _ := service.started(); len(times) != 3 {
 		t.Errorf("counted %d", len(times))
 	}
-	// A day later there's room for one again: the most valued.
+	// A day later there's room for one again: the series' lowest season,
+	// though its next is more valued (a series comes a season at a time).
 	service.now = func() time.Time { return now.Add(25 * time.Hour) }
 	if err := service.recordStarted(1); err != nil {
 		t.Fatal(err)
 	}
 	used, err = service.replaceSeasons(context.Background(), cfg, 5, false, false)
-	if err != nil || used != 1 || !slices.Equal(fake.Searches(), []string{"grab fresh", "grab more"}) {
+	if err != nil || used != 1 || !slices.Equal(fake.Searches(), []string{"grab fresh", "grab less"}) {
 		t.Fatalf("after a day: %d, %v, %v", used, err, fake.Searches())
 	}
 }

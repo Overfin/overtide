@@ -2,6 +2,7 @@ package adding
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -77,14 +78,40 @@ func TestRunHoldsEveryTitleAtTheDailyLimit(t *testing.T) {
 }
 
 // A download counts once per season, wherever it came from; one in dry run
-// doesn't count.
+// doesn't count. A series Overfin suggested comes a season at a time: its
+// first season counts, then it waits, first in line, for its next; a wish
+// keeps its seasons together.
 func TestDownloadsCounted(t *testing.T) {
 	service := newTestService(t, config.Config{}, *arrfake.Day("2026-10-25"))
 	a := tries.Title{Monitor: func(int, bool) error { return nil }}
-	service.downloading(&Entry{Source: FromOverfin, Kind: "series", Seasons: []int{1, 2}, ArrID: 1}, a, false)
+	suggested := &Entry{Source: FromOverfin, Kind: "series", Seasons: []int{2, 1}, ArrID: 1}
+	service.downloading(suggested, a, false)
+	service.downloading(&Entry{Source: FromRequest, Kind: "series", Seasons: []int{1, 2}, ArrID: 4}, a, false)
 	service.downloading(&Entry{Source: FromRequest, Kind: "movie", ArrID: 2}, a, false)
 	service.downloading(&Entry{Source: FromOverfin, Kind: "movie", ArrID: 3}, a, true)
-	if times, err := service.started(); err != nil || len(times) != 3 {
+	if times, err := service.started(); err != nil || len(times) != 4 {
 		t.Fatalf("counted %d, %v", len(times), err)
+	}
+	if suggested.State != Waiting || !slices.Equal(suggested.Grabbed, []int{1}) || !slices.Equal(suggested.trySeasons(), []int{2}) || !suggested.filling() {
+		t.Fatalf("after its first season: %+v", suggested)
+	}
+	// Its last season: followed until imported, as any title.
+	service.downloading(suggested, a, false)
+	if suggested.State != Downloading || !slices.Equal(suggested.trySeasons(), []int{2}) || suggested.filling() {
+		t.Fatalf("after its last season: %+v", suggested)
+	}
+	// On its way, it goes before the other suggestions; a failure loses
+	// that place.
+	list := []Entry{{Key: "a", Source: FromOverfin, Kind: "series", Position: 0, Seasons: []int{1}, State: Waiting},
+		{Key: "b", Source: FromOverfin, Kind: "series", Position: 5, Seasons: []int{1, 2}, Grabbed: []int{1}, State: Waiting},
+		{Key: "c", Source: FromRequest, Kind: "movie", Position: 9, State: Waiting}}
+	sortForTries(list)
+	if list[0].Key != "c" || list[1].Key != "b" {
+		t.Fatalf("order: %+v", list)
+	}
+	list[1].Tries = 1
+	sortForTries(list)
+	if list[1].Key != "a" {
+		t.Fatalf("after a failure: %+v", list)
 	}
 }
