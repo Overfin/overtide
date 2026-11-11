@@ -517,3 +517,15 @@ func (client *Client) EpisodeOrders(tmdbID int) (*EpisodeOrders, error) {
 	}
 	return &answer, nil
 }
+
+// Server asks which Overfin answers: its version (GET /apps/v1/server).
+// An Overfin older than that route answers ErrNotFound-like errors.
+func (client *Client) Server() (string, error) {
+	var out struct {
+		Version string `json:"version"`
+	}
+	if err := client.get("/apps/v1/server", nil, &out); err != nil {
+		return "", err
+	}
+	return out.Version, nil
+}

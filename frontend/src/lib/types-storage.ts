@@ -81,8 +81,8 @@ export interface Home {
   obsoleteKnown: number;
   obsoleteReclaimable: number;
   unmanagedError?: string;
-  services: { name: string; type: string; ok: boolean }[];
-  stats: { reclaimedBytes: number; runs: number; mediaRemoved: number; torrentsRemoved: number; mediaBytes: number; last30Bytes: number };
+  services: { name: string; type: string; ok: boolean; state: string; version?: string }[];
+  stats: { reclaimedBytes: number; runs: number; mediaRemoved: number; torrentsRemoved: number; mediaBytes: number; last30Bytes: number; addedFiles: number; addedBytes: number; last30AddedFiles: number; last30AddedBytes: number };
 }
 
 /** StatsDevice is GET /api/storage/stats's: a device's bytes only. */

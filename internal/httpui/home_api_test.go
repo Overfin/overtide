@@ -46,9 +46,24 @@ func TestHomeShowsStorageSummaryOnly(t *testing.T) {
 	}
 }
 
+// Home lists the services with their type and their state: as they say it
+// once asked (inventory.CheckHealth), as Overtide's last call went before.
 func TestHomeShowsServicesSummary(t *testing.T) {
-	out := homeJSONFrom(homeData{Services: []inventory.ServiceStatus{{Name: "Movies", Configured: true, OK: true}, {Name: "Series", Configured: true}}})
-	if len(out.Services) != 2 || out.Services[0] != (homeServiceJSON{Name: "Movies", OK: true}) || out.Services[1].OK {
+	out := homeJSONFrom(homeData{
+		Services: []inventory.ServiceStatus{
+			{ID: "r", Name: "Movies", Configured: true, OK: true},
+			{ID: "s", Name: "Series", Configured: true},
+			{ID: "q", Name: "Torrents", Configured: true, OK: true},
+		},
+		ServiceTypes: map[string]string{"r": "radarr", "s": "sonarr", "q": "qbittorrent"},
+		Health:       map[string]inventory.ServiceHealth{"q": {State: inventory.StateWarnings, Version: "5.0.1", Problems: []string{"Firewalled"}}},
+	})
+	want := []homeServiceJSON{
+		{Name: "Movies", Type: "radarr", OK: true, State: inventory.StateRunning},
+		{Name: "Series", Type: "sonarr", State: inventory.StateDown},
+		{Name: "Torrents", Type: "qbittorrent", OK: true, State: inventory.StateWarnings, Version: "5.0.1"},
+	}
+	if len(out.Services) != 3 || out.Services[0] != want[0] || out.Services[1] != want[1] || out.Services[2] != want[2] {
 		t.Fatalf("services: %+v", out.Services)
 	}
 }

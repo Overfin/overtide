@@ -16,6 +16,9 @@ type homeServiceJSON struct {
 	// Type is the kind of service: radarr, sonarr, qbittorrent, overfin…
 	Type string `json:"type"`
 	OK   bool   `json:"ok"`
+	// State and Version are what the service says of itself.
+	State   string `json:"state"`
+	Version string `json:"version,omitempty"`
 }
 
 type homeStatsJSON struct {
@@ -25,6 +28,11 @@ type homeStatsJSON struct {
 	TorrentsRemoved int64 `json:"torrentsRemoved"`
 	MediaBytes      int64 `json:"mediaBytes"`
 	Last30Bytes     int64 `json:"last30Bytes"`
+	// What came: the files imported, all along and in the last 30 days.
+	AddedFiles       int64 `json:"addedFiles"`
+	AddedBytes       int64 `json:"addedBytes"`
+	Last30AddedFiles int64 `json:"last30AddedFiles"`
+	Last30AddedBytes int64 `json:"last30AddedBytes"`
 }
 
 type homeJSON struct {
@@ -60,7 +68,8 @@ func homeJSONFrom(d homeData) homeJSON {
 		TotalTorrents: d.TotalTorrents, Current: d.Current, Superseded: d.Superseded, Orphaned: d.Orphaned, Unassociated: d.Unassociated,
 		ObsoleteKnown: d.ObsoleteKnown, ObsoleteReclaimable: d.ObsoleteReclaimable, UnmanagedError: d.UnmanagedError, Services: []homeServiceJSON{},
 		Stats: homeStatsJSON{ReclaimedBytes: d.Stats.ReclaimedBytes, Runs: d.Stats.Runs, MediaRemoved: d.Stats.MediaRemoved,
-			TorrentsRemoved: d.Stats.TorrentsRemoved, MediaBytes: d.Stats.MediaBytes, Last30Bytes: d.Stats.Last30Bytes},
+			TorrentsRemoved: d.Stats.TorrentsRemoved, MediaBytes: d.Stats.MediaBytes, Last30Bytes: d.Stats.Last30Bytes,
+			AddedFiles: d.Added.Files, AddedBytes: d.Added.Bytes, Last30AddedFiles: d.Added.Last30Files, Last30AddedBytes: d.Added.Last30Bytes},
 	}
 	if d.LastErr != nil {
 		out.Error = d.LastErr.Error()
@@ -69,7 +78,9 @@ func homeJSONFrom(d homeData) homeJSON {
 		out.Devices = append(out.Devices, deviceJSON(view, false))
 	}
 	for _, svc := range d.Services {
-		out.Services = append(out.Services, homeServiceJSON{Name: svc.Name, Type: d.ServiceTypes[svc.ID], OK: svc.OK})
+		row := homeServiceJSON{Name: svc.Name, Type: d.ServiceTypes[svc.ID], OK: svc.OK}
+		row.State, row.Version, _ = serviceState(d.Health, svc.ID, svc.OK)
+		out.Services = append(out.Services, row)
 	}
 	return out
 }

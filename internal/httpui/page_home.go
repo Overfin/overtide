@@ -34,9 +34,12 @@ type homeData struct {
 	UnmanagedAvailable   bool
 	UnmanagedError       string
 	Services             []inventory.ServiceStatus
-	// ServiceTypes are the services' types, by ID.
+	// ServiceTypes are the services' types, by ID; Health, their states.
 	ServiceTypes map[string]string
+	Health       map[string]inventory.ServiceHealth
 	Stats        store.CleanupStats
+	// Added is what was imported, all along and in the last 30 days.
+	Added struct{ Files, Bytes, Last30Files, Last30Bytes int64 }
 }
 
 func (server *Server) dashboardSnapshot() homeData {
@@ -66,7 +69,7 @@ func (server *Server) dashboardSnapshot() homeData {
 			d.LastErr = notice(fmt.Sprintf("Automatic removal planning paused. Overfin: %s; File topology: %s", reliability.Overfin, reliability.FileModel))
 		}
 	}
-	d.ServiceTypes = map[string]string{}
+	d.ServiceTypes, d.Health = map[string]string{}, server.inv.Health()
 	for _, svc := range cfg.Services {
 		d.ServiceTypes[svc.ID] = svc.Type
 	}
@@ -113,6 +116,8 @@ func (server *Server) dashboardSnapshot() homeData {
 	applyUnmanagedSummary(&d, ufs, unmanagedUpdated, ue)
 	if db := server.inv.Store(); db != nil {
 		d.Stats, _ = db.CleanupStatistics()
+		d.Added.Files, d.Added.Bytes, _ = db.ImportTotals("")
+		d.Added.Last30Files, d.Added.Last30Bytes, _ = db.ImportTotals(store.Today(time.Now().AddDate(0, 0, -29)))
 	}
 	server.homeRevision = revision
 	server.homeCache = d

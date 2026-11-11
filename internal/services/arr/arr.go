@@ -413,3 +413,32 @@ func ExclusionAlreadyAdded(err error) bool {
 	}
 	return false
 }
+
+// Problem is one of the health checks Radarr, Sonarr or Prowlarr report
+// failing: a warning or an error, in their words.
+type Problem struct {
+	Type    string `json:"type"` // notice, warning, error
+	Message string `json:"message"`
+}
+
+// Health asks the service its version and its failing health checks, on
+// its API's version (v3 for Radarr and Sonarr, v1 for Prowlarr).
+func (client *Client) Health(apiVersion string) (string, []Problem, error) {
+	var status struct {
+		Version string `json:"version"`
+	}
+	if err := client.Send(http.MethodGet, "/api/"+apiVersion+"/system/status", nil, &status); err != nil {
+		return "", nil, err
+	}
+	var checks []Problem
+	if err := client.Send(http.MethodGet, "/api/"+apiVersion+"/health", nil, &checks); err != nil {
+		return status.Version, nil, nil // the version says it runs
+	}
+	var out []Problem
+	for _, c := range checks {
+		if c.Type == "warning" || c.Type == "error" {
+			out = append(out, c)
+		}
+	}
+	return status.Version, out, nil
+}

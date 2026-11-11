@@ -7,6 +7,11 @@ export interface ServiceRow {
   id: string;
   name: string;
   ok: boolean;
+  /** type is the app (radarr…); state, version and problems, what it says of itself. */
+  type: string;
+  state: string;
+  version?: string;
+  problems?: string[];
   message?: string;
   checkedAt?: string;
   roots: string[];

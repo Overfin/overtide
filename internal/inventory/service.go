@@ -42,8 +42,11 @@ type Reliability struct {
 }
 
 type Service struct {
-	cfg              config.Config
-	mu               sync.RWMutex
+	cfg config.Config
+	mu  sync.RWMutex
+	// health is each service's own state, by ID (CheckHealth).
+	healthMu         sync.RWMutex
+	health           map[string]ServiceHealth
 	items            []model.Media
 	torrents         []model.Torrent
 	unmanaged        []model.UnmanagedFile

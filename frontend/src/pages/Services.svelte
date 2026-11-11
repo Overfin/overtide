@@ -3,6 +3,7 @@
      (category: torrentclient, medialibrary, or any other for every type). -->
 <script lang="ts">
   import { PageHead, Card, Badge, Loading, Notice } from '@overfin/ui';
+  import { app, folders, states } from '../lib/words-services';
   import { get } from '../lib/api';
   import { follow } from '../lib/live.svelte';
   import { params, go, route } from '../lib/router.svelte';
@@ -49,7 +50,7 @@
   }
 </script>
 
-<PageHead title="Services" description="The apps Overtide works with, and whether it can reach them.">
+<PageHead title="Services" description="The apps Overtide works with, and how each one says it is doing: its version, and the problems it reports.">
   {#snippet actions()}<button type="button" class="primary" onclick={() => (adding = '')}>Add service</button>{/snippet}
 </PageHead>
 
@@ -63,10 +64,14 @@
   <div class="cards">
     {#each services as s (s.id)}
       <Card title={s.name}>
-        {#snippet badge()}<Badge kind={s.ok ? 'ok' : 'err'}>{s.ok ? 'Connected' : 'Unavailable'}</Badge>{/snippet}
-        {#if s.message}<div class="hint">{s.message}</div>{/if}
+        {#snippet badge()}<Badge kind={states[s.state]?.kind ?? 'err'}>{states[s.state]?.label ?? s.state}</Badge>{/snippet}
+        <div><b>{app(s.type, s.version)}</b></div>
+        {#if s.problems?.length}
+          <ul class="list">{#each s.problems as p, i (i)}<li class="hint">{p}</li>{/each}</ul>
+        {:else if s.state !== 'running' && s.message}<div class="hint">{s.message}</div>{/if}
         {#if s.checkedAt}<div class="hint">Checked {updated(s.checkedAt)}</div>{/if}
         {#if s.roots.length}
+          <div class="label spaced">{folders(s.type)}</div>
           <ul class="list">
             {#each s.roots as root (root)}<li><div class="mono" title={root}>{shortPath(root)}</div></li>{/each}
           </ul>

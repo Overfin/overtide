@@ -101,3 +101,8 @@ func (client *Client) Validate() error {
 	var status map[string]any
 	return client.api.Get("/api/v1/system/status", &status)
 }
+
+// Health asks Prowlarr its version and its failing health checks.
+func (client *Client) Health() (string, []arr.Problem, error) {
+	return client.api.Health("v1")
+}

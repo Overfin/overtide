@@ -868,3 +868,30 @@ func (client *Client) StorageRoots(torrents map[string]model.Torrent) ([]RootPat
 
 // StatusCode is the HTTP status qBittorrent answered.
 func (e *StatusError) StatusCode() int { return e.Code }
+
+// Health asks qBittorrent its version and its connection state:
+// "connected", "firewalled" (no incoming connections) or "disconnected".
+func (client *Client) Health() (version, connection string, err error) {
+	if err := client.login(); err != nil {
+		return "", "", err
+	}
+	var info struct {
+		ConnectionStatus string `json:"connection_status"`
+	}
+	if err := client.get("/api/v2/transfer/info", &info); err != nil {
+		return "", "", err
+	}
+	req, _ := http.NewRequestWithContext(client.requestContext(), http.MethodGet, client.base+"/api/v2/app/version", nil)
+	if client.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+client.apiKey)
+	}
+	req.Header.Set("Referer", client.base)
+	if r, err := client.hc.Do(req); err == nil {
+		b, _ := io.ReadAll(io.LimitReader(r.Body, 64))
+		r.Body.Close()
+		if r.StatusCode/100 == 2 {
+			version = strings.TrimPrefix(strings.TrimSpace(string(b)), "v")
+		}
+	}
+	return version, info.ConnectionStatus, nil
+}

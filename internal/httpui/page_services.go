@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"github.com/overfin/overtide/internal/inventory"
 	"log"
 	"net/http"
 	"net/url"
@@ -88,6 +89,24 @@ type serviceRow struct {
 	CheckedAt time.Time `json:"checkedAt,omitzero"`
 	// Roots are the storage paths the service's own adapter reported.
 	Roots []string `json:"roots"`
+	// Type is the kind of service (radarr, sonarr…); State, Version and
+	// Problems are what the service says of itself (serviceState).
+	Type     string   `json:"type"`
+	State    string   `json:"state"`
+	Version  string   `json:"version,omitempty"`
+	Problems []string `json:"problems,omitempty"`
+}
+
+// serviceState is a service's state as it says it (inventory.CheckHealth),
+// else, before it was first asked, as Overtide's last call to it went.
+func serviceState(health map[string]inventory.ServiceHealth, id string, ok bool) (state, version string, problems []string) {
+	if h, asked := health[id]; asked && h.State != "" {
+		return h.State, h.Version, h.Problems
+	}
+	if ok {
+		return inventory.StateRunning, "", nil
+	}
+	return inventory.StateDown, "", nil
 }
 
 type servicesData struct {
@@ -99,11 +118,20 @@ type servicesData struct {
 func (server *Server) servicesList(w http.ResponseWriter, r *http.Request) {
 	data := servicesData{Services: []serviceRow{}}
 	roots := server.inv.ServiceRootPaths()
+	health := server.inv.Health()
+	types := map[string]string{}
+	for _, svc := range server.inv.Config().Services {
+		types[svc.ID] = svc.Type
+	}
 	for _, svc := range server.inv.StatusSnapshot() {
 		if !svc.Configured {
 			continue
 		}
-		row := serviceRow{ID: svc.ID, Name: svc.Name, OK: svc.OK, Message: svc.Message, CheckedAt: svc.CheckedAt, Roots: roots[svc.Name]}
+		row := serviceRow{ID: svc.ID, Name: svc.Name, OK: svc.OK, Message: svc.Message, CheckedAt: svc.CheckedAt, Roots: roots[svc.Name], Type: types[svc.ID]}
+		row.State, row.Version, row.Problems = serviceState(health, svc.ID, svc.OK)
+		if h, asked := health[svc.ID]; asked {
+			row.CheckedAt = h.CheckedAt
+		}
 		if row.Roots == nil {
 			row.Roots = []string{}
 		}

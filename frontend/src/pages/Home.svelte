@@ -1,6 +1,7 @@
 <!-- Home: storage, library, torrents, what Overtide removed so far and the
      services, at a glance. -->
 <script lang="ts">
+  import { app, states } from '../lib/words-services';
   import '../styles/storage.css';
   import { PageHead, Card, Loading, Notice } from '@overfin/ui';
   import { get } from '../lib/api';
@@ -38,7 +39,6 @@
     load();
     return follow('immediate', load, tick);
   });
-  const serviceTypes: Record<string, string> = { radarr: 'Radarr', sonarr: 'Sonarr', qbittorrent: 'qBittorrent', overfin: 'Overfin', jellyfin: 'Jellyfin', seerr: 'Seerr', plex: 'Plex', emby: 'Emby' };
 </script>
 
 <PageHead title="Home" description="Your storage, library and torrents at a glance." />
@@ -90,16 +90,13 @@
       {#if data.unmanagedError}<p class="warn">Unmanaged scan unavailable: {data.unmanagedError}</p>{/if}
     </Card>
 
-    <Card title="Lifetime statistics">
+    <Card title="Statistics">
       {#snippet badge()}<a class="card-link" href="/statistics">View</a>{/snippet}
-      <div class="big">{human(data.stats.reclaimedBytes)}</div>
-      <div class="muted">actual space reclaimed</div>
       <div class="kv">
-        <span>Cleanup runs</span><b>{data.stats.runs}</b>
-        <span>Media removed</span><b>{data.stats.mediaRemoved}</b>
-        <span>Torrents removed</span><b>{data.stats.torrentsRemoved}</b>
-        <span>Library bytes removed</span><b>{human(data.stats.mediaBytes)}</b>
-        <span>Last 30 days</span><b>{human(data.stats.last30Bytes)}</b>
+        <span>Added</span><b>{human(data.stats.addedBytes)} <span class="muted">· {data.stats.addedFiles.toLocaleString('en-US')} files</span></b>
+        <span>Freed</span><b>{human(data.stats.reclaimedBytes)} <span class="muted">· {(data.stats.mediaRemoved + data.stats.torrentsRemoved).toLocaleString('en-US')} removals</span></b>
+        <span>Added, 30 days</span><b>{human(data.stats.last30AddedBytes)} <span class="muted">· {data.stats.last30AddedFiles.toLocaleString('en-US')} files</span></b>
+        <span>Freed, 30 days</span><b>{human(data.stats.last30Bytes)}</b>
       </div>
     </Card>
 
@@ -110,7 +107,7 @@
           <thead><tr><th>Name</th><th>Type</th><th>Status</th></tr></thead>
           <tbody>
             {#each data.services as s (s.name)}
-              <tr><td>{s.name}</td><td class="muted">{serviceTypes[s.type] ?? s.type}</td><td><b class={s.ok ? 'good' : 'bad'}>{s.ok ? 'Running' : 'Not answering'}</b></td></tr>
+              <tr><td>{s.name}</td><td class="muted">{app(s.type, s.version)}</td><td><b class={states[s.state]?.kind === 'ok' ? 'good' : states[s.state]?.kind === 'warn' ? 'warn' : 'bad'}>{states[s.state]?.label ?? s.state}</b></td></tr>
             {/each}
           </tbody>
         </table>

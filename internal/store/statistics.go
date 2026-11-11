@@ -159,3 +159,12 @@ func (s *Store) DiskSamplesSince(since string) ([]DiskSample, error) {
 
 // Today is a time's day as statistics count them (UTC).
 func Today(t time.Time) string { return t.UTC().Format(time.DateOnly) }
+
+// ImportTotals counts the files imported from the day since (YYYY-MM-DD,
+// "" for all): how many, and their size.
+func (s *Store) ImportTotals(since string) (files, bytes int64, err error) {
+	s.accessMu.RLock()
+	defer s.accessMu.RUnlock()
+	err = s.q.QueryRow(`SELECT COUNT(*), COALESCE(SUM(size), 0) FROM imported_files WHERE day >= ?`, since).Scan(&files, &bytes)
+	return files, bytes, err
+}

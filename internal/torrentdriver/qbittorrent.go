@@ -129,3 +129,7 @@ func FileRoot(t model.Torrent, files []File) string {
 	}
 	return qbittorrent.TorrentFileRoot(t, list)
 }
+
+// Health is qBittorrent's version and connection state (connected,
+// firewalled, disconnected), for the Services page.
+func (d *qbDriver) Health() (string, string, error) { return d.client.Health() }

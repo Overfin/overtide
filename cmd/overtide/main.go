@@ -152,6 +152,7 @@ func main() {
 	ui.Start(ctx)
 	go taskManager.Start(ctx)
 	go sampleDisks(ctx, inv, db)
+	go checkServices(ctx, inv)
 	go func() {
 		inventoryTrigger, triggerErr := taskManager.Submit(tasks.Request{TaskID: "inventory", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
 		if triggerErr != nil {
@@ -208,6 +209,21 @@ func sampleDisks(ctx context.Context, inv *inventory.Service, db *store.Store) {
 				log.Printf("[statistics] a disk's use: %v", err)
 			}
 		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// checkServices asks each service its own state (version, failing health
+// checks) at start and every 5 minutes, for the Services page and Home.
+func checkServices(ctx context.Context, inv *inventory.Service) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		inv.CheckHealth(ctx)
 		select {
 		case <-ctx.Done():
 			return
