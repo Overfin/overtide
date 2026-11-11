@@ -46,12 +46,16 @@ func (service *Service) RemoveTitle(ctx context.Context, id string) error {
 	case entry.State == Downloading:
 		return ErrDownloading
 	}
+	// Kept out here first: should that fail, nothing changed elsewhere.
+	if err := service.sonarr.Remove(func(r *sonarrdriver.Removed, now time.Time) { r.Titles[id] = now }); err != nil {
+		return err
+	}
 	if entry.State != Imported && entry.ExternalID > 0 {
 		if err := service.exclude(ctx, *entry); err != nil {
 			log.Printf("[adding] %q removed from the waiting list, but not added to the import-list exclusions: %v", entry.Title, err)
 		}
 	}
-	return service.sonarr.Remove(func(r *sonarrdriver.Removed, now time.Time) { r.Titles[id] = now })
+	return nil
 }
 
 // exclude adds a title to its Radarr's or Sonarr's import-list
