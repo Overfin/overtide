@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -108,7 +109,8 @@ func (client *Client) get(path string, query url.Values, out any) error {
 	case resp.StatusCode/100 != 2:
 		return fmt.Errorf("overfin %s: %s", path, resp.Status)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	// Bounded: the largest real answers (a whole library) are tens of MB.
+	return json.NewDecoder(io.LimitReader(resp.Body, maxAnswer)).Decode(out)
 }
 
 // Fetch reads every score of what the libraries have.
@@ -529,3 +531,6 @@ func (client *Client) Server() (string, error) {
 	}
 	return out.Version, nil
 }
+
+// maxAnswer bounds a successful answer read whole.
+const maxAnswer = 512 << 20

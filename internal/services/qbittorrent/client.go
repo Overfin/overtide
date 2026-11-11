@@ -151,7 +151,8 @@ func (client *Client) get(path string, out any) error {
 		}
 		return &StatusError{Path: path, Code: r.StatusCode, Status: r.Status, Body: string(bytes.TrimSpace(b))}
 	}
-	return json.NewDecoder(r.Body).Decode(out)
+	// Bounded: the largest real answers (a whole library) are tens of MB.
+	return json.NewDecoder(io.LimitReader(r.Body, maxAnswer)).Decode(out)
 }
 
 type torrentInfo struct {
@@ -895,3 +896,6 @@ func (client *Client) Health() (version, connection string, err error) {
 	}
 	return version, info.ConnectionStatus, nil
 }
+
+// maxAnswer bounds a successful answer read whole.
+const maxAnswer = 512 << 20

@@ -132,7 +132,8 @@ func (client *Client) Send(method, path string, body, out any) error {
 	if out == nil {
 		return nil
 	}
-	return json.NewDecoder(response.Body).Decode(out)
+	// Bounded: the largest real answers (a whole library) are tens of MB.
+	return json.NewDecoder(io.LimitReader(response.Body, maxAnswer)).Decode(out)
 }
 
 // Get is Send without a body.
@@ -442,3 +443,6 @@ func (client *Client) Health(apiVersion string) (string, []Problem, error) {
 	}
 	return status.Version, out, nil
 }
+
+// maxAnswer bounds a successful answer read whole.
+const maxAnswer = 512 << 20
