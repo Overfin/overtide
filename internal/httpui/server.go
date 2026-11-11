@@ -290,16 +290,23 @@ func humanDuration(sec int64) string {
 		return "—"
 	}
 	d := time.Duration(sec) * time.Second
-	if d >= 24*time.Hour {
-		return fmt.Sprintf("%dd %dh", int(d/(24*time.Hour)), int((d%(24*time.Hour))/time.Hour))
+	// As the Now panel says them (since): "14 s", "30 min", "1 h 30 min",
+	// "2 d 4 h"; a zero second part left out.
+	part := func(n int, unit string, rest int, restUnit string) string {
+		if rest == 0 {
+			return fmt.Sprintf("%d %s", n, unit)
+		}
+		return fmt.Sprintf("%d %s %d %s", n, unit, rest, restUnit)
 	}
-	if d >= time.Hour {
-		return fmt.Sprintf("%dh %dm", int(d/time.Hour), int((d%time.Hour)/time.Minute))
+	switch {
+	case d >= 24*time.Hour:
+		return part(int(d/(24*time.Hour)), "d", int((d%(24*time.Hour))/time.Hour), "h")
+	case d >= time.Hour:
+		return part(int(d/time.Hour), "h", int((d%time.Hour)/time.Minute), "min")
+	case d >= time.Minute:
+		return part(int(d/time.Minute), "min", int((d%time.Minute)/time.Second), "s")
 	}
-	if d >= time.Minute {
-		return fmt.Sprintf("%dm %ds", int(d/time.Minute), int((d%time.Minute)/time.Second))
-	}
-	return fmt.Sprintf("%ds", sec)
+	return fmt.Sprintf("%d s", sec)
 }
 func shortPath(v string) string {
 	const max = 88

@@ -1,5 +1,7 @@
 // How the Adding page names what the API sends as values.
 
+import { stamp } from './types-library';
+
 export const sourceLabels: Record<string, string> = {
   hand: 'Added by hand',
   request: 'Wishes',
@@ -20,8 +22,7 @@ export const groups: Record<string, { label: string; hint: string; when: string;
 
 /** short is a date and time as the panel writes them: "Oct 30 15:04". */
 export function short(iso?: string): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).replace(',', '');
+  return iso ? stamp(iso) : '';
 }
 
 /** clock is a time of day: "15:04". */

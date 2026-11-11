@@ -3,6 +3,7 @@ package httpui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -335,6 +336,10 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 		d, err = server.buildUnmanagedRemovalPlan(r.Form["path"], map[string]bool{})
 	default:
 		err = fmt.Errorf("unknown removal kind")
+	}
+	if errors.Is(err, errTorrentGone) {
+		http.Error(w, "The torrent was already gone from the torrent client.", http.StatusGone)
+		return
 	}
 	if err != nil {
 		http.Error(w, "Removal revalidation failed: "+err.Error(), http.StatusConflict)

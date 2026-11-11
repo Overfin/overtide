@@ -167,6 +167,20 @@ func (server *Server) runScheduledRemoval(schedulerContext context.Context, payl
 	defer cancel()
 	response := &capturedResponse{}
 	server.executeRemovalNowContext(response, request, operationContext)
+	if response.status == http.StatusGone {
+		// What it was to remove is gone already: done, not failed.
+		database := server.inv.Store()
+		if event, historyError := database.HistoryEventByID(command.HistoryID); historyError == nil {
+			event.Status = "gone"
+			event.Error = ""
+			if err := database.UpdateHistoryEvent(event); err != nil {
+				log.Printf("[removal] mark operation %d already gone in the history: %v", command.HistoryID, err)
+			}
+		}
+		log.Printf("[removal] operation %d: already gone", command.HistoryID)
+		server.publishUIChange("removal-completed")
+		return nil
+	}
 	if response.status >= http.StatusBadRequest {
 		operationError := fmt.Sprintf("removal operation %d: %s", command.HistoryID, bytes.TrimSpace(response.body.Bytes()))
 		auditRemovalRejected(command.HistoryID, command.Form, fmt.Errorf("%s", bytes.TrimSpace(response.body.Bytes())))

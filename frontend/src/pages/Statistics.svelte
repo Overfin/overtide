@@ -60,7 +60,7 @@
   });
 
   const day = (s: string) => new Date(`${s}T12:00:00Z`);
-  const fmt = (s: string, o: Intl.DateTimeFormatOptions) => day(s).toLocaleDateString(undefined, { timeZone: 'UTC', ...o });
+  const fmt = (s: string, o: Intl.DateTimeFormatOptions) => day(s).toLocaleDateString('en-US', { timeZone: 'UTC', ...o });
   // Each period's short name (axis) and full one (tooltip, table).
   const short = (s: string) => (data?.period === 'month' ? fmt(s, { month: 'short', year: '2-digit' }) : fmt(s, { month: 'short', day: 'numeric' }));
   const long = (s: string) =>
@@ -69,7 +69,7 @@
   const rows = $derived(data?.periods ?? []);
   const labels = $derived(rows.map((p) => short(p.start)));
   const longs = $derived(rows.map((p) => long(p.start)));
-  const count = (n: number) => Math.round(n).toLocaleString();
+  const count = (n: number) => Math.round(n).toLocaleString('en-US');
 
   const t = $derived(data?.totals);
   const added = $derived(t ? t.filmBytes + t.episodeBytes : 0);

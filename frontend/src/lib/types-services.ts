@@ -1,3 +1,5 @@
+import { stamp } from './types-library';
+
 // What Overtide's Services and Settings API answers (internal/httpui,
 // page_services.go and page_settings.go).
 
@@ -55,10 +57,7 @@ export function shortPath(v: string): string {
   return `${v.slice(0, left)}...${v.slice(v.length - right)}`;
 }
 
-/** updated is a time as "2006-01-02 15:04:05", local. */
+/** updated is a time as every page writes it (stamp). */
 export function updated(iso?: string): string {
-  if (!iso) return 'Never';
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return stamp(iso);
 }

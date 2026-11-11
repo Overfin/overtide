@@ -5,6 +5,7 @@
   import { Busy, Empty, Loading, Notice, PageHead, toast } from '@overfin/ui';
   import { get, post } from '../lib/api';
   import type { Storage } from '../lib/types-storage';
+  import { day } from '../lib/types-library';
 
   let data = $state<Storage | null>(null);
   let failure = $state('');
@@ -52,7 +53,7 @@
               <tr>
                 <td><span class="name">{k.name}</span></td>
                 <td class="muted hide-narrow">{k.from ?? ''}</td>
-                <td class="muted nowrap">{k.keptAt ? new Date(k.keptAt).toLocaleDateString('en-CA') : ''}</td>
+                <td class="muted nowrap">{day(k.keptAt)}</td>
                 <td class="actions"><Busy small action={() => unkeep(k.key, k.name)} label={`Stop keeping ${k.name}`}>Stop keeping</Busy></td>
               </tr>
             {/each}

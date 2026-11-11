@@ -98,17 +98,19 @@
   }
 
   const kinds: Record<string, string> = { movie: 'Film', series: 'Series', media: 'Title', torrent: 'Torrent', unmanaged: 'Files' };
-  const origins: Record<string, string> = { adding: 'Overtide', wish: 'Wish' };
-  const statuses: Record<string, string> = { success: 'Done', partial: 'Partly done', failed: 'Failed', interrupted: 'Interrupted', attention: 'Needs attention', queued: 'Queued', started: 'Running', dry_run: 'Dry run' };
-  const statusKind = (s: string) => (s === 'success' ? 'ok' : s === 'failed' || s === 'interrupted' ? 'err' : s === 'partial' || s === 'attention' ? 'warn' : 'info');
+  const origins: Record<string, string> = { adding: 'Overtide', wish: 'a wish' };
+  const statuses: Record<string, string> = { success: 'Done', gone: 'Already gone', partial: 'Partly done', failed: 'Failed', interrupted: 'Interrupted', attention: 'Needs attention', queued: 'Queued', started: 'Running', dry_run: 'Dry run' };
+  const statusKind = (s: string) => (s === 'success' || s === 'gone' ? 'ok' : s === 'failed' || s === 'interrupted' ? 'err' : s === 'partial' || s === 'attention' ? 'warn' : 'info');
   const plural = (n: number) => (n === 1 ? '' : 's');
   // A title with its year, unless its name already ends with it.
   const named = (r: Activity) => (r.year && !r.title.endsWith(`(${r.year})`) ? `${r.title} (${r.year})` : r.title);
   const about = (r: Activity) => {
     if (r.action === 'removed') return r.kind === 'media' ? '' : kinds[r.kind] ?? r.kind;
     const kind = kinds[r.kind] ?? r.kind;
-    if (r.episodes) return `${kind} · ${r.episodes}`;
-    return r.files > 1 ? `${kind} · ${r.files} files` : kind;
+    // Who brought it: Overtide, a wish, or Radarr or Sonarr on their own.
+    const by = r.origin ? ` · by ${origins[r.origin] ?? r.origin}` : '';
+    if (r.episodes) return `${kind} · ${r.episodes}${by}`;
+    return (r.files > 1 ? `${kind} · ${r.files} files` : kind) + by;
   };
   const fileName = (f: ImportedFile) => (f.path ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.release ?? '');
 </script>
@@ -204,7 +206,7 @@
               <td class="num nowrap">{r.size}</td>
               <td>
                 {#if r.action === 'removed'}<Badge kind={statusKind(r.status ?? '')}>{statuses[r.status ?? ''] ?? r.status}</Badge>
-                {:else if r.origin}<span class="muted">{origins[r.origin] ?? r.origin}</span>{/if}
+                {:else}<Badge kind="ok">Imported</Badge>{/if}
               </td>
             </tr>
             {#if open === rowKey(r)}

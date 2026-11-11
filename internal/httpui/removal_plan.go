@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -30,6 +31,11 @@ type relatedRemovalTorrentGroup struct {
 // relatedTorrentMeta describes why a torrent related to a media removal is
 // shown the way it is: what physically ties it to the media (if anything),
 // or why it's only ever a historical fact rather than proof.
+// errTorrentGone: the torrent to remove isn't in the torrent client any
+// more (removed there, or by another removal in the meantime): what was
+// asked is done already.
+var errTorrentGone = errors.New("torrent not found")
+
 func relatedTorrentMeta(rt relatedRemovalTorrent) string {
 	if rt.SharesFiles {
 		meta := "shares files with this torrent · they stay while it does"
@@ -399,7 +405,7 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 		found = &x
 	}
 	if found == nil {
-		return removalData{}, fmt.Errorf("torrent not found")
+		return removalData{}, errTorrentGone
 	}
 	// The torrents it shares files with (the very same path, or a hardlink):
 	// listed, each with its box, only the asked one ticked by default. A

@@ -196,15 +196,18 @@ export interface Workflow {
   updatedAt?: string;
 }
 
-/** stamp is a time as these pages write it: 2026-10-31 14:05:09, or Never. */
+/** stamp is a time as every page writes it: "Nov 10 20:02", the year
+ * too when it isn't this one ("Mar 3, 2025 08:10"), or Never. */
 export function stamp(iso?: string): string {
   if (!iso) return 'Never';
   const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+  return `${date} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-/** day is a date: 2026-10-31. */
+/** day is a date: "Oct 31", the year too when it isn't this one. */
 export function day(iso?: string): string {
-  return iso ? stamp(iso).slice(0, 10) : '';
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
 }

@@ -79,7 +79,7 @@
               <td>
                 {#if w.state === 'succeeded'}{w.totalSteps} / {w.totalSteps}{:else}{w.currentStep} / {w.totalSteps}{#if w.stepName}<br /><span class="muted">Next: {w.stepName}</span>{/if}{/if}
               </td>
-              <td>{w.state}</td>
+              <td><b>{w.state ? w.state[0].toUpperCase() + w.state.slice(1) : ''}</b></td>
               <td class="nowrap">{stamp(w.updatedAt)}</td>
             </tr>
           {/each}
