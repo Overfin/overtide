@@ -595,9 +595,11 @@ const defaultConfigJSON = `{
 
 // createDefaultConfig writes defaultConfigJSON to path, creating any missing
 // parent directories first, so a fresh install never requires a human to
-// create /config or config.json by hand before the first start.
+// create /config or config.json by hand before the first start. The file
+// holds the services' keys and passwords: only Overtide's user may read it,
+// and a directory made for it is that user's alone too.
 func createDefaultConfig(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 	if err := os.WriteFile(path, []byte(defaultConfigJSON), 0o600); err != nil {

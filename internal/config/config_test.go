@@ -807,3 +807,43 @@ func TestLoadTrustedProxies(t *testing.T) {
 		t.Fatalf("no setting: %v, %v", cfg.Proxies, err)
 	}
 }
+
+// config.json holds the services' keys: it's the owner's alone when Load
+// makes it, its directory too, and stays so when rewritten, even from a
+// file that was readable by others.
+func TestConfigFileIsOwnersOnly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "config")
+	path := filepath.Join(dir, "config.json")
+	if _, err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		path string
+		want os.FileMode
+	}{{dir, 0o700}, {path, 0o600}} {
+		info, err := os.Stat(check.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != check.want {
+			t.Fatalf("%s: mode %v, want %v", check.path, info.Mode().Perm(), check.want)
+		}
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("rewritten: mode %v, want 0600", info.Mode().Perm())
+	}
+}
