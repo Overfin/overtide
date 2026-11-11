@@ -25,6 +25,7 @@
   import AddingUpgrades from './pages/AddingUpgrades.svelte';
   import Removal from './pages/Removal.svelte';
   import Kept from './pages/Kept.svelte';
+  import Statistics from './pages/Statistics.svelte';
   import RemovalWindow from './parts/removal/RemovalWindow.svelte';
 
   interface Session {
@@ -41,6 +42,7 @@
     upgrades: ['M12 19V5', 'M5 12l7-7 7 7'],
     removal: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13'],
     kept: ['M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z'],
+    statistics: ['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M3 20h18'],
     library: ['M4 5h16v14H4z', 'M4 9h16', 'M9 5v14'],
     torrents: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
     unmanaged: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M12 11v3', 'M12 16.5h.01'],
@@ -51,7 +53,7 @@
     settings: ['M4 6h10', 'M18 6h2', 'M4 12h4', 'M12 12h8', 'M4 18h12', 'M16 4v4', 'M10 10v4', 'M18 16v4'],
   };
   const nav: NavGroup[] = [
-    { items: [{ href: '/', label: 'Home', icon: icons.home }] },
+    { items: [{ href: '/', label: 'Home', icon: icons.home }, { href: '/statistics', label: 'Statistics', icon: icons.statistics }] },
     { label: 'Adding', items: [
       { href: '/adding', label: 'Now', icon: icons.adding },
       { href: '/adding/waiting', label: 'Waiting', icon: icons.waiting },
@@ -94,6 +96,7 @@
     if (p === '/unmanaged') return { show: Unmanaged, active: '/unmanaged' };
     if (p === '/storage') return { show: Storage, active: '/storage' };
     if (p === '/removal') return { show: Removal, active: '/removal' };
+    if (p === '/statistics') return { show: Statistics, active: '/statistics' };
     if (p === '/removal/kept') return { show: Kept, active: '/removal/kept' };
     if (p === '/services') return { show: Services, active: '/services' };
     if (p === '/tasks') return { show: Tasks, active: '/tasks' };

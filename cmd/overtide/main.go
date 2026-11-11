@@ -151,6 +151,7 @@ func main() {
 	ui.SetAdding(adder, pacer)
 	ui.Start(ctx)
 	go taskManager.Start(ctx)
+	go sampleDisks(ctx, inv, db)
 	go func() {
 		inventoryTrigger, triggerErr := taskManager.Submit(tasks.Request{TaskID: "inventory", Kind: tasks.TriggerStartup, Priority: tasks.PriorityManual, Durable: false, Cause: "Application startup"})
 		if triggerErr != nil {
@@ -184,5 +185,33 @@ func main() {
 	}
 	if runError != nil {
 		log.Fatalf("[http] server: %v", runError)
+	}
+}
+
+// sampleDisks keeps each disk's use once an hour, the day's last staying,
+// for the Statistics page's chart of disk use over time.
+func sampleDisks(ctx context.Context, inv *inventory.Service, db *store.Store) {
+	// The disks are known once the first inventory is done.
+	if !inv.WaitForBase(ctx) {
+		return
+	}
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		for _, device := range inv.StorageDevices() {
+			if !device.Available || device.TotalBytes == 0 {
+				continue
+			}
+			sample := store.DiskSample{Day: store.Today(time.Now()), Device: device.RepresentativePath,
+				UsedBytes: int64(device.UsedBytes), ServicesBytes: int64(device.OvertideUsedBytes()), TotalBytes: int64(device.TotalBytes)}
+			if err := db.KeepDiskSample(sample); err != nil {
+				log.Printf("[statistics] a disk's use: %v", err)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }

@@ -1,6 +1,8 @@
 /* Home's and the Storage page's own. */
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1.25rem; align-items: start; }
-.home-grid > section { margin: 0; }
+/* As the kit's .cards: columns filled top to bottom, no gap under a short
+   card. */
+.home-grid { columns: 20rem; column-gap: 1.25rem; }
+.home-grid > * { break-inside: avoid; margin: 0 0 1.25rem; }
 .card-link { font-size: .85rem; text-decoration: none; }
 .big { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 div.kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; font-size: .9rem; margin-top: .4rem; }

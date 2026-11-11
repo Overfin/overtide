@@ -113,6 +113,7 @@ func (server *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/adding/clear", server.addingReady(server.addingClear))
 	mux.HandleFunc("POST /api/adding/remove", server.addingReady(server.addingRemove))
 	mux.HandleFunc("GET /api/adding/upgrades", server.addingReady(server.addingUpgrades))
+	mux.HandleFunc("GET /api/statistics", server.statistics)
 	mux.HandleFunc("GET /api/adding/imports", server.addingReady(server.importsList))
 	mux.HandleFunc("GET /api/adding/imports/{service}/{download}", server.addingReady(server.importOptions))
 	mux.HandleFunc("POST /api/adding/imports/{service}/{download}", server.addingReady(server.importChoose))

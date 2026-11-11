@@ -91,7 +91,7 @@
     </Card>
 
     <Card title="Lifetime statistics">
-      {#snippet badge()}<a class="card-link" href="/history">View</a>{/snippet}
+      {#snippet badge()}<a class="card-link" href="/statistics">View</a>{/snippet}
       <div class="big">{human(data.stats.reclaimedBytes)}</div>
       <div class="muted">actual space reclaimed</div>
       <div class="kv">

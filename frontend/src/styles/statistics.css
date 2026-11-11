@@ -1,0 +1,62 @@
+/* Statistics: chart colors by role, for the dark surface (the kit's
+   default) and the light one, validated with the data-viz palette checks
+   (three categorical slots: blue, orange, aqua). */
+.statistics {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --grid: rgba(255, 255, 255, 0.07);
+}
+:root[data-theme="light"] .statistics {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --grid: rgba(0, 0, 0, 0.07);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .statistics {
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --grid: rgba(0, 0, 0, 0.07);
+  }
+}
+
+.statistics .ranges { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1.25rem; }
+.statistics .ranges button[aria-pressed="true"] { background: var(--panel-3); border-color: var(--border-strong); font-weight: 600; }
+
+.statistics .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 1.25rem; margin-bottom: 1.25rem; }
+.statistics .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; }
+.statistics .tile .label { color: var(--muted); font-size: .85rem; }
+.statistics .tile .value { font-size: 1.6rem; font-weight: 700; margin: .2rem 0; font-variant-numeric: tabular-nums; }
+.statistics .tile .sub { color: var(--muted); font-size: .85rem; }
+
+.statistics .charts { columns: 34rem; column-gap: 1.25rem; }
+.statistics .charts > * { break-inside: avoid; margin: 0 0 1.25rem; }
+
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .baseline { stroke: var(--border-strong); stroke-width: 1; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .hit:hover, .chart .hit:focus { fill: var(--grid); outline: none; }
+.chart .legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin: 0 0 .6rem; font-size: .85rem; color: var(--muted); }
+.chart .legend .key { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
+.chart .legend .line-key { display: inline-block; width: 1rem; height: 2px; margin-right: .35rem; vertical-align: 3px; }
+.chart .tip {
+  position: absolute; pointer-events: none; z-index: 2; min-width: 10rem;
+  background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: .5rem .7rem; font-size: .85rem; box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
+}
+.chart .tip .when { color: var(--muted); margin-bottom: .25rem; }
+.chart .tip .row { display: flex; align-items: center; gap: .5rem; }
+.chart .tip .row b { font-variant-numeric: tabular-nums; }
+.chart .tip .row span { color: var(--muted); }
+.chart .tip .stroke { width: .8rem; height: 2px; flex: none; }
+.chart details { margin-top: .6rem; }
+.chart details summary { color: var(--muted); font-size: .85rem; cursor: pointer; }
+.chart table { width: 100%; font-size: .85rem; margin-top: .4rem; font-variant-numeric: tabular-nums; }
+.chart table th, .chart table td { text-align: right; padding: .2rem .4rem; }
+.chart table th:first-child, .chart table td:first-child { text-align: left; }
+.chart .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
