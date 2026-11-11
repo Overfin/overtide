@@ -22,6 +22,9 @@
   import AddingNow from './pages/AddingNow.svelte';
   import AddingWaiting from './pages/AddingWaiting.svelte';
   import AddingSeasons from './pages/AddingSeasons.svelte';
+  import AddingUpgrades from './pages/AddingUpgrades.svelte';
+  import Removal from './pages/Removal.svelte';
+  import Kept from './pages/Kept.svelte';
   import RemovalWindow from './parts/removal/RemovalWindow.svelte';
 
   interface Session {
@@ -35,6 +38,9 @@
     adding: ['M12 5v14', 'M5 12h14'],
     waiting: ['M4 6h16', 'M4 12h10', 'M4 18h6', 'M18 14v6', 'M15 17h6'],
     seasons: ['M4 5h16v14H4z', 'M4 9h16', 'M9 13h6'],
+    upgrades: ['M12 19V5', 'M5 12l7-7 7 7'],
+    removal: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13'],
+    kept: ['M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z'],
     library: ['M4 5h16v14H4z', 'M4 9h16', 'M9 5v14'],
     torrents: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
     unmanaged: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M12 11v3', 'M12 16.5h.01'],
@@ -50,6 +56,11 @@
       { href: '/adding', label: 'Now', icon: icons.adding },
       { href: '/adding/waiting', label: 'Waiting', icon: icons.waiting },
       { href: '/adding/seasons', label: 'Seasons & episodes', icon: icons.seasons },
+      { href: '/adding/upgrades', label: 'Upgrades', icon: icons.upgrades },
+    ] },
+    { label: 'Removing', items: [
+      { href: '/removal', label: 'Plan', icon: icons.removal },
+      { href: '/removal/kept', label: 'Kept', icon: icons.kept },
     ] },
     { label: 'Media', items: [
       { href: '/library', label: 'Library', icon: icons.library },
@@ -75,12 +86,15 @@
     if (p === '/adding') return { show: AddingNow, active: '/adding' };
     if (p === '/adding/waiting') return { show: AddingWaiting, active: '/adding/waiting' };
     if (p === '/adding/seasons') return { show: AddingSeasons, active: '/adding/seasons' };
+    if (p === '/adding/upgrades') return { show: AddingUpgrades, active: '/adding/upgrades' };
     if (p === '/library') return { show: Library, active: '/library' };
     if (p.startsWith('/library/') || p.startsWith('/media/')) return { show: Media, active: '/library' };
     if (p === '/torrents') return { show: Torrents, active: '/torrents' };
     if (p.startsWith('/torrents/')) return { show: Torrent, active: '/torrents' };
     if (p === '/unmanaged') return { show: Unmanaged, active: '/unmanaged' };
     if (p === '/storage') return { show: Storage, active: '/storage' };
+    if (p === '/removal') return { show: Removal, active: '/removal' };
+    if (p === '/removal/kept') return { show: Kept, active: '/removal/kept' };
     if (p === '/services') return { show: Services, active: '/services' };
     if (p === '/tasks') return { show: Tasks, active: '/tasks' };
     if (p === '/history') return { show: History, active: '/history' };
@@ -128,7 +142,7 @@
 {:else if !session.signedIn}
   <SignIn setup={session.needsSetup} done={load} />
 {:else}
-  <Shell name="Overtide" subtitle="Storage" logo="/logo.svg" {nav} active={page.active} who={session.username} {signOut} wide>
+  <Shell name="Overtide" subtitle="Storage" logo="/logo.svg" {nav} active={page.active} {signOut} wide>
     {#snippet extra()}
       {#if live.pendingOperations}
         <a class="operations" href="/tasks">{live.pendingOperations === 1 ? '1 operation in progress' : `${live.pendingOperations} operations in progress`}</a>

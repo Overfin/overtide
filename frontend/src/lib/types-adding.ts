@@ -9,6 +9,9 @@ export interface AddingRow {
   when?: string;
   result: string;
   dryRun: boolean;
+  /** id names it for POST /api/adding/remove; removable: not downloading. */
+  id: string;
+  removable: boolean;
 }
 
 export interface AddingGroup {

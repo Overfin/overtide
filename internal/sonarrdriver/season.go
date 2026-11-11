@@ -168,6 +168,12 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 		}
 		full := driver.fullDisk(cfg, svc.ID)
 		names := driver.seriesNames(svc.ID)
+		// Seasons of series that left Sonarr (removed there by hand) go.
+		for key, pack := range state.Seasons {
+			if _, there := names[pack.SeriesID]; !there && len(names) > 0 && pack.GrabbedAt.IsZero() && !dryRun {
+				delete(state.Seasons, key)
+			}
+		}
 		keys := slices.Sorted(maps.Keys(seasons))
 		if !fresh {
 			sort.SliceStable(keys, func(i, j int) bool {

@@ -3,7 +3,6 @@ package sonarrdriver
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/overfin/overtide/internal/tries"
@@ -19,6 +18,10 @@ type WantedRow struct {
 	// searched for now (Result says why).
 	When   time.Time
 	Result string
+	// Ref names it for Remove (SeasonRef, EpisodeRef); Removable: not
+	// downloading, so the operator may take it out of the list.
+	Ref       string
+	Removable bool
 }
 
 // Wanted lists the episodes wanted and the seasons waiting for a
@@ -36,11 +39,15 @@ func (driver *Driver) Wanted() (episodes, seasons []WantedRow, err error) {
 			if pack.Done && !pack.short() {
 				continue
 			}
-			row := WantedRow{Title: seasonName(names[pack.SeriesID], pack.Season), Why: "Whole season"}
+			if _, there := names[pack.SeriesID]; !there && len(names) > 0 && pack.GrabbedAt.IsZero() {
+				continue // its series left Sonarr
+			}
+			row := WantedRow{Title: seasonName(names[pack.SeriesID], pack.Season), Why: "Whole season",
+				Ref: SeasonRef(serviceID, pack.SeriesID, pack.Season), Removable: pack.GrabbedAt.IsZero()}
 			switch {
 			case len(pack.Unmatched) > 0:
 				row.Why = "Needs a look"
-				row.Result = fmt.Sprintf("Its download has files that match none of Sonarr's episodes (%s): the numbering may differ. Left in the queue, and not searched again.", strings.Join(pack.Unmatched, ", "))
+				row.Result = unmatchedResult(pack.Unmatched)
 			case pack.short():
 				row.Why = "Needs a look"
 				row.Result = fmt.Sprintf("A whole-season pack came, and %d episodes are still missing: its files may not match Sonarr's episodes. Not searched again.", pack.Short)
@@ -55,8 +62,12 @@ func (driver *Driver) Wanted() (episodes, seasons []WantedRow, err error) {
 			}
 			seasons = append(seasons, row)
 		}
-		for _, want := range state.Wanted {
-			row := WantedRow{Title: episodeName(names[want.SeriesID], want.Season, want.Episode), Why: "Missing", When: want.NextTry, Result: want.Result}
+		for id, want := range state.Wanted {
+			if _, there := names[want.SeriesID]; !there && len(names) > 0 && !want.Grabbed {
+				continue // its series left Sonarr
+			}
+			row := WantedRow{Title: episodeName(names[want.SeriesID], want.Season, want.Episode), Why: "Missing", When: want.NextTry, Result: want.Result,
+				Ref: EpisodeRef(serviceID, id), Removable: !want.Grabbed}
 			if !want.AiredAt.IsZero() && now.Sub(want.AiredAt) < tries.ReleaseGrace {
 				row.Why = "Just aired"
 			}
@@ -82,4 +93,20 @@ func (driver *Driver) Wanted() (episodes, seasons []WantedRow, err error) {
 	byWhen(episodes)
 	byWhen(seasons)
 	return episodes, seasons, nil
+}
+
+// unmatchedResult says a season's download has files matching none of
+// Sonarr's episodes: how many, and the first one's name (a long season's
+// pack has hundreds, which made the list unreadable).
+func unmatchedResult(files []string) string {
+	first := files[0]
+	if r := []rune(first); len(r) > 80 {
+		first = string(r[:80]) + "…"
+	}
+	what := "1 file matches"
+	if len(files) > 1 {
+		what = fmt.Sprintf("%d files match", len(files))
+	}
+	return fmt.Sprintf("In its download, %s none of Sonarr's episodes (%s%s): the numbering may differ. Left in the queue, and not searched again.",
+		what, first, map[bool]string{true: ", …", false: ""}[len(files) > 1])
 }

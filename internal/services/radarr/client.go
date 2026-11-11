@@ -137,3 +137,21 @@ func (client *Client) AddImportListExclusion(title string, year, tmdbID int) err
 	}
 	return err
 }
+
+// Exclusions are the films of Radarr's import-list exclusions, by TMDB ID:
+// what the operator doesn't want added.
+func (client *Client) Exclusions() (map[int]bool, error) {
+	var list []struct {
+		TMDBID int `json:"tmdbId"`
+	}
+	if err := client.Send(http.MethodGet, "/api/v3/exclusions", nil, &list); err != nil {
+		return nil, err
+	}
+	out := map[int]bool{}
+	for _, x := range list {
+		if x.TMDBID > 0 {
+			out[x.TMDBID] = true
+		}
+	}
+	return out, nil
+}

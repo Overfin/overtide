@@ -81,7 +81,7 @@ export interface Home {
   obsoleteKnown: number;
   obsoleteReclaimable: number;
   unmanagedError?: string;
-  services: { name: string; ok: boolean }[];
+  services: { name: string; type: string; ok: boolean }[];
   stats: { reclaimedBytes: number; runs: number; mediaRemoved: number; torrentsRemoved: number; mediaBytes: number; last30Bytes: number };
 }
 

@@ -38,6 +38,7 @@
     load();
     return follow('immediate', load, tick);
   });
+  const serviceTypes: Record<string, string> = { radarr: 'Radarr', sonarr: 'Sonarr', qbittorrent: 'qBittorrent', overfin: 'Overfin', jellyfin: 'Jellyfin', seerr: 'Seerr', plex: 'Plex', emby: 'Emby' };
 </script>
 
 <PageHead title="Home" description="Your storage, library and torrents at a glance." />
@@ -105,9 +106,14 @@
     <Card title="Services">
       {#snippet badge()}<a class="card-link" href="/services">View</a>{/snippet}
       {#if data.services.length}
-        <div class="kv">
-          {#each data.services as s (s.name)}<span>{s.name}</span><b class={s.ok ? 'good' : 'bad'}>{s.ok ? 'Connected' : 'Unavailable'}</b>{/each}
-        </div>
+        <table class="services-table">
+          <thead><tr><th>Name</th><th>Type</th><th>Status</th></tr></thead>
+          <tbody>
+            {#each data.services as s (s.name)}
+              <tr><td>{s.name}</td><td class="muted">{serviceTypes[s.type] ?? s.type}</td><td><b class={s.ok ? 'good' : 'bad'}>{s.ok ? 'Running' : 'Not answering'}</b></td></tr>
+            {/each}
+          </tbody>
+        </table>
       {:else}
         <div class="muted">No services configured yet.</div>
       {/if}

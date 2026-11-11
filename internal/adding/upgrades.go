@@ -11,6 +11,7 @@ import (
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/sonarrdriver"
 )
 
 const (
@@ -166,9 +167,13 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 	if service.disk != nil {
 		disk = service.disk
 	}
+	removed := service.sonarr.Removed()
 	for _, c := range candidates {
 		if used >= room || ctx.Err() != nil || service.trackersDown != "" {
 			break
+		}
+		if _, out := removed.Upgrades[c.key()]; out {
+			continue // removed by the operator
 		}
 		if at, ok := searched[c.key()]; ok && service.now().Sub(at) < UpgradeAgain {
 			continue
@@ -254,4 +259,87 @@ func (service *Service) saveUpgradesSearched(searched map[string]time.Time) erro
 		return err
 	}
 	return service.inv.Store().SetMeta(upgradedKey, string(encoded))
+}
+
+// UpgradeRow is a title or a season waiting for an upgrade search, for the
+// Upgrades page, in the order they're searched.
+type UpgradeRow struct {
+	// Ref names it for RemoveUpgrade.
+	Ref   string
+	Title string
+	Kind  model.MediaType
+	// Why: "Below its quality cutoff", or "Whole-season pack" for a
+	// season that came complete without one (searched first).
+	Why string
+	// Value is Overfin's score of it, 0 when unknown; LastSearched, its
+	// last upgrade search; Next, when it may be searched again (zero:
+	// at the next run with room for it).
+	Value        float64
+	LastSearched time.Time
+	Next         time.Time
+}
+
+// Upgrades lists what waits for an upgrade search, in their order, but
+// what the operator removed.
+func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
+	cfg := service.inv.Config()
+	removed := service.sonarr.Removed()
+	var out []UpgradeRow
+	packs, err := service.sonarr.PackUpgradeRows()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range packs {
+		row := UpgradeRow{Ref: sonarrdriver.PackRef(p.ServiceID, p.SeriesID, p.Season), Title: p.Title, Kind: model.Series, Why: "Whole-season pack",
+			Value: service.seasonValue(ctx, cfg, p.ServiceID, p.SeriesID, p.Season)}
+		if p.NextTry.After(service.now()) {
+			row.Next = p.NextTry
+		}
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
+	candidates, err := service.upgradeCandidates(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	searched, err := service.upgradesSearched()
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range candidates {
+		if _, gone := removed.Upgrades[c.key()]; gone {
+			continue
+		}
+		title := c.title
+		if c.kind == model.Series {
+			title = fmt.Sprintf("%s S%d", c.title, c.season)
+		}
+		row := UpgradeRow{Ref: c.key(), Title: title, Kind: c.kind, Why: "Below its quality cutoff", Value: c.value}
+		if at, ok := searched[c.key()]; ok {
+			row.LastSearched, row.Next = at, at.Add(UpgradeAgain)
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// RemoveUpgrade keeps a title or a season from ever being searched for an
+// upgrade, by its row's Ref.
+func (service *Service) RemoveUpgrade(ctx context.Context, ref string) error {
+	rows, err := service.Upgrades(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row.Ref == ref {
+			return service.sonarr.Remove(func(r *sonarrdriver.Removed, now time.Time) { r.Upgrades[ref] = now })
+		}
+	}
+	return ErrNotInList
+}
+
+// UpgradesToday counts the upgrade searches of the last 24 hours.
+func (service *Service) UpgradesToday() int {
+	times, _ := service.lastDay(upgradesKey)
+	return len(times)
 }

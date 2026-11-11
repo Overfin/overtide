@@ -34,6 +34,8 @@ type homeData struct {
 	UnmanagedAvailable   bool
 	UnmanagedError       string
 	Services             []inventory.ServiceStatus
+	// ServiceTypes are the services' types, by ID.
+	ServiceTypes map[string]string
 	Stats                store.CleanupStats
 }
 
@@ -63,6 +65,10 @@ func (server *Server) dashboardSnapshot() homeData {
 		} else {
 			d.LastErr = notice(fmt.Sprintf("Automatic removal planning paused. Overfin: %s; File topology: %s", reliability.Overfin, reliability.FileModel))
 		}
+	}
+	d.ServiceTypes = map[string]string{}
+	for _, svc := range cfg.Services {
+		d.ServiceTypes[svc.ID] = svc.Type
 	}
 	for _, svc := range server.inv.StatusSnapshot() {
 		if svc.Configured {

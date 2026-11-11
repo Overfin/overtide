@@ -13,6 +13,8 @@ func (server *Server) homeRoutes(mux *http.ServeMux) {
 
 type homeServiceJSON struct {
 	Name string `json:"name"`
+	// Type is the kind of service: radarr, sonarr, qbittorrent, overfin…
+	Type string `json:"type"`
 	OK   bool   `json:"ok"`
 }
 
@@ -67,7 +69,7 @@ func homeJSONFrom(d homeData) homeJSON {
 		out.Devices = append(out.Devices, deviceJSON(view, false))
 	}
 	for _, svc := range d.Services {
-		out.Services = append(out.Services, homeServiceJSON{Name: svc.Name, OK: svc.OK})
+		out.Services = append(out.Services, homeServiceJSON{Name: svc.Name, Type: d.ServiceTypes[svc.ID], OK: svc.OK})
 	}
 	return out
 }

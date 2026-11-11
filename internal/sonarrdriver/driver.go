@@ -135,6 +135,13 @@ func (driver *Driver) States() (map[string]*State, error) {
 	if err := json.Unmarshal([]byte(raw), &states); err != nil {
 		return nil, fmt.Errorf("read the wanted episodes: %w", err)
 	}
+	// What the operator removed by hand is never there for a run.
+	removed := driver.Removed()
+	for serviceID, state := range states {
+		if state != nil {
+			removed.dropRemoved(serviceID, state)
+		}
+	}
 	return states, nil
 }
 

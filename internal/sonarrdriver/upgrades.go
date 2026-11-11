@@ -30,10 +30,14 @@ func (driver *Driver) PackUpgrades(ctx context.Context, cfg config.Config, room 
 		for _, want := range state.Wanted {
 			wanting[seasonKey(want.SeriesID, want.Season)] = true
 		}
+		removed := driver.Removed()
 		var due []*SeasonPack
 		for key, pack := range state.Seasons {
 			if pack.Done || pack.short() || !pack.GrabbedAt.IsZero() || pack.Tries == 0 || pack.Tries >= tries.Max || pack.NextTry.After(now) || wanting[key] {
 				continue
+			}
+			if _, out := removed.Upgrades[PackRef(svc.ID, pack.SeriesID, pack.Season)]; out {
+				continue // removed by the operator
 			}
 			due = append(due, pack)
 		}

@@ -1,5 +1,5 @@
-<!-- Storage: where the services keep files, how much is free, each
-     device's cleanup plan and settings, and the titles never to remove. -->
+<!-- Storage: where the services keep files, how much is free, and each
+     device's settings. -->
 <script lang="ts">
   import '../styles/storage.css';
   import { PageHead, Card, Loading, Notice, Busy } from '@overfin/ui';
@@ -8,13 +8,11 @@
   import { human, identity, patchBytes, share, type StatsDevice, type Storage, type StorageDevice } from '../lib/types-storage';
   import StorageBar from '../parts/storage/StorageBar.svelte';
   import DeviceSettings from '../parts/storage/DeviceSettings.svelte';
-  import CleanupPlan from '../parts/storage/CleanupPlan.svelte';
 
   let data = $state<Storage | null>(null);
   let failure = $state('');
-  // The windows open: a device's settings, or its cleanup plan.
+  // The window open: a device's settings.
   let settingsFor = $state<string | null>(null);
-  let planFor = $state<string | null>(null);
 
   async function load() {
     try {
@@ -46,15 +44,10 @@
   });
 
   const usedPercent = (d: StorageDevice) => (d.usableBytes ? (d.overtideUsedBytes / d.usableBytes) * 100 : 0);
-  const planShown = (d: StorageDevice) => d.enabled && !!d.plan && d.plan.needBytes > 0 && d.plan.actions > 0;
 
-  async function unkeep(key: string) {
-    await post('/api/storage/keep', { key, unkeep: true });
-    await load();
-  }
 </script>
 
-<PageHead title="Storage" description="Where your services keep files, how much is free, and the titles never to remove." />
+<PageHead title="Storage" description="Where your services keep files, and how much is free. What would be removed, and what's kept from removal: under Removing." />
 
 {#if failure}<Notice warn>{failure}</Notice>{/if}
 {#if !data}
@@ -89,9 +82,6 @@
           <p>{identity(d)}</p>
         </div>
         <div class="actions-row device-actions">
-          {#if planShown(d)}
-            <button type="button" class="small ghost" aria-label="Cleanup plan" title="Cleanup plan" onclick={() => (planFor = d.path)}>📋</button>
-          {/if}
           <button type="button" class="small ghost" aria-label="Device settings" title="Device settings" onclick={() => (settingsFor = d.path)}>🔧</button>
         </div>
       </div>
@@ -116,7 +106,7 @@
         {:else if !d.enabled}
           <p class="muted">Automatic removal is off for this device. Enable it in Device settings (🔧) to see suggestions.</p>
         {:else if d.plan && d.plan.needBytes > 0}
-          <p class="bad"><b>Cleanup active.</b><br />{d.plan.message}<br />{d.plan.actions} action(s) selected · {human(d.plan.selectedBytes)} planned.{#if d.plan.actions}{' '}See the cleanup plan (📋) for the full list.{/if}</p>
+          <p class="bad"><b>Cleanup active.</b><br />{d.plan.message}<br />{d.plan.actions} action(s) selected · {human(d.plan.selectedBytes)} planned.{#if d.plan.actions}{' '}<a href="/removal">See it on the Removal page</a>.{/if}</p>
         {:else}
           <p class="good"><b>Cleanup inactive.</b><br />{d.plan?.message}</p>
         {/if}
@@ -129,28 +119,8 @@
     <p class="muted">No storage devices are known yet; file reconciliation has not completed.</p>
   {/each}
 
-  <Card title="Kept" description={'Never planned for removal until taken off this list. Keep a title from its page, from the cleanup plan, or with the tag "overtide-keep" in Radarr or Sonarr; a torrent from its page.'}>
-    {#if data.kept.length}
-      <table id="kept">
-        <tbody>
-          {#each data.kept as k (k.key)}
-            <tr>
-              <td><b>{k.name}</b>{#if k.from}<br /><span class="muted">from {k.from}</span>{/if}</td>
-              <td class="muted">{k.keptAt ? new Date(k.keptAt).toLocaleDateString('en-CA') : ''}</td>
-              <td class="row-actions"><Busy kind="ghost" small action={() => unkeep(k.key)} label={`Unkeep ${k.name}`}>Unkeep</Busy></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {:else}
-      <p class="muted">Nothing is kept.</p>
-    {/if}
-  </Card>
 {/if}
 
 {#if settingsFor}
   <DeviceSettings path={settingsFor} saved={load} close={() => (settingsFor = null)} />
-{/if}
-{#if planFor}
-  <CleanupPlan path={planFor} cleaned={load} close={() => (planFor = null)} />
 {/if}

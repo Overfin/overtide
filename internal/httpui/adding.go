@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -33,6 +34,10 @@ type addingRow struct {
 	When   time.Time `json:"when,omitzero"`
 	Result string    `json:"result"`
 	DryRun bool      `json:"dryRun"`
+	// ID names it for Remove (POST /api/adding/remove), with Removable:
+	// what downloads is followed to its end, not removed.
+	ID        string `json:"id"`
+	Removable bool   `json:"removable"`
 }
 
 type addingGroup struct {
@@ -135,7 +140,7 @@ func (server *Server) addingList(w http.ResponseWriter, r *http.Request) {
 				}
 				group.Count++
 				if group.Count <= addingRowsShown || showAll == state {
-					group.Rows = append(group.Rows, addingRow{Title: r.Title, Kind: kind, Source: r.Why, When: r.When, Result: r.Result})
+					group.Rows = append(group.Rows, addingRow{Title: r.Title, Kind: kind, Source: r.Why, When: r.When, Result: r.Result, ID: r.Ref, Removable: r.Removable})
 				}
 			}
 			if group.Count > 0 {
@@ -155,7 +160,8 @@ func (server *Server) addingList(w http.ResponseWriter, r *http.Request) {
 			if group.Count > addingRowsShown && showAll != string(state) {
 				continue
 			}
-			row := addingRow{Title: entry.Title, Year: entry.Year, Kind: kindName(entry.Kind), Source: string(entry.Source), When: entry.UpdatedAt, Result: entry.Result, DryRun: strings.HasPrefix(entry.Result, "Dry run")}
+			row := addingRow{Title: entry.Title, Year: entry.Year, Kind: kindName(entry.Kind), Source: string(entry.Source), When: entry.UpdatedAt, Result: entry.Result, DryRun: strings.HasPrefix(entry.Result, "Dry run"),
+				ID: entry.ServiceID + "|" + entry.Key, Removable: entry.State != adding.Downloading}
 			if entry.State == adding.Waiting || entry.State == adding.NotReleased {
 				row.When = entry.NextTry
 			}
@@ -178,6 +184,42 @@ func (server *Server) addingRun(w http.ResponseWriter, r *http.Request) {
 	done(w)
 }
 
+// addingRemove answers POST /api/adding/remove: the operator takes a
+// title, a season or an episode out of Adding's lists (kind: "title",
+// "season", "episode", "upgrade"; id, as the list gave it), for good.
+func (server *Server) addingRemove(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Kind string `json:"kind"`
+		ID   string `json:"id"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var err error
+	switch req.Kind {
+	case "title":
+		err = server.adder.RemoveTitle(r.Context(), req.ID)
+	case "season", "episode":
+		err = server.adder.Sonarr().RemoveWanted(req.Kind, req.ID)
+	case "upgrade":
+		err = server.adder.RemoveUpgrade(r.Context(), req.ID)
+	default:
+		fail(w, http.StatusBadRequest, "kind is title, season, episode or upgrade")
+		return
+	}
+	switch {
+	case errors.Is(err, adding.ErrNotInList), errors.Is(err, sonarrdriver.ErrNotWanted):
+		fail(w, http.StatusNotFound, "It's no longer in the list.")
+	case errors.Is(err, adding.ErrDownloading):
+		fail(w, http.StatusConflict, "It's downloading: its download is followed to its end.")
+	case err != nil:
+		fail(w, http.StatusInternalServerError, err.Error())
+	default:
+		done(w)
+	}
+}
+
 // addingClear empties the waiting list (see adding.Service.Clear).
 func (server *Server) addingClear(w http.ResponseWriter, r *http.Request) {
 	if _, err := server.adder.Clear(); err != nil {
@@ -192,4 +234,40 @@ func kindName(kind model.MediaType) string {
 		return "series"
 	}
 	return "film"
+}
+
+type upgradeRow struct {
+	ID    string  `json:"id"`
+	Title string  `json:"title"`
+	Kind  string  `json:"kind"`
+	Why   string  `json:"why"`
+	Value float64 `json:"value,omitempty"`
+	// LastSearched and Next: its last upgrade search, and when it may be
+	// searched again (absent: at a run with room for it).
+	LastSearched time.Time `json:"lastSearched,omitzero"`
+	Next         time.Time `json:"next,omitzero"`
+}
+
+type upgradesData struct {
+	Rows []upgradeRow `json:"rows"`
+	// PerDay is the setting (0: upgrades off); Today, the searches of the
+	// last 24 hours.
+	PerDay int `json:"perDay"`
+	Today  int `json:"today"`
+}
+
+// addingUpgrades answers GET /api/adding/upgrades: what waits for an
+// upgrade search, in its order.
+func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
+	rows, err := server.adder.Upgrades(r.Context())
+	if err != nil {
+		fail(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	data := upgradesData{Rows: []upgradeRow{}, PerDay: server.inv.Config().Adding.UpgradesPerDay, Today: server.adder.UpgradesToday()}
+	for _, row := range rows {
+		data.Rows = append(data.Rows, upgradeRow{ID: row.Ref, Title: row.Title, Kind: kindName(row.Kind), Why: row.Why,
+			Value: row.Value, LastSearched: row.LastSearched, Next: row.Next})
+	}
+	writeJSON(w, http.StatusOK, data)
 }

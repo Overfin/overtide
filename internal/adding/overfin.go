@@ -41,7 +41,10 @@ func (service *Service) ReadOverfin(ctx context.Context) error {
 	if err := service.connect(ctx, cfg, cfg.Adding.Mode == config.AddingDryRun); err != nil {
 		log.Printf("[adding] Radarr's and Sonarr's events: %v", err)
 	}
-	return service.save(service.readOverfin(ctx, cfg, entries, history))
+	if entries, err = service.unwanted(ctx, cfg, service.readOverfin(ctx, cfg, entries, history)); err != nil {
+		return err
+	}
+	return service.save(entries)
 }
 
 // readOverfin brings Overfin's suggestions into the waiting list, in

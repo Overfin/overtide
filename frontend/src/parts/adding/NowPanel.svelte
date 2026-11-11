@@ -43,7 +43,7 @@
         <ul class="holding">{#each now.holding as h, i (i)}<li>{h}</li>{/each}</ul>
       {/if}
     </div>
-    <h3>Next</h3>
+    <h3>Tried next</h3>
     {#each now.next as n, i (i)}
       <div class="next"><b>{n.title}</b> <span class="muted">· {n.kind === 'series' ? 'Series' : 'Film'} · {n.when}</span></div>
     {:else}

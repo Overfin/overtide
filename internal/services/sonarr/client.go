@@ -175,3 +175,21 @@ func (client *Client) AddImportListExclusion(title string, tvdbID int) error {
 	}
 	return err
 }
+
+// Exclusions are the series of Sonarr's import-list exclusions, by TVDB
+// ID: what the operator doesn't want added.
+func (client *Client) Exclusions() (map[int]bool, error) {
+	var list []struct {
+		TVDBID int `json:"tvdbId"`
+	}
+	if err := client.Send(http.MethodGet, "/api/v3/importlistexclusion", nil, &list); err != nil {
+		return nil, err
+	}
+	out := map[int]bool{}
+	for _, x := range list {
+		if x.TVDBID > 0 {
+			out[x.TVDBID] = true
+		}
+	}
+	return out, nil
+}

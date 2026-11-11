@@ -3,9 +3,9 @@
      the titles have sources. data is what the server sent, for the page's
      own buttons; reload, when it changes, reads it again. -->
 <script lang="ts">
-  import { Badge, Empty, Loading, Notice } from '@overfin/ui';
-  import { get } from '../../lib/api';
-  import type { Adding } from '../../lib/types-adding';
+  import { Badge, Busy, Empty, Loading, Notice, ask, toast } from '@overfin/ui';
+  import { get, post } from '../../lib/api';
+  import type { Adding, AddingRow } from '../../lib/types-adding';
   import { groups, kindLabels, sourceLabels, short } from '../../lib/words-adding';
   import '../../styles/adding.css';
 
@@ -44,6 +44,23 @@
     return () => clearTimeout(timer);
   });
 
+  // Remove: out of the list for good, as the operator decides.
+  const removal: Record<string, { kind: string; text: (r: AddingRow) => string }> = {
+    seasons: { kind: 'season', text: (r) => `Overtide stops looking for ${r.title}: no whole-season search, and its missing episodes leave the list too. For good.` },
+    episodes: { kind: 'episode', text: (r) => `Overtide stops looking for ${r.title}. For good.` },
+    waiting: { kind: 'title', text: (r) => `${r.title} leaves the waiting list and goes in ${r.kind === 'film' ? "Radarr's" : "Sonarr's"} import-list exclusions, so nothing adds it again. To want it back, take it out of those exclusions there.` },
+    'not released': { kind: 'title', text: (r) => `${r.title} leaves the list and goes in ${r.kind === 'film' ? "Radarr's" : "Sonarr's"} import-list exclusions, so nothing adds it again. To want it back, take it out of those exclusions there.` },
+    imported: { kind: 'title', text: (r) => `${r.title} leaves this list. Its files stay where they are.` },
+  };
+
+  async function remove(state: string, row: AddingRow) {
+    const how = removal[state];
+    if (!how || !(await ask(how.text(row), { title: `Remove ${row.title}?`, yes: 'Remove', danger: true }))) return;
+    await post('/api/adding/remove', { kind: how.kind, id: row.id });
+    toast(`${row.title} is out of the list.`);
+    await load();
+  }
+
   const shown = $derived(data ? data.groups.filter((g) => states.includes(g.state)) : []);
   const count = $derived(shown.reduce((n, g) => n + g.count, 0));
 </script>
@@ -72,7 +89,7 @@
       {#if about.hint}<p class="hint">{about.hint}</p>{/if}
       <div class="table-wrap">
         <table class="waiting-table">
-          <thead><tr><th>Title</th><th class="hide-narrow">Source</th><th>{about.when}</th><th>Last result</th></tr></thead>
+          <thead><tr><th>Title</th><th class="hide-narrow">Source</th><th>{about.when}</th><th>Last result</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
           <tbody>
             {#each group.rows as row, i (i)}
               <tr>
@@ -80,6 +97,7 @@
                 <td class="muted hide-narrow">{sourceLabels[row.source] ?? row.source}</td>
                 <td class="muted nowrap">{short(row.when)}</td>
                 <td class:dry={row.dryRun}>{row.result}</td>
+                <td class="actions">{#if row.removable && removal[group.state]}<Busy kind="danger" small action={() => remove(group.state, row)}>Remove</Busy>{/if}</td>
               </tr>
             {/each}
           </tbody>

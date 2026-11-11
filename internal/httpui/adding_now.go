@@ -124,10 +124,25 @@ func (server *Server) nowData(ctx context.Context) nowData {
 		}
 	}
 	if next, err := server.adder.Next(5); err == nil {
+		// When each is tried: at its own next try, the next run's at the
+		// earliest, and not before the day's limit lets new titles start.
+		earliest := now
+		for _, status := range server.addingTasks() {
+			if status.ID == addingTaskID && !status.NextRun.IsZero() && !data.Running {
+				earliest = status.NextRun
+			}
+		}
+		if ok, until := server.adder.DailyLimit(1); !ok && until.After(earliest) {
+			earliest = until
+		}
 		for _, entry := range next {
-			row := nextRow{Title: entry.Title, Kind: kindName(entry.Kind), When: "Next run"}
-			if entry.NextTry.After(now) {
-				row.When = entry.NextTry.Local().Format("Jan 2 15:04")
+			at := earliest
+			if entry.NextTry.After(at) {
+				at = entry.NextTry
+			}
+			row := nextRow{Title: entry.Title, Kind: kindName(entry.Kind), When: "tried " + whenWords(at, now)}
+			if data.Running && !at.After(now) {
+				row.When = "tried in this run, in turn"
 			}
 			data.Next = append(data.Next, row)
 		}
@@ -146,4 +161,19 @@ func since(d time.Duration) string {
 		return fmt.Sprintf("%d h %d min", int(d.Hours()), int(d.Minutes())%60)
 	}
 	return fmt.Sprintf("%d days", int(d.Hours()/24))
+}
+
+// whenWords says a time to come: "at 19:42" today, "tomorrow at 08:10",
+// "Nov 12 at 08:10" after.
+func whenWords(at, now time.Time) string {
+	at, now = at.Local(), now.Local()
+	switch {
+	case !at.After(now):
+		return "now"
+	case at.YearDay() == now.YearDay() && at.Year() == now.Year():
+		return "at " + at.Format("15:04")
+	case at.YearDay() == now.AddDate(0, 0, 1).YearDay():
+		return "tomorrow at " + at.Format("15:04")
+	}
+	return at.Format("Jan 2") + " at " + at.Format("15:04")
 }

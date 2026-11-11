@@ -356,6 +356,10 @@ func (service *Service) Run(ctx context.Context) error {
 		}
 	}
 	service.values = nil
+	entries, err = service.unwanted(ctx, cfg, entries)
+	if err != nil {
+		return err
+	}
 	if cfg.Adding.ManagesAll() {
 		service.phase("Taking what Radarr and Sonarr have")
 		if entries, err = service.takeAll(ctx, cfg, entries, dryRun); err != nil {
@@ -404,6 +408,9 @@ func (service *Service) Run(ctx context.Context) error {
 			entry := &entries[i]
 			if !wanted(entry.Source) || !entry.waiting() || entry.NextTry.After(service.now()) {
 				continue
+			}
+			if service.removedByHand(*entry) {
+				continue // removed by the operator since the run began
 			}
 			// A series whose seasons would go past the limit waits for the next
 			// run, unless it's the run's first title (it would never fit).
@@ -760,7 +767,15 @@ func (service *Service) load() ([]Entry, error) {
 			entries[i].Source = FromOverfin
 		}
 	}
-	return entries, nil
+	// What the operator removed by hand is never there, whoever saved the
+	// list since.
+	kept := entries[:0]
+	for _, entry := range entries {
+		if !service.removedByHand(entry) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept, nil
 }
 
 func (service *Service) save(entries []Entry) error {
