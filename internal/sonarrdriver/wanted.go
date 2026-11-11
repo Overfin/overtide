@@ -36,8 +36,8 @@ func (driver *Driver) Wanted() (episodes, seasons []WantedRow, err error) {
 	for serviceID, state := range states {
 		names := driver.seriesNames(serviceID)
 		for _, pack := range state.Seasons {
-			if pack.Done && !pack.short() {
-				continue
+			if (pack.Done && !pack.short()) || (pack.Upgrade && pack.GrabbedAt.IsZero()) {
+				continue // done, or an upgrade (the Upgrades page)
 			}
 			if _, there := names[pack.SeriesID]; !there && len(names) > 0 && pack.GrabbedAt.IsZero() {
 				continue // its series left Sonarr

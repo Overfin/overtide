@@ -47,11 +47,13 @@ func TestSeasonsAndTheDailyLimit(t *testing.T) {
 	if used, err := service.replaceSeasons(context.Background(), cfg, 5, false, false); err != nil || used != 0 {
 		t.Fatalf("older seasons past the limit: %d, %v", used, err)
 	}
+	// A season just finished, missing only its last episode: no pack
+	// now, the episode comes alone (the pack later, as an upgrade).
 	used, err := service.replaceSeasons(context.Background(), cfg, 5, false, true)
-	if err != nil || used != 1 || !slices.Equal(fake.Searches(), []string{"grab fresh"}) {
+	if err != nil || used != 0 || len(fake.Searches()) != 0 {
 		t.Fatalf("the season just finished: %d, %v, %v", used, err, fake.Searches())
 	}
-	if times, _ := service.started(); len(times) != 3 {
+	if times, _ := service.started(); len(times) != 2 {
 		t.Errorf("counted %d", len(times))
 	}
 	// A day later there's room for one again: the series' lowest season,
@@ -61,7 +63,7 @@ func TestSeasonsAndTheDailyLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	used, err = service.replaceSeasons(context.Background(), cfg, 5, false, false)
-	if err != nil || used != 1 || !slices.Equal(fake.Searches(), []string{"grab fresh", "grab less"}) {
+	if err != nil || used != 1 || !slices.Equal(fake.Searches(), []string{"grab less"}) {
 		t.Fatalf("after a day: %d, %v, %v", used, err, fake.Searches())
 	}
 }

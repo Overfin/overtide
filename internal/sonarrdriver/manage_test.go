@@ -137,9 +137,11 @@ func TestReplaceSeasons(t *testing.T) {
 			fake.Files[fileID] = map[string]any{"id": fileID, "seasonNumber": season, "dateAdded": arrfake.ISO(now.AddDate(-1, 0, 0))}
 		}
 	}
-	ep(1, 1, now.AddDate(0, 0, -30), 11)
-	ep(2, 1, now.AddDate(0, 0, -30), 0)
-	ep(3, 1, now.AddDate(0, 0, -29), 13)
+	// Season 1 finished over FreshSeason ago, so it's a season to fill, not
+	// last episodes to fetch alone.
+	ep(1, 1, now.AddDate(0, 0, -40), 11)
+	ep(2, 1, now.AddDate(0, 0, -40), 0)
+	ep(3, 1, now.AddDate(0, 0, -39), 13)
 	ep(4, 2, now.AddDate(0, 0, -3), 0) // its season isn't out long enough
 	full := func(guid string, rejections ...string) map[string]any {
 		return map[string]any{"guid": guid, "indexerId": 1, "title": guid, "fullSeason": true, "seasonNumber": 1, "rejections": rejections, "downloadAllowed": true}
@@ -159,7 +161,7 @@ func TestReplaceSeasons(t *testing.T) {
 	// Dry run: nothing asked of the indexers; the season is counted, from
 	// what a dry run of Take found.
 	driver.preview = map[string]*State{"s": {Follow: map[int]bool{}, Wanted: map[int]EpisodeWant{2: {SeriesID: 5, Season: 1}}}}
-	used, waiting, err := driver.ReplaceSeasons(context.Background(), cfg, 3, true, true)
+	used, waiting, err := driver.ReplaceSeasons(context.Background(), cfg, 3, true, false)
 	if err != nil || used != 0 {
 		t.Fatalf("dry run: %d searches, %v", used, err)
 	}
@@ -170,7 +172,7 @@ func TestReplaceSeasons(t *testing.T) {
 		t.Fatalf("dry run changed: %v", changes)
 	}
 
-	used, _, err = driver.ReplaceSeasons(context.Background(), cfg, 3, false, true)
+	used, _, err = driver.ReplaceSeasons(context.Background(), cfg, 3, false, false)
 	if err != nil || used != 1 {
 		t.Fatalf("%d searches, %v", used, err)
 	}

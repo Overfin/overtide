@@ -176,7 +176,7 @@ func (driver *Driver) PackUpgradeRows() ([]PackUpgradeRow, error) {
 			wanting[seasonKey(want.SeriesID, want.Season)] = true
 		}
 		for key, pack := range state.Seasons {
-			if pack.Done || pack.short() || !pack.GrabbedAt.IsZero() || pack.Tries == 0 || pack.Tries >= tries.Max || wanting[key] {
+			if pack.Done || pack.short() || !pack.GrabbedAt.IsZero() || (pack.Tries == 0 && !pack.Upgrade) || pack.Tries >= tries.Max || wanting[key] {
 				continue
 			}
 			if _, out := removed.Upgrades[PackRef(serviceID, pack.SeriesID, pack.Season)]; out {

@@ -24,6 +24,71 @@ type Release struct {
 	// DownloadURL is its .torrent's address: it may hold a tracker's key, so
 	// it's never logged.
 	DownloadURL string `json:"downloadUrl"`
+	// Quality is the quality Sonarr parsed for it.
+	Quality struct {
+		Quality struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"quality"`
+	} `json:"quality"`
+}
+
+// QualityRanks are a series' quality profile's qualities by ID, ranked
+// from its least preferred (0) up, as the profile orders them (a group's
+// qualities share its rank).
+func (client *Client) QualityRanks(seriesID int) (map[int]int, error) {
+	var series struct {
+		QualityProfileID int `json:"qualityProfileId"`
+	}
+	if err := client.Get(fmt.Sprintf("/api/v3/series/%d", seriesID), &series); err != nil {
+		return nil, err
+	}
+	type item struct {
+		Quality *struct {
+			ID int `json:"id"`
+		} `json:"quality"`
+		Items []item `json:"items"`
+	}
+	var profile struct {
+		Items []item `json:"items"`
+	}
+	if err := client.Get(fmt.Sprintf("/api/v3/qualityprofile/%d", series.QualityProfileID), &profile); err != nil {
+		return nil, err
+	}
+	ranks := map[int]int{}
+	for rank, it := range profile.Items {
+		if it.Quality != nil {
+			ranks[it.Quality.ID] = rank
+		}
+		for _, sub := range it.Items {
+			if sub.Quality != nil {
+				ranks[sub.Quality.ID] = rank
+			}
+		}
+	}
+	return ranks, nil
+}
+
+// SeasonQualities are the qualities of a season's episode files, by ID.
+func (client *Client) SeasonQualities(seriesID, season int) ([]int, error) {
+	var files []struct {
+		SeasonNumber int `json:"seasonNumber"`
+		Quality      struct {
+			Quality struct {
+				ID int `json:"id"`
+			} `json:"quality"`
+		} `json:"quality"`
+	}
+	if err := client.Get(fmt.Sprintf("/api/v3/episodefile?seriesId=%d", seriesID), &files); err != nil {
+		return nil, err
+	}
+	var out []int
+	for _, f := range files {
+		if f.SeasonNumber == season {
+			out = append(out, f.Quality.Quality.ID)
+		}
+	}
+	return out, nil
 }
 
 // ReleaseEpisode is an episode a release was matched to.

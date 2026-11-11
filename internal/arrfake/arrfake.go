@@ -20,15 +20,18 @@ import (
 // Arrs is a Radarr and a Sonarr in one server (/radarr, /sonarr),
 // keeping their tags, films, series and episodes, and the changes asked.
 type Arrs struct {
-	Mu      sync.Mutex
-	Now     time.Time
-	Tags    map[string]map[int]string // per app
-	Films   map[int]map[string]any
-	Series  map[int]map[string]any
-	Eps     map[int]map[string]any
-	Queued  map[int]bool
-	GrabOn  map[int]bool // an episode search for these starts a download
-	Changes []string
+	// ProfileItems are every quality profile's items, its qualities from
+	// the least preferred up, as Sonarr gives them.
+	ProfileItems []any
+	Mu           sync.Mutex
+	Now          time.Time
+	Tags         map[string]map[int]string // per app
+	Films        map[int]map[string]any
+	Series       map[int]map[string]any
+	Eps          map[int]map[string]any
+	Queued       map[int]bool
+	GrabOn       map[int]bool // an episode search for these starts a download
+	Changes      []string
 	// Whole seasons: releases per season, the queue's downloads, the
 	// files manual import sees, episode files, and the imports asked.
 	Releases map[int][]map[string]any
@@ -311,6 +314,8 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write([]map[string]any{{"path": "/data/Series"}})
 	case path == "/api/v3/qualityprofile":
 		write([]map[string]any{{"id": 1}})
+	case strings.HasPrefix(path, "/api/v3/qualityprofile/"):
+		write(map[string]any{"items": f.ProfileItems})
 	case path == "/api/v3/notification/schema":
 		write([]map[string]any{{"implementation": "Webhook", "name": "", "onGrab": false, "onMovieAdded": false, "onSeriesAdd": false,
 			"fields": []any{map[string]any{"name": "url"}, map[string]any{"name": "method", "value": 1}, map[string]any{"name": "username"}, map[string]any{"name": "password"}}}})

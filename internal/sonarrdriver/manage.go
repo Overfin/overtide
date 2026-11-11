@@ -678,6 +678,7 @@ func (driver *Driver) searchEpisodes(ctx context.Context, cfg config.Config, bud
 				continue
 			case episode.HasFile:
 				delete(state.Wanted, id)
+				driver.seasonCompleted(client, state, want.SeriesID, want.Season)
 			case driver.autoImportOff[svc.ID] && state.importing(want.SeriesID):
 				// Overtide's own import, not settled yet.
 			default:

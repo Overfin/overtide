@@ -49,6 +49,9 @@ type SeasonPack struct {
 	Tried []string `json:"tried,omitempty"`
 	// LastTry is its last search.
 	LastTry time.Time `json:"lastTry,omitzero"`
+	// Upgrade: a season that came complete episode by episode as it aired:
+	// a whole-season pack is an upgrade for it (PackUpgrades), not adding.
+	Upgrade bool `json:"upgrade,omitempty"`
 	// Short: a pack of it was imported and it still lacks that many
 	// episodes. It isn't searched for again: it needs a look.
 	Short int `json:"short,omitempty"`
@@ -64,7 +67,7 @@ func seasonKey(seriesID, season int) string { return fmt.Sprintf("%d/%d", series
 // or while one sent is on its way. Packs are still looked for after
 // (tries.Max), but its episodes don't wait for them.
 func (pack *SeasonPack) pending() bool {
-	return pack != nil && !pack.Done && !pack.short() && pack.Tries < tries.Max && (pack.Tries == 0 || !pack.GrabbedAt.IsZero())
+	return pack != nil && !pack.Upgrade && !pack.Done && !pack.short() && pack.Tries < tries.Max && (pack.Tries == 0 || !pack.GrabbedAt.IsZero())
 }
 
 // short reports whether a pack of the season came and left it needing a
@@ -192,9 +195,20 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 			if !seasonOut(list, pack.Season, now) {
 				continue
 			}
+			// A season just finished, missing only a few episodes, gets
+			// them one by one as they air (SearchEpisodes); its pack comes
+			// after, as an upgrade. One mostly missing is a season, in its
+			// turn, counted in the titles a day.
+			justFinished := seasonFresh(list, pack.Season, now) && fewMissing(state, pack, list, now)
+			if fresh || justFinished {
+				if justFinished && pack.GrabbedAt.IsZero() && !pack.Done && pack.Tries == 0 && !pack.Upgrade {
+					delete(state.Seasons, key) // one a former version made wait for its pack
+				}
+				continue
+			}
 			state.Seasons[key] = pack
 			waiting++
-			if dryRun || seasonFresh(list, pack.Season, now) != fresh || budget-used <= 0 || ctx.Err() != nil || driver.Stopped() {
+			if dryRun || budget-used <= 0 || ctx.Err() != nil || driver.Stopped() {
 				continue
 			}
 			if pack.NextTry.After(now) {
@@ -225,7 +239,7 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 				continue
 			}
 			used++
-			driver.seekPack(ctx, cfg, svc.ID, client, state, pack, list, names[pack.SeriesID])
+			driver.seekPack(ctx, cfg, svc.ID, client, state, pack, list, names[pack.SeriesID], false)
 			if err := driver.SaveStates(states); err != nil {
 				return used, waiting, err
 			}
@@ -261,12 +275,15 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 // first single release Sonarr would take as it is: they needn't wait for a
 // pack nobody made yet (the others: seasonEpisodes). Their files aren't
 // read first: Sonarr matched each to its episode.
-func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID string, client *sonarr.Client, state *State, pack *SeasonPack, list []sonarr.Episode, series string) {
+func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID string, client *sonarr.Client, state *State, pack *SeasonPack, list []sonarr.Episode, series string, upgrade bool) {
 	now := driver.now()
 	driver.Step(seasonName(series, pack.Season), "Sonarr is searching for the whole season")
 	pack.LastTry = now
 	started := time.Now()
 	releases, err := client.SeasonReleases(pack.SeriesID, pack.Season)
+	if err == nil {
+		releases = driver.notBelowSeason(client, pack, releases)
+	}
 	var chosen *sonarr.Release
 	if driver.autoImportOff[serviceID] {
 		chosen = driver.chooseRelease(ctx, releases, pack, list, driver.episodeOrders(ctx, cfg, driver.tmdbOf(client, pack.SeriesID)))
@@ -285,8 +302,10 @@ func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID
 			return
 		}
 		pack.Release, pack.GrabbedAt, pack.DownloadID = chosen.Title, now, ""
-		if err := driver.Started(1); err != nil {
-			log.Printf("[adding] count the download of %s: %v", chosen.Title, err)
+		if !upgrade { // an upgrade counts in the upgrades a day
+			if err := driver.Started(1); err != nil {
+				log.Printf("[adding] count the download of %s: %v", chosen.Title, err)
+			}
 		}
 		return
 	}
@@ -589,4 +608,93 @@ func seasonTurns(state *State, seasons map[string]*SeasonPack, keys []string, va
 		return out[i] < out[j]
 	})
 	return out
+}
+
+// notBelowSeason leaves out the whole-season packs of a quality lower than
+// the season's lowest file's, in its series' quality profile: a pack may
+// be of a lower quality than the best of the files it replaces (one
+// release for the whole season is worth it), never than the worst. Single
+// episodes, and a season without files, are left as they are; so is
+// everything when the profile can't be read (Sonarr's own rules stand).
+func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, releases []sonarr.Release) []sonarr.Release {
+	qualities, err := client.SeasonQualities(pack.SeriesID, pack.Season)
+	if err != nil || len(qualities) == 0 {
+		return releases
+	}
+	ranks, err := client.QualityRanks(pack.SeriesID)
+	if err != nil || len(ranks) == 0 {
+		return releases
+	}
+	floor := -1
+	for _, q := range qualities {
+		if r, ok := ranks[q]; ok && (floor < 0 || r < floor) {
+			floor = r
+		}
+	}
+	if floor < 0 {
+		return releases
+	}
+	kept := releases[:0:0]
+	for _, r := range releases {
+		rank, known := ranks[r.Quality.Quality.ID]
+		if r.FullSeason && (!known || rank < floor) {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept
+}
+
+// seasonCompleted marks a season just finished whose last wanted episode
+// came: if every episode that aired has its file, and none is to come, it
+// waits for a whole-season pack as an upgrade (PackUpgrades), within the
+// upgrades a day.
+func (driver *Driver) seasonCompleted(client *sonarr.Client, state *State, seriesID, season int) {
+	if season <= 0 {
+		return
+	}
+	for _, want := range state.Wanted {
+		if want.SeriesID == seriesID && want.Season == season {
+			return // more to come
+		}
+	}
+	key := seasonKey(seriesID, season)
+	if pack := state.Seasons[key]; pack != nil && (pack.Done || !pack.GrabbedAt.IsZero() || pack.Upgrade) {
+		return
+	}
+	episodes, err := client.Episodes(seriesID)
+	if err != nil {
+		return
+	}
+	now := driver.now()
+	any := false
+	for _, e := range episodes {
+		if e.SeasonNumber != season {
+			continue
+		}
+		if e.AirDateUTC.IsZero() || e.AirDateUTC.After(now) || !e.HasFile {
+			return // still airing, or missing one
+		}
+		any = true
+	}
+	if any && seasonFresh(episodes, season, now) {
+		state.Seasons[key] = &SeasonPack{SeriesID: seriesID, Season: season, Upgrade: true}
+	}
+}
+
+// fewMissing reports whether a season lacks only a few of its aired
+// episodes: at most 2, or a quarter of them.
+func fewMissing(state *State, pack *SeasonPack, list []sonarr.Episode, now time.Time) bool {
+	aired, missing := 0, 0
+	for _, e := range list {
+		if e.SeasonNumber == pack.Season && !e.AirDateUTC.IsZero() && !e.AirDateUTC.After(now) {
+			aired++
+		}
+	}
+	for _, want := range state.Wanted {
+		if want.SeriesID == pack.SeriesID && want.Season == pack.Season {
+			missing++
+		}
+	}
+	return missing <= max(2, aired/4)
 }
