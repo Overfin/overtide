@@ -152,6 +152,8 @@ func TestReplaceSeasons(t *testing.T) {
 		full("pack", "Existing file on disk is of equal or higher preference: WEBDL-1080p"),
 		full("later"),
 	}
+	// Its profile: the files' quality and the packs' are the same one.
+	fake.ProfileItems = []any{map[string]any{"quality": map[string]any{"id": 0}}}
 	driver, cfg := testDriver(t, fake, config.ManageAll)
 	wanted := map[int]EpisodeWant{2: {SeriesID: 5, Season: 1}, 4: {SeriesID: 5, Season: 2}}
 	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}, Wanted: wanted}}); err != nil {

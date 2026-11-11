@@ -482,7 +482,7 @@ func (driver *Driver) followPack(ctx context.Context, client *sonarr.Client, sta
 // importRest imports the pack's files that Sonarr didn't take, in place
 // of the season's older files.
 func (driver *Driver) importRest(ctx context.Context, client *sonarr.Client, state *State, pack *SeasonPack, episodes func(int) ([]sonarr.Episode, error)) error {
-	if _, err := driver.replaceOlder(ctx, client, pack.DownloadID, pack.SeriesID, pack.Season, pack.GrabbedAt, episodes); err != nil {
+	if _, err := driver.replaceOlder(ctx, client, pack.DownloadID, pack.SeriesID, pack.Season, pack.GrabbedAt, episodes, false); err != nil {
 		return nil // tried again next run
 	}
 	driver.packDone(state, pack)
@@ -493,7 +493,11 @@ func (driver *Driver) importRest(ctx context.Context, client *sonarr.Client, sta
 // episodes' files older than since (Sonarr replaces them, whatever it thinks
 // of them), so a season comes from one release. It returns how many files
 // it imported. An error means nothing's sure: it's to be tried again.
-func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, downloadID string, seriesID, season int, since time.Time, episodes func(int) ([]sonarr.Episode, error)) (int, error) {
+//
+// wholeOnly: only when the download holds every aired episode of the
+// season (a download Overtide didn't choose, whose quality it didn't
+// check: a double episode Sonarr refused isn't imported over better files).
+func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, downloadID string, seriesID, season int, since time.Time, episodes func(int) ([]sonarr.Episode, error), wholeOnly bool) (int, error) {
 	items, err := client.ImportItems(downloadID, seriesID)
 	if err != nil {
 		return 0, err
@@ -501,6 +505,9 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 	list, err := episodes(seriesID)
 	if err != nil {
 		return 0, err
+	}
+	if wholeOnly && !wholeSeason(items, list, season, driver.now()) {
+		return 0, nil
 	}
 	files, err := client.EpisodeFiles(seriesID)
 	if err != nil {
@@ -554,6 +561,30 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 		return 0, err
 	}
 	return len(rest), nil
+}
+
+// wholeSeason says whether a download's files hold every episode of the
+// season aired by now.
+func wholeSeason(items []sonarr.ImportItem, list []sonarr.Episode, season int, now time.Time) bool {
+	held := map[int]bool{}
+	for _, item := range items {
+		if item.SeasonNumber != nil && *item.SeasonNumber == season {
+			for _, e := range item.Episodes {
+				held[e.ID] = true
+			}
+		}
+	}
+	aired := 0
+	for _, e := range list {
+		if e.SeasonNumber != season || e.AirDateUTC.IsZero() || e.AirDateUTC.After(now) {
+			continue
+		}
+		aired++
+		if !held[e.ID] {
+			return false
+		}
+	}
+	return aired > 0
 }
 
 func (driver *Driver) packDone(state *State, pack *SeasonPack) {
@@ -610,20 +641,35 @@ func seasonTurns(state *State, seasons map[string]*SeasonPack, keys []string, va
 	return out
 }
 
+// noPacks leaves out the whole-season packs.
+func noPacks(releases []sonarr.Release) []sonarr.Release {
+	kept := releases[:0:0]
+	for _, r := range releases {
+		if !r.FullSeason {
+			kept = append(kept, r)
+		}
+	}
+	return kept
+}
+
 // notBelowSeason leaves out the whole-season packs of a quality lower than
 // the season's lowest file's, in its series' quality profile: a pack may
 // be of a lower quality than the best of the files it replaces (one
 // release for the whole season is worth it), never than the worst. Single
-// episodes, and a season without files, are left as they are; so is
-// everything when the profile can't be read (Sonarr's own rules stand).
+// episodes, and a season without files, are left as they are. When the
+// season's files or the profile can't be read, no pack is taken this time
+// (it would replace files unchecked): the single episodes are.
 func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, releases []sonarr.Release) []sonarr.Release {
 	qualities, err := client.SeasonQualities(pack.SeriesID, pack.Season)
-	if err != nil || len(qualities) == 0 {
+	if err != nil {
+		return noPacks(releases)
+	}
+	if len(qualities) == 0 {
 		return releases
 	}
 	ranks, err := client.QualityRanks(pack.SeriesID)
 	if err != nil || len(ranks) == 0 {
-		return releases
+		return noPacks(releases)
 	}
 	floor := -1
 	for _, q := range qualities {

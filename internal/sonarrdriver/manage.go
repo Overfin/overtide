@@ -457,7 +457,7 @@ func (driver *Driver) ClearFinished(ctx context.Context, cfg config.Config, dryR
 						continue
 					}
 					seasons[item.SeasonNumber] = true
-					n, err := driver.replaceOlder(ctx, client, downloadID, item.SeriesID, item.SeasonNumber, item.Added, episodes)
+					n, err := driver.replaceOlder(ctx, client, downloadID, item.SeriesID, item.SeasonNumber, item.Added, episodes, true)
 					if err != nil {
 						log.Printf("[adding] replacing older files with download %s: %v", downloadID, err)
 						failed = true

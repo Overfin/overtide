@@ -438,3 +438,36 @@ func TestRefusedFiles(t *testing.T) {
 		t.Error("still needs a look")
 	}
 }
+
+// A download Overtide didn't choose that Sonarr refused as no upgrade is
+// imported over older files only when it holds the whole season: a double
+// episode isn't put over better files.
+func TestRefusedPartOfASeasonStays(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.AddSeries(1, nil, arrfake.Season(1, 3, 3))
+	for id := 1; id <= 3; id++ {
+		fake.AddEpisode(id, 1, 1, old, true)
+		fake.Eps[id]["episodeFileId"] = 100 + id
+		fake.Files[100+id] = map[string]any{"id": 100 + id, "seasonNumber": 1, "dateAdded": arrfake.ISO(old)}
+	}
+	added := arrfake.ISO(now.Add(-2 * time.Hour))
+	item := func(id, episode int) map[string]any {
+		return map[string]any{"id": id, "downloadId": "double", "seriesId": 1, "seasonNumber": 1, "episodeId": episode, "added": added, "status": "completed", "trackedDownloadStatus": "warning", "trackedDownloadState": "importPending",
+			"statusMessages": []map[string]any{{"title": "Show.S01E01E02.mkv", "messages": []string{"Not an upgrade for existing episode file(s)."}}}}
+	}
+	fake.FullQueue = []map[string]any{item(1, 1), item(2, 2)}
+	one := 1
+	fake.ImportAt = []map[string]any{
+		{"path": "/d/Show.S01E01E02.mkv", "seasonNumber": one, "episodes": []map[string]any{{"id": 1}, {"id": 2}}, "quality": map[string]any{}, "languages": []any{}, "downloadId": "double"},
+	}
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	if err := driver.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	driver.ClearFinished(context.Background(), cfg, false)
+	if len(fake.Imported) != 0 {
+		t.Errorf("imported: %v", fake.Imported)
+	}
+}
