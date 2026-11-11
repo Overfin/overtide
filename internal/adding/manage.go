@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/overfin/overtide/internal/sonarrdriver"
 	"sort"
 	"strings"
 	"time"
@@ -14,7 +15,7 @@ import (
 
 const (
 	// manageAllKey records when "Manage all" first took the libraries: a
-	// title added after it is TagNew, one there before TagFound.
+	// title added after it is the operator's wish, searched first.
 	manageAllKey = "adding.manage_all_at"
 	// summaryKey keeps what the last "Manage all" pass did, or would do.
 	summaryKey = "adding.manage_summary"
@@ -208,11 +209,11 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 			return entries, err
 		}
 	}
-	labelFor := func(added time.Time) string {
-		if switchedOn.IsZero() || !added.After(switchedOn) {
-			return model.TagFound
-		}
-		return model.TagNew
+	// Every title taken is TagFound; one added from outside since "Manage
+	// all" (by hand, an import list, another app) is the operator's wish,
+	// searched first.
+	labelFor := func(added time.Time) (string, bool) {
+		return model.TagFound, !switchedOn.IsZero() && added.After(switchedOn)
 	}
 	active := activeEntries(entries)
 	listed := map[string]bool{}
@@ -248,8 +249,8 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 			if model.HasLabel(t.Tags, labels, model.TagIgnore) {
 				continue
 			}
+			label, byHand := labelFor(t.Added)
 			if !model.HasManagedLabel(t.Tags, labels) {
-				label := labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
 			}
 			if !t.Monitored || active[key] {
@@ -261,7 +262,7 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 				// list or by another app) is the operator's wish: it goes
 				// first.
 				source, result := FromLibrary, "Taken from Radarr"
-				if labelFor(t.Added) == model.TagNew {
+				if byHand {
 					source, result = FromHand, "Added by hand in Radarr"
 				}
 				entries = append(entries, Entry{Key: movieKey(t.TMDBID), Kind: model.Movie, ServiceID: svc.ID, ExternalID: t.TMDBID,
@@ -286,6 +287,15 @@ func (service *Service) takeAll(ctx context.Context, cfg config.Config, entries 
 		}
 		summary.Unmonitored += len(toUnmonitor)
 		if !dryRun {
+			// How each was monitored, kept before it changes: it goes back
+			// as it was when given back.
+			before := map[string]sonarrdriver.TakenTitle{}
+			for _, id := range toUnmonitor {
+				before[sonarrdriver.TakenKey(svc.ID, model.Movie, id)] = sonarrdriver.TakenTitle{Monitored: true}
+			}
+			if err := service.sonarr.RecordTaken(before); err != nil {
+				return fail(err)
+			}
 			if err := client.SetManyMonitored(toUnmonitor, false); err != nil {
 				return fail(err)
 			}

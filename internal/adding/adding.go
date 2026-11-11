@@ -65,7 +65,9 @@ const (
 	historyKey = "adding.history"
 	// tagsKey records that the former tags (Overswell's, and Overtide's
 	// own "overtide" from before the split) were replaced, once.
-	tagsKey = "adding.tags_overtide"
+	// tagsKey: the former tags replaced (the 2026-11-10 run: overtide-new
+	// merged into overtide-found).
+	tagsKey = "adding.tags_found"
 )
 
 // Source is where a title in the waiting list comes from: what the
@@ -355,6 +357,11 @@ func (service *Service) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	// What the operator ignored, or no longer lets Overtide manage, goes
+	// back as it was.
+	if entries, err = service.giveBack(ctx, cfg, entries, dryRun); err != nil {
+		return err
+	}
 	service.values = nil
 	entries, err = service.unwanted(ctx, cfg, entries)
 	if err != nil {
@@ -504,13 +511,17 @@ func (service *Service) Run(ctx context.Context) error {
 }
 
 // managed reports whether a title in Radarr or Sonarr is Overtide's: one
-// of its tags, or every title with "Manage all".
+// it added itself (its tags), or every title with "Manage all", but one
+// the operator tagged overtide-ignore.
 func (service *Service) managed(m model.Media) bool {
+	if model.HasTag(m.Tags, model.TagIgnore) {
+		return false
+	}
 	if service.inv.Config().Adding.ManagesAll() {
 		return true
 	}
 	for _, tag := range m.Tags {
-		if model.IsManagedTag(tag) {
+		if model.IsOwnTag(tag) {
 			return true
 		}
 	}

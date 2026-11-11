@@ -122,7 +122,7 @@ func TestFindIncomplete(t *testing.T) {
 // here were there before it, so all get TagFound).
 func (driver *Driver) tendOwnAll(t *testing.T, cfg config.Config) {
 	t.Helper()
-	if _, err := driver.Take(context.Background(), cfg, nil, func(time.Time) string { return model.TagFound }, false); err != nil {
+	if _, err := driver.Take(context.Background(), cfg, nil, func(time.Time) (string, bool) { return model.TagFound, false }, false); err != nil {
 		t.Fatal(err)
 	}
 }

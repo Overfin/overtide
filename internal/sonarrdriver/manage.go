@@ -49,7 +49,7 @@ type Taken struct {
 // monitors itself for a release: they're left as they are. In dry run,
 // nothing changes: Taken says what would. After an error, it says what was
 // done until then.
-func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[string]bool, labelFor func(added time.Time) string, dryRun bool) (taken Taken, err error) {
+func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[string]bool, labelFor func(added time.Time) (label string, byHand bool), dryRun bool) (taken Taken, err error) {
 	driver.preview = nil
 	now := driver.now()
 	states, err := driver.States()
@@ -82,9 +82,9 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 		}
 		toTag := map[string][]int{}
 		var toTake []sonarr.Title
-		// byHand are the series added from outside since "Manage all"
-		// (TagNew: by hand, by an import list or by another app): what they
-		// lack is searched first.
+		// byHand are the series added from outside since "Manage all" (by
+		// hand, by an import list or by another app): what they lack is
+		// searched first.
 		byHand := map[int]bool{}
 		for _, t := range titles {
 			if model.HasLabel(t.Tags, labels, model.TagIgnore) {
@@ -97,12 +97,11 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 				}
 				continue
 			}
-			label := ""
+			label, hand := labelFor(t.Added)
 			if !model.HasManagedLabel(t.Tags, labels) {
-				label = labelFor(t.Added)
 				toTag[label] = append(toTag[label], t.ID)
 			}
-			if label == model.TagNew || model.HasLabel(t.Tags, labels, model.TagNew) {
+			if hand {
 				byHand[t.ID] = true
 			}
 			if !t.Taken() && !active[fmt.Sprintf("%s|%s|%d", svc.ID, model.Series, t.ID)] {
@@ -138,6 +137,19 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 			}
 			taken.SeriesTaken += len(toTake)
 			if !dryRun {
+				// How each was monitored, kept before anything changes: it
+				// goes back as it was when given back.
+				before := map[string]TakenTitle{}
+				for _, t := range toTake {
+					m, err := client.ReadMonitoring(t.ID)
+					if err != nil {
+						return taken, err
+					}
+					before[TakenKey(svc.ID, model.Series, t.ID)] = TakenTitle{Monitored: m.Monitored, Series: &m}
+				}
+				if err := driver.RecordTaken(before); err != nil {
+					return taken, err
+				}
 				for _, t := range toTake {
 					if err := client.TakeSeries(t.ID); err != nil {
 						return taken, err
@@ -220,7 +232,7 @@ func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []s
 	var managed []sonarr.Title
 	holds := map[string]bool{}
 	for _, t := range titles {
-		if model.HasLabel(t.Tags, labels, model.TagIgnore) || (!manageAll && !model.HasManagedLabel(t.Tags, labels)) {
+		if model.HasLabel(t.Tags, labels, model.TagIgnore) || (!manageAll && !model.HasOwnLabel(t.Tags, labels)) {
 			continue
 		}
 		managed = append(managed, t)

@@ -268,3 +268,94 @@ func (client *Client) BelowCutoff() ([]SeasonRef, error) {
 	}
 	return out, nil
 }
+
+// Monitoring is how a series is monitored, all of it: the series, its new
+// seasons, each season, and the episodes monitored.
+type Monitoring struct {
+	Monitored       bool         `json:"monitored"`
+	MonitorNewItems string       `json:"monitorNewItems,omitempty"`
+	Seasons         map[int]bool `json:"seasons"`
+	Episodes        []int        `json:"episodes"` // the monitored ones, by ID
+}
+
+// ReadMonitoring reads how a series is monitored.
+func (client *Client) ReadMonitoring(seriesID int) (Monitoring, error) {
+	var series struct {
+		Monitored       bool   `json:"monitored"`
+		MonitorNewItems string `json:"monitorNewItems"`
+		Seasons         []struct {
+			SeasonNumber int  `json:"seasonNumber"`
+			Monitored    bool `json:"monitored"`
+		} `json:"seasons"`
+	}
+	if err := client.Get(fmt.Sprintf("/api/v3/series/%d", seriesID), &series); err != nil {
+		return Monitoring{}, err
+	}
+	out := Monitoring{Monitored: series.Monitored, MonitorNewItems: series.MonitorNewItems, Seasons: map[int]bool{}, Episodes: []int{}}
+	for _, s := range series.Seasons {
+		out.Seasons[s.SeasonNumber] = s.Monitored
+	}
+	episodes, err := client.Episodes(seriesID)
+	if err != nil {
+		return Monitoring{}, err
+	}
+	for _, e := range episodes {
+		if e.Monitored {
+			out.Episodes = append(out.Episodes, e.ID)
+		}
+	}
+	return out, nil
+}
+
+// RestoreMonitoring puts a series' monitoring back as it was read: the
+// series, its new seasons, each season (a season it didn't have then is
+// left as it is), and exactly the episodes monitored then.
+func (client *Client) RestoreMonitoring(seriesID int, m Monitoring) error {
+	err := client.updateSeries(seriesID, func(series map[string]any) bool {
+		series["monitored"] = m.Monitored
+		if m.MonitorNewItems != "" {
+			series["monitorNewItems"] = m.MonitorNewItems
+		}
+		seasons, _ := series["seasons"].([]any)
+		for _, raw := range seasons {
+			season, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			n, _ := season["seasonNumber"].(float64)
+			if on, known := m.Seasons[int(n)]; known {
+				season["monitored"] = on
+			}
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	episodes, err := client.Episodes(seriesID)
+	if err != nil {
+		return err
+	}
+	want := map[int]bool{}
+	for _, id := range m.Episodes {
+		want[id] = true
+	}
+	var on, off []int
+	for _, e := range episodes {
+		switch {
+		case want[e.ID] && !e.Monitored:
+			on = append(on, e.ID)
+		case !want[e.ID] && e.Monitored:
+			off = append(off, e.ID)
+		}
+	}
+	if len(on) > 0 {
+		if err := client.SetEpisodesMonitored(on, true); err != nil {
+			return err
+		}
+	}
+	if len(off) > 0 {
+		return client.SetEpisodesMonitored(off, false)
+	}
+	return nil
+}

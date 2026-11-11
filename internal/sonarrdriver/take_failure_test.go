@@ -32,7 +32,7 @@ func TestTakeFailureKeepsWhatItRead(t *testing.T) {
 	cfg := config.Config{Services: []config.Service{{ID: "s", Type: "sonarr", URL: srv.URL + "/sonarr", APIKey: "k"}}}
 	cfg.Adding.Mode, cfg.Adding.Manage = config.AddingOn, config.ManageAll
 	driver := newTestDriver(t, cfg, now)
-	label := func(time.Time) string { return "overtide-found" }
+	label := func(time.Time) (string, bool) { return "overtide-found", false }
 	if _, err := driver.Take(context.Background(), cfg, map[string]bool{}, label, false); err == nil {
 		t.Fatal("no failure")
 	}

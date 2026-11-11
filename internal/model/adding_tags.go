@@ -9,11 +9,12 @@ const (
 	TagAdded = "overtide-added"
 	// TagRequested: Overtide added it, requested in Overfin.
 	TagRequested = "overtide-requested"
-	// TagFound: it was there before Overtide took it, when "Manage all"
-	// was switched on.
+	// TagFound: "Manage all" took it: it was in Radarr or Sonarr, added
+	// by the operator, an import list or another app. Overtide manages it
+	// only while "Manage all" is on.
 	TagFound = "overtide-found"
-	// TagNew: added from outside (a list, a request, by hand) while
-	// "Manage all" was on.
+	// TagNew is TagFound's former name for what was added from outside
+	// while "Manage all" was on: read as TagFound, and replaced by it once.
 	TagNew = "overtide-new"
 )
 
@@ -45,16 +46,47 @@ var LegacyTags = []struct{ Old, New string }{
 	{formerNames[TagFound], TagFound},
 	{formerNames[TagNew], TagNew},
 	{formerNames[TagIgnore], TagIgnore},
+	{TagNew, TagFound},
+	{formerNames[TagNew], TagFound},
 }
 
 // sameTag reports whether label is tag, or the name tag had under
 // Overswell.
 func sameTag(label, tag string) bool {
+	if tag == TagFound && (strings.EqualFold(label, TagNew) || strings.EqualFold(label, formerNames[TagNew])) {
+		return true // TagFound's former name, until replaced
+	}
 	return strings.EqualFold(label, tag) || (formerNames[tag] != "" && strings.EqualFold(label, formerNames[tag]))
 }
 
-// ManagedTags are adding's tags.
-var ManagedTags = []string{TagAdded, TagRequested, TagFound, TagNew}
+// ManagedTags are adding's tags: what Overtide added (OwnTags), and what
+// "Manage all" took (TagFound).
+var ManagedTags = []string{TagAdded, TagRequested, TagFound}
+
+// OwnTags are the tags of what Overtide added itself: all it manages
+// unless "Manage all" is on.
+var OwnTags = []string{TagAdded, TagRequested}
+
+// IsOwnTag reports whether label marks a title Overtide added itself.
+func IsOwnTag(label string) bool {
+	for _, tag := range OwnTags {
+		if sameTag(label, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasOwnLabel reports whether one of the tag IDs marks a title Overtide
+// added itself.
+func HasOwnLabel(ids []int, labels map[int]string) bool {
+	for _, id := range ids {
+		if IsOwnTag(labels[id]) {
+			return true
+		}
+	}
+	return false
+}
 
 // IsManagedTag reports whether label is one of adding's tags.
 func IsManagedTag(label string) bool {

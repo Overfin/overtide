@@ -2,6 +2,7 @@ package adding
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestRetagReplacesTheFormerTags(t *testing.T) {
 	if err := service.retag(context.Background(), cfg, entries); err != nil {
 		t.Fatal(err)
 	}
-	want := map[int][]string{1: {model.TagAdded}, 2: {model.TagRequested}, 3: {model.TagFound}, 4: nil, 5: {model.TagNew, "overtide-keep"}, 6: {model.TagIgnore}}
+	want := map[int][]string{1: {model.TagAdded}, 2: {model.TagRequested}, 3: {model.TagFound}, 4: nil, 5: {model.TagFound, "overtide-keep"}, 6: {model.TagIgnore}}
 	for id, labels := range want {
 		got := fake.Labels("radarr", fake.Films[id]["tags"])
 		slices.Sort(got)
@@ -157,7 +158,7 @@ func TestTakeAll(t *testing.T) {
 	if entries, err = service.takeAll(context.Background(), cfg, entries, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := fake.Labels("radarr", fake.Films[4]["tags"]); !slices.Equal(got, []string{model.TagNew}) || fake.Films[4]["monitored"] != false || len(entries) != 2 || entries[1].Source != FromHand {
+	if got := fake.Labels("radarr", fake.Films[4]["tags"]); !slices.Equal(got, []string{model.TagFound}) || fake.Films[4]["monitored"] != false || len(entries) != 2 || entries[1].Source != FromHand {
 		t.Errorf("film added since: %v, in line %+v", fake.Films[4], entries)
 	}
 	states, _ = service.sonarr.States()
@@ -320,5 +321,80 @@ func TestJustTakenSurvivesAnOldInventory(t *testing.T) {
 	got := service.match(entries)
 	if len(got) != 1 || got[0].ArrID != 1 {
 		t.Errorf("kept: %+v", got)
+	}
+}
+
+// What "Manage all" took goes back exactly as it was: a title the
+// operator tags overtide-ignore at once (keeping overtide-keep), and every
+// one when Overtide is set back to manage only what it added: monitoring
+// as recorded before it was taken, without overtide-found, out of the
+// lists.
+func TestGiveBack(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	season := func(n int, monitored bool) map[string]any {
+		return map[string]any{"seasonNumber": n, "monitored": monitored}
+	}
+	fake.Films[1] = map[string]any{"id": 1, "tmdbId": 11, "title": "Ignored later", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "Wanted", "monitored": true, "hasFile": false, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
+	fake.Films[3] = map[string]any{"id": 3, "tmdbId": 13, "title": "Removed", "monitored": false, "hasFile": false, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
+	fake.Series[1] = map[string]any{"id": 1, "title": "Airing", "monitored": true, "monitorNewItems": "all", "seasons": []any{season(1, true), season(2, false)}, "added": arrfake.ISO(now.AddDate(-1, 0, 0))}
+	ep := func(id, season int, aired time.Time, monitored bool) {
+		fake.Eps[id] = map[string]any{"id": id, "seriesId": 1, "seasonNumber": season, "episodeNumber": id, "airDateUtc": arrfake.ISO(aired), "hasFile": false, "monitored": monitored}
+	}
+	ep(101, 1, now.AddDate(0, 0, -60), true)
+	ep(102, 1, now.AddDate(0, 0, -3), true)
+	ep(103, 2, now.AddDate(0, 0, -40), false)
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	ctx := context.Background()
+	entries, err := service.takeAll(ctx, cfg, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.Films[2]["monitored"] != false || fake.Series[1]["monitorNewItems"] != "none" || len(entries) != 2 {
+		t.Fatalf("not taken: %v %v %+v", fake.Films[2], fake.Series[1], entries)
+	}
+
+	// Ignored by the operator, kept too: given back at once.
+	fake.Films[1]["tags"] = append(fake.Films[1]["tags"].([]int), fake.TagID("radarr", model.TagIgnore), fake.TagID("radarr", model.TagKeep))
+	if entries, err = service.giveBack(ctx, cfg, entries, false); err != nil {
+		t.Fatal(err)
+	}
+	got := fake.Labels("radarr", fake.Films[1]["tags"])
+	slices.Sort(got)
+	if fake.Films[1]["monitored"] != true || !slices.Equal(got, []string{model.TagIgnore, model.TagKeep}) || len(entries) != 1 {
+		t.Fatalf("ignored: %v %v, in line %+v", fake.Films[1], got, entries)
+	}
+
+	// Back to what Overtide adds: all of it as it was.
+	cfg.Adding.Manage = config.ManageOwn
+	if entries, err = service.giveBack(ctx, cfg, entries, false); err != nil {
+		t.Fatal(err)
+	}
+	if fake.Films[2]["monitored"] != true || fake.Films[3]["monitored"] != false || len(fake.Labels("radarr", fake.Films[2]["tags"])) != 0 {
+		t.Errorf("films: %v %v", fake.Films[2], fake.Films[3])
+	}
+	s := fake.Series[1]
+	seasons := map[string]bool{}
+	for _, raw := range s["seasons"].([]any) {
+		m := raw.(map[string]any)
+		seasons[fmt.Sprint(m["seasonNumber"])] = m["monitored"] == true
+	}
+	if s["monitorNewItems"] != "all" || s["monitored"] != true || !seasons["1"] || seasons["2"] || len(fake.Labels("sonarr", s["tags"])) != 0 {
+		t.Errorf("series: %v", s)
+	}
+	for id, want := range map[int]bool{101: true, 102: true, 103: false} {
+		if (fake.Eps[id]["monitored"] == true) != want {
+			t.Errorf("episode %d monitored: %v", id, fake.Eps[id]["monitored"])
+		}
+	}
+	if len(entries) != 0 {
+		t.Errorf("still in line: %+v", entries)
+	}
+	if states, _ := service.sonarr.States(); len(states["s"].Wanted) != 0 || states["s"].Follow[1] {
+		t.Errorf("still followed: %+v", states["s"])
+	}
+	if taken, _ := service.sonarr.Taken(); len(taken) != 0 {
+		t.Errorf("record left: %v", taken)
 	}
 }
