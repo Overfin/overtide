@@ -53,6 +53,7 @@ Overfin values a title the same way whether it's on the server or not, and a tit
 - **Monitor, never delete.** Adding never deletes anything: removal does, by its own rules (below). A title goes into Radarr or Sonarr once, unmonitored and tagged `overtide-added`, at its destination (below). A try monitors it, searches for that one title, and checks a download started. If not, the title is unmonitored again and tried later: after 1 day, then 2, 4, 8. After 5 tries that found nothing, or 60 days in the list, it leaves the list, and isn't taken from Overfin's suggestions again for 6 months. Nor is a title that left the libraries in the last 6 months, whoever removed it: Overfin keeps that history (`/apps/v1/history`). Once its download is confirmed, the title is unmonitored, so Radarr and Sonarr don't upgrade it on their own: upgrades are Overtide's, below.
 - **Releases.** A title not out yet waits, and two days before its release it's monitored without a search, so Radarr's or Sonarr's RSS catches it.
 - **What Overtide manages.** "Only what it adds" (the default), or "Everything in Radarr and Sonarr": every title is tagged, and Radarr and Sonarr no longer fetch or upgrade anything on their own; Overtide fetches what they would have, at its own pace. The two modes only differ in which titles are Overtide's.
+- **Radarr's and Sonarr's events.** With "Everything in Radarr and Sonarr" and adding on, Overtide gives each Radarr and Sonarr a webhook named "Overtide" (in their Connect settings) for the titles they add, so the next run starts at once. It signs in with the user `overtide` and a random secret Overtide keeps in its database. The secret only guards that: an event can start a run sooner, or confirm the webhook's address, nothing more; the run asks Radarr and Sonarr what they hold, within its usual limits. Overtide finds the address they reach it at, or takes the one set in its Adding settings.
 - **Tags.** Each title Overtide manages says where it came from: `overtide-added`, `overtide-requested` (a wish), `overtide-found` (there before Overtide took it), `overtide-new` (added from outside with "Everything"). Tag a title `overtide-ignore` in Radarr or Sonarr and Overtide never takes, tags, unmonitors or searches for it. The names Overswell used (`overswell-added` and so on) and Overtide's oldest tag, `overtide`, are replaced once with these, and read as these until then.
 
 ### Importing, with Sonarr's auto-import off
@@ -191,6 +192,7 @@ CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detec
 
 ## Further reading
 
+- [`SECURITY.md`](SECURITY.md): what Overtide protects, and how, as the code stands.
 - [`ROADMAP.md`](ROADMAP.md): Overtide's design and what's next, then Stewarr's history.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): the model and the technical architecture.
 - [`Scheduler-Spec.md`](Scheduler-Spec.md): the background task scheduler.
