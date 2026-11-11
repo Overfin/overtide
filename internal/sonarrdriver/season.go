@@ -2,6 +2,8 @@ package sonarrdriver
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -281,8 +283,9 @@ func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID
 	pack.LastTry = now
 	started := time.Now()
 	releases, err := client.SeasonReleases(pack.SeriesID, pack.Season)
+	unread := false
 	if err == nil {
-		releases = driver.notBelowSeason(client, pack, releases)
+		releases, unread = driver.notBelowSeason(client, pack, releases)
 	}
 	var chosen *sonarr.Release
 	if driver.autoImportOff[serviceID] {
@@ -313,8 +316,12 @@ func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID
 		pack.NextTry = now.Add(tries.LaterOnError) // not a try: the trackers weren't all there
 		return
 	}
-	pack.Tries++
-	pack.NextTry = now.Add(tries.RetryDelay(pack.Tries))
+	if unread {
+		pack.NextTry = now.Add(tries.LaterOnError) // not a try: Sonarr didn't answer
+	} else {
+		pack.Tries++
+		pack.NextTry = now.Add(tries.RetryDelay(pack.Tries))
+	}
 	if err != nil {
 		return
 	}
@@ -506,7 +513,7 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 	if err != nil {
 		return 0, err
 	}
-	if wholeOnly && !wholeSeason(items, list, season, driver.now()) {
+	if wholeOnly && (!wholeSeason(items, list, season, driver.now()) || !notBelow(client, items, seriesID, season)) {
 		return 0, nil
 	}
 	files, err := client.EpisodeFiles(seriesID)
@@ -561,6 +568,36 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 		return 0, err
 	}
 	return len(rest), nil
+}
+
+// notBelow says whether a download's files of a season are none of a
+// quality lower than the season's lowest file (seasonFloor); false when
+// that can't be told.
+func notBelow(client *sonarr.Client, items []sonarr.ImportItem, seriesID, season int) bool {
+	floor, ranks, err := seasonFloor(client, seriesID, season)
+	if err != nil {
+		return false
+	}
+	if floor < 0 {
+		return true
+	}
+	for _, item := range items {
+		if item.SeasonNumber == nil || *item.SeasonNumber != season {
+			continue
+		}
+		var q struct {
+			Quality struct {
+				ID int `json:"id"`
+			} `json:"quality"`
+		}
+		if json.Unmarshal(item.Quality, &q) != nil {
+			return false
+		}
+		if rank, known := ranks[q.Quality.ID]; !known || rank < floor {
+			return false
+		}
+	}
+	return true
 }
 
 // wholeSeason says whether a download's files hold every episode of the
@@ -652,35 +689,51 @@ func noPacks(releases []sonarr.Release) []sonarr.Release {
 	return kept
 }
 
-// notBelowSeason leaves out the whole-season packs of a quality lower than
-// the season's lowest file's, in its series' quality profile: a pack may
-// be of a lower quality than the best of the files it replaces (one
-// release for the whole season is worth it), never than the worst. Single
-// episodes, and a season without files, are left as they are. When the
-// season's files or the profile can't be read, no pack is taken this time
-// (it would replace files unchecked): the single episodes are.
-func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, releases []sonarr.Release) []sonarr.Release {
-	qualities, err := client.SeasonQualities(pack.SeriesID, pack.Season)
+// seasonFloor is the rank, in its series' quality profile, of a season's
+// lowest file: -1 when there's none to hold a pack to (no files, or
+// qualities the profile doesn't have). An error when the files or the
+// profile can't be read.
+func seasonFloor(client *sonarr.Client, seriesID, season int) (floor int, ranks map[int]int, err error) {
+	qualities, err := client.SeasonQualities(seriesID, season)
 	if err != nil {
-		return noPacks(releases)
+		return -1, nil, err
 	}
 	if len(qualities) == 0 {
-		return releases
+		return -1, nil, nil
 	}
-	ranks, err := client.QualityRanks(pack.SeriesID)
-	if err != nil || len(ranks) == 0 {
-		return noPacks(releases)
+	ranks, err = client.QualityRanks(seriesID)
+	if err == nil && len(ranks) == 0 {
+		err = errors.New("sonarr: an empty quality profile")
 	}
-	floor := -1
+	if err != nil {
+		return -1, nil, err
+	}
+	floor = -1
 	for _, q := range qualities {
 		if r, ok := ranks[q]; ok && (floor < 0 || r < floor) {
 			floor = r
 		}
 	}
-	if floor < 0 {
-		return releases
+	return floor, ranks, nil
+}
+
+// notBelowSeason leaves out the whole-season packs of a quality lower than
+// the season's lowest file's, in its series' quality profile: a pack may
+// be of a lower quality than the best of the files it replaces (one
+// release for the whole season is worth it), never than the worst. Single
+// episodes, and a season without files, are left as they are. When the
+// season's files or the profile can't be read, no pack is taken (it would
+// replace files unchecked), and unread says so: the single episodes are,
+// and the pack is sought again soon, not counted as a try.
+func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, releases []sonarr.Release) (kept []sonarr.Release, unread bool) {
+	floor, ranks, err := seasonFloor(client, pack.SeriesID, pack.Season)
+	if err != nil {
+		return noPacks(releases), true
 	}
-	kept := releases[:0:0]
+	if floor < 0 {
+		return releases, false
+	}
+	kept = releases[:0:0]
 	for _, r := range releases {
 		rank, known := ranks[r.Quality.Quality.ID]
 		if r.FullSeason && (!known || rank < floor) {
@@ -688,7 +741,7 @@ func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, re
 		}
 		kept = append(kept, r)
 	}
-	return kept
+	return kept, false
 }
 
 // seasonCompleted marks a season just finished whose last wanted episode

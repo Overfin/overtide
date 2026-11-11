@@ -333,3 +333,36 @@ func TestFullDiskWhenSonarrCantSay(t *testing.T) {
 		t.Error("an unknown service's series let through")
 	}
 }
+
+// When Sonarr doesn't say the season's files' quality or its profile, no
+// pack is taken, and that isn't a try: the pack is sought again soon.
+func TestPackWaitsWhenTheFloorIsUnread(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	ep := func(id, season int, aired time.Time, fileID int) {
+		fake.Eps[id] = map[string]any{"id": id, "seriesId": 5, "seasonNumber": season, "episodeNumber": id, "airDateUtc": arrfake.ISO(aired), "hasFile": fileID != 0, "episodeFileId": fileID, "monitored": false}
+		if fileID != 0 {
+			fake.Files[fileID] = map[string]any{"id": fileID, "seasonNumber": season, "dateAdded": arrfake.ISO(now.AddDate(-1, 0, 0))}
+		}
+	}
+	ep(1, 1, now.AddDate(0, 0, -40), 11)
+	ep(2, 1, now.AddDate(0, 0, -40), 0)
+	ep(3, 1, now.AddDate(0, 0, -39), 13)
+	fake.Releases[1] = []map[string]any{{"guid": "pack", "indexerId": 1, "title": "pack", "fullSeason": true, "seasonNumber": 1, "downloadAllowed": true}}
+	// No quality profile to read.
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}, Wanted: map[int]EpisodeWant{2: {SeriesID: 5, Season: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := driver.ReplaceSeasons(context.Background(), cfg, 3, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(fake.Mutations(), "grab pack") {
+		t.Fatalf("grabbed unchecked: %v", fake.Mutations())
+	}
+	states, _ := driver.States()
+	pack := states["s"].Seasons[seasonKey(5, 1)]
+	if pack == nil || pack.Tries != 0 || !pack.NextTry.After(now) {
+		t.Fatalf("pack: %+v", pack)
+	}
+}

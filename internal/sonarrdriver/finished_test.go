@@ -31,7 +31,7 @@ func TestPackNotBelowSeason(t *testing.T) {
 		r.Quality.Quality.ID = quality
 		return r
 	}
-	got := driver.notBelowSeason(client, &SeasonPack{SeriesID: 5, Season: 1},
+	got, _ := driver.notBelowSeason(client, &SeasonPack{SeriesID: 5, Season: 1},
 		[]sonarr.Release{release("sd pack", true, 1), release("web pack", true, 5), release("hdtv pack", true, 4), release("sd episode", false, 1), release("unknown pack", true, 99)})
 	var titles []string
 	for _, r := range got {
@@ -45,12 +45,12 @@ func TestPackNotBelowSeason(t *testing.T) {
 	fake.Files[13] = map[string]any{"id": 13, "seriesId": 6, "seasonNumber": 1, "quality": q(4)}
 	saved := fake.ProfileItems
 	fake.ProfileItems = nil
-	if got := driver.notBelowSeason(client, &SeasonPack{SeriesID: 6, Season: 1}, []sonarr.Release{release("pack", true, 7), release("episode", false, 1)}); len(got) != 1 || got[0].Title != "episode" {
+	if got, unread := driver.notBelowSeason(client, &SeasonPack{SeriesID: 6, Season: 1}, []sonarr.Release{release("pack", true, 7), release("episode", false, 1)}); !unread || len(got) != 1 || got[0].Title != "episode" {
 		t.Fatalf("profile not read: %v", got)
 	}
 	fake.ProfileItems = saved
 	// A season without files: nothing to hold it to.
-	if got := driver.notBelowSeason(client, &SeasonPack{SeriesID: 5, Season: 2}, []sonarr.Release{release("sd pack", true, 1)}); len(got) != 1 {
+	if got, _ := driver.notBelowSeason(client, &SeasonPack{SeriesID: 5, Season: 2}, []sonarr.Release{release("sd pack", true, 1)}); len(got) != 1 {
 		t.Fatalf("no files: %v", got)
 	}
 }

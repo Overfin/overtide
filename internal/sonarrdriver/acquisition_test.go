@@ -360,6 +360,7 @@ func TestRefusedFiles(t *testing.T) {
 	fake := arrfake.New(now)
 	old := now.AddDate(-1, 0, 0)
 	fake.AddSeries(1, nil, arrfake.Season(1, 2, 2), arrfake.Season(2, 2, 2))
+	fake.ProfileItems = []any{map[string]any{"quality": map[string]any{"id": 0}}} // files and download alike
 	file := func(id, seasonNumber int, added time.Time) {
 		fake.Files[id] = map[string]any{"id": id, "seasonNumber": seasonNumber, "dateAdded": arrfake.ISO(added)}
 	}
@@ -469,5 +470,51 @@ func TestRefusedPartOfASeasonStays(t *testing.T) {
 	driver.ClearFinished(context.Background(), cfg, false)
 	if len(fake.Imported) != 0 {
 		t.Errorf("imported: %v", fake.Imported)
+	}
+}
+
+// A whole season Overtide didn't choose, refused as no upgrade, isn't put
+// over the season's files when it's of a lower quality than the worst.
+func TestRefusedSeasonBelowTheFilesStays(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	q := func(id int) map[string]any { return map[string]any{"quality": map[string]any{"id": id}} }
+	fake.ProfileItems = []any{q(1), q(7)} // SDTV, then Bluray-1080p
+	fake.AddSeries(1, nil, arrfake.Season(1, 2, 2))
+	fake.Series[1]["qualityProfileId"] = 1
+	for id := 1; id <= 2; id++ {
+		fake.AddEpisode(id, 1, 1, old, true)
+		fake.Eps[id]["episodeFileId"] = 100 + id
+		fake.Files[100+id] = map[string]any{"id": 100 + id, "seriesId": 1, "seasonNumber": 1, "dateAdded": arrfake.ISO(old), "quality": q(7)}
+	}
+	added := arrfake.ISO(now.Add(-2 * time.Hour))
+	item := func(id, episode int) map[string]any {
+		return map[string]any{"id": id, "downloadId": "sd", "seriesId": 1, "seasonNumber": 1, "episodeId": episode, "added": added, "status": "completed", "trackedDownloadStatus": "warning", "trackedDownloadState": "importPending",
+			"statusMessages": []map[string]any{{"title": "Show.S01.SDTV", "messages": []string{"Not an upgrade for existing episode file(s)."}}}}
+	}
+	fake.FullQueue = []map[string]any{item(1, 1), item(2, 2)}
+	one := 1
+	fake.ImportAt = []map[string]any{
+		{"path": "/d/Show.S01E01.mkv", "seasonNumber": one, "episodes": []map[string]any{{"id": 1}}, "quality": q(1), "languages": []any{}, "downloadId": "sd"},
+		{"path": "/d/Show.S01E02.mkv", "seasonNumber": one, "episodes": []map[string]any{{"id": 2}}, "quality": q(1), "languages": []any{}, "downloadId": "sd"},
+	}
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	if err := driver.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	driver.ClearFinished(context.Background(), cfg, false)
+	if len(fake.Imported) != 0 {
+		t.Errorf("imported: %v", fake.Imported)
+	}
+	// The same season in Bluray goes over them.
+	fake.Mu.Lock()
+	for _, it := range fake.ImportAt {
+		it["quality"] = q(7)
+	}
+	fake.Mu.Unlock()
+	driver.ClearFinished(context.Background(), cfg, false)
+	if len(fake.Imported) != 1 {
+		t.Errorf("the Bluray season: imported %v", fake.Imported)
 	}
 }
