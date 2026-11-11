@@ -1,7 +1,8 @@
 {
   "server": {
     "listen": ":8088",
-    "refresh_interval": "30m"
+    "refresh_interval": "30m",
+    "trusted_proxies": []
   },
   "services": [
     {

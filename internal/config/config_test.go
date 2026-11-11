@@ -784,3 +784,26 @@ func TestKeepAndUnkeep(t *testing.T) {
 		t.Fatalf("expected the film off the list: %#v", c.Kept)
 	}
 }
+
+func TestLoadTrustedProxies(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `{"server":{"trusted_proxies":["192.0.2.10"," 198.51.100.0/24 ","2001:db8::/32"]},"storage":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"192.0.2.10/32", "198.51.100.0/24", "2001:db8::/32"}
+	if len(cfg.Proxies) != len(want) {
+		t.Fatalf("got %v, want %v", cfg.Proxies, want)
+	}
+	for i, prefix := range cfg.Proxies {
+		if prefix.String() != want[i] {
+			t.Fatalf("got %v, want %v", cfg.Proxies, want)
+		}
+	}
+	if _, err := Load(writeConfig(t, `{"server":{"trusted_proxies":["proxy.example.org"]},"storage":{}}`)); err == nil || !strings.Contains(err.Error(), "trusted_proxies") {
+		t.Fatalf("a name instead of an address: %v", err)
+	}
+	cfg, err = Load(writeConfig(t, `{"storage":{}}`))
+	if err != nil || len(cfg.Proxies) != 0 {
+		t.Fatalf("no setting: %v, %v", cfg.Proxies, err)
+	}
+}

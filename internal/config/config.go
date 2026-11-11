@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -211,6 +212,11 @@ type Config struct {
 	Server struct {
 		Listen          string `json:"listen"`
 		RefreshInterval string `json:"refresh_interval"`
+		// TrustedProxies are the addresses (or CIDR ranges) of the reverse
+		// proxies in front of Overtide. Only a request coming from one of
+		// them has its X-Forwarded-For header read, for the address the
+		// login limit counts. Empty: the header is never read.
+		TrustedProxies []string `json:"trusted_proxies,omitempty"`
 	} `json:"server"`
 	Services []Service `json:"services"`
 	// Adding is how Overtide brings titles in.
@@ -254,6 +260,32 @@ type Config struct {
 	// setup, the same pattern used across the *arr ecosystem.
 	Auth            Auth          `json:"auth"`
 	RefreshInterval time.Duration `json:"-"`
+	// Proxies is Server.TrustedProxies parsed, by Load.
+	Proxies []netip.Prefix `json:"-"`
+}
+
+// parseProxies reads the trusted proxies: each an address, or a range in
+// CIDR form.
+func parseProxies(entries []string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if strings.Contains(entry, "/") {
+			prefix, err := netip.ParsePrefix(entry)
+			if err != nil {
+				return nil, fmt.Errorf("server.trusted_proxies: %q is not an address or a CIDR range", entry)
+			}
+			prefixes = append(prefixes, prefix.Masked())
+			continue
+		}
+		address, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("server.trusted_proxies: %q is not an address or a CIDR range", entry)
+		}
+		address = address.Unmap()
+		prefixes = append(prefixes, netip.PrefixFrom(address, address.BitLen()))
+	}
+	return prefixes, nil
 }
 
 type Auth struct {
@@ -650,6 +682,9 @@ func Load(path string) (Config, error) {
 	}
 	if configuration.RefreshInterval <= 0 {
 		return configuration, fmt.Errorf("server.refresh_interval must be greater than zero")
+	}
+	if configuration.Proxies, err = parseProxies(configuration.Server.TrustedProxies); err != nil {
+		return configuration, err
 	}
 	if assignedFreshID || droppedServices {
 		if err := Save(path, configuration); err != nil {

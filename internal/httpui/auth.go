@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -114,17 +115,53 @@ func (limiter *loginLimiter) recordSuccess(key string) {
 	delete(limiter.state, key)
 }
 
-// clientLoginKey identifies the caller for login throttling. It strips the
-// port from RemoteAddr since the same browser reconnects on a new one every
-// request; behind a reverse proxy every client shares one address (and
-// therefore one lockout bucket), which is an acceptable tradeoff for a
-// single-admin app rather than trusting a spoofable forwarded-for header.
-func clientLoginKey(r *http.Request) string {
+// clientLoginKey identifies the caller for login throttling: the address
+// of the connection, without its port, since the same browser reconnects
+// on a new one every request. Behind a reverse proxy, every client comes
+// from the proxy's address, so one guesser would lock the admin out too.
+// When the connection comes from a trusted proxy (server.trusted_proxies),
+// the client is read from X-Forwarded-For instead: the rightmost address
+// that isn't a trusted proxy itself. Each proxy adds the address it heard
+// from at the right, so what's left of that address is whatever the client
+// sent, and never read. From anyone else, the header is ignored.
+func clientLoginKey(r *http.Request, trusted []netip.Prefix) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
-	return host
+	remote, err := netip.ParseAddr(host)
+	if err != nil || !isTrusted(remote, trusted) {
+		return host
+	}
+	client := remote
+	var entries []string
+	for _, header := range r.Header.Values("X-Forwarded-For") {
+		entries = append(entries, strings.Split(header, ",")...)
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		address, err := netip.ParseAddr(strings.TrimSpace(entries[i]))
+		if err != nil {
+			// Not an address: nothing left of it can be believed, so the
+			// last hop that could be stands.
+			break
+		}
+		client = address.Unmap()
+		if !isTrusted(client, trusted) {
+			break
+		}
+	}
+	return client.String()
+}
+
+// isTrusted reports whether address is one of the trusted proxies.
+func isTrusted(address netip.Addr, trusted []netip.Prefix) bool {
+	address = address.Unmap()
+	for _, prefix := range trusted {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
 }
 
 func newSessionToken() (string, error) {
@@ -288,7 +325,7 @@ func (server *Server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	key := clientLoginKey(r)
+	key := clientLoginKey(r, cfg.Proxies)
 	if remaining, ok := server.loginLimiter.attempt(key); !ok {
 		fail(w, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1))
 		return

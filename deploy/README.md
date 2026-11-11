@@ -35,6 +35,28 @@ Overtide starts in dry run: it plans, and records what it would remove, but
 removes nothing until you turn dry run off in **Settings**.
 Adding is off too until you switch it on in **Settings**.
 
+## Behind a reverse proxy
+
+Signing in is limited per address: a few wrong passwords, and that address
+waits before trying again. Behind a reverse proxy, every browser comes from
+the proxy's address, so someone guessing would lock you out too. List the
+proxy in `config.json`, under `server`, and restart Overtide:
+
+```json
+"server": {
+  "listen": ":8088",
+  "refresh_interval": "30m",
+  "trusted_proxies": ["192.0.2.10", "198.51.100.0/24"]
+}
+```
+
+Each entry is an address or a CIDR range. Only for a connection from one of
+them does Overtide read `X-Forwarded-For`, taking the rightmost address in it
+that isn't a listed proxy: entries a browser sent itself, at the left, are
+never believed. From anyone else, the header is ignored. Empty (the default),
+it's never read. List only your own proxies, and have them add the address
+they heard from to `X-Forwarded-For` (most do by default).
+
 ## Paths
 
 Overtide finds files where Radarr, Sonarr and your torrent client say they
