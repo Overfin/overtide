@@ -2,7 +2,9 @@
 package applog
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,8 +29,13 @@ func OpenDaily(directory, prefix string, retention int, now func() time.Time) (*
 	if strings.TrimSpace(directory) == "" || strings.TrimSpace(prefix) == "" || retention < 1 || now == nil {
 		return nil, fmt.Errorf("invalid application log configuration")
 	}
-	if err := os.MkdirAll(directory, 0o775); err != nil {
+	// What happened, with titles and services' names: Overtide's user's
+	// alone, the folder made before the config is read included.
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("create log directory: %w", err)
+	}
+	if err := os.Chmod(directory, 0o700); err != nil && !errors.Is(err, fs.ErrPermission) {
+		return nil, fmt.Errorf("log directory: %w", err) // another user's stays as it is
 	}
 	writer := &DailyFile{directory: directory, prefix: prefix, retention: retention, now: now, errors: make(chan error, 1)}
 	if err := writer.openDate(now().Format("2006-01-02")); err != nil {
@@ -46,9 +53,13 @@ func (writer *DailyFile) logPath(date string) string {
 }
 
 func (writer *DailyFile) openDate(date string) error {
-	file, err := os.OpenFile(writer.logPath(date), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o664)
+	file, err := os.OpenFile(writer.logPath(date), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open application log for %s: %w", date, err)
+	}
+	if err := file.Chmod(0o600); err != nil && !errors.Is(err, fs.ErrPermission) { // one an older Overtide made
+		_ = file.Close()
+		return fmt.Errorf("application log for %s: %w", date, err)
 	}
 	writer.file = file
 	writer.date = date

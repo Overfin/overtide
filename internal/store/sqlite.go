@@ -2,7 +2,9 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,8 +36,13 @@ func Open(path string) (*Store, error) {
 	if path == "" {
 		return nil, fmt.Errorf("database path is empty")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// The database holds the webhook's secret and what Overtide knows of
+	// the libraries: Overtide's user's alone, folder and files.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil && !errors.Is(err, fs.ErrPermission) {
+		return nil, err // another user's folder (the operator's choice) stays as it is
 	}
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
@@ -48,6 +55,12 @@ func Open(path string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("sqlite: %w", err)
+	}
+	for _, f := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(f, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, fs.ErrPermission) {
+			db.Close()
+			return nil, err
+		}
 	}
 	s := &Store{db: db, q: db}
 	for _, q := range []string{
