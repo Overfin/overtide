@@ -132,7 +132,8 @@ deletes on its own.
     added, on its own; a torrent under the minimum ratio or, when set, a
     private tracker's seeding days, nor the title it shares files with.
     Unassociated and incomplete torrents are left out of automatic removal
-    unless their settings allow them.
+    unless their settings allow them; a torrent that shares its files with
+    one Overtide knows counts as known.
 21. Torrents sharing files (cross-seeds, or several torrents on the very
     same path) are removed together or not at all: a file goes only when
     every torrent using it goes. Before deleting, Overtide asks qBittorrent
