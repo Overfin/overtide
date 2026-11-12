@@ -7,7 +7,7 @@ import (
 )
 
 // The database, and its folder, are Overtide's user's alone (SECURITY.md
-// rule 25), an older Overtide's looser ones included.
+// rule 30), an older Overtide's looser ones included.
 func TestDatabasePermissions(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
