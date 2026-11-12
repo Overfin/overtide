@@ -42,7 +42,9 @@ deletes on its own.
    the proxy in `server.trusted_proxies` (addresses or CIDR ranges, empty by
    default): only for a connection from one of them is `X-Forwarded-For`
    read, and the address counted is the rightmost entry that isn't a listed
-   proxy. Entries further left, which the client can write, are never read.
+   proxy. Entries further left, which the client can write, are never read,
+   unless the client is itself inside a listed range: then it can name any
+   address, so the ranges are the operator's to keep to their proxies.
    From any other connection, and with the setting empty, the header is
    ignored. Without the setting, everyone behind a proxy shares one count.
 8. A session is a random 32-byte token in the `overtide_session` cookie:
