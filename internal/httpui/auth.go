@@ -314,6 +314,17 @@ func (server *Server) setup(w http.ResponseWriter, r *http.Request) {
 // passwordChecks bounds the password checks running at once.
 var passwordChecks = make(chan struct{}, 2)
 
+// takeCheck waits for one of passwordChecks' places, false when the
+// request ended first; whoever gets one gives it back.
+func takeCheck(r *http.Request) bool {
+	select {
+	case passwordChecks <- struct{}{}:
+		return true
+	case <-r.Context().Done():
+		return false
+	}
+}
+
 func (server *Server) login(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
 	if cfg.Auth.Username == "" {
@@ -338,9 +349,7 @@ func (server *Server) login(w http.ResponseWriter, r *http.Request) {
 	usernameCorrect := strings.EqualFold(strings.TrimSpace(in.Username), cfg.Auth.Username)
 	// Two checks at a time: each is bcrypt's on purpose slow work, and
 	// many sent at once (from many addresses) mustn't take every CPU.
-	select {
-	case passwordChecks <- struct{}{}:
-	case <-r.Context().Done():
+	if !takeCheck(r) {
 		return
 	}
 	passwordCorrect := cfg.VerifyPassword(in.Password)

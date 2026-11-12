@@ -57,15 +57,26 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := server.inv.Config()
-	if !cfg.VerifyPassword(in.Current) {
-		fail(w, http.StatusBadRequest, "Current password is incorrect.")
-		return
-	}
 	if in.New != in.Confirm {
 		fail(w, http.StatusBadRequest, "New passwords do not match.")
 		return
 	}
-	if err := server.inv.SetCredentials(cfg.Auth.Username, in.New); err != nil {
+	// Checking the current password and hashing the new one are bcrypt's
+	// slow work: they wait for a place like sign-ins' (SECURITY.md rule 5).
+	if !takeCheck(r) {
+		return
+	}
+	correct := cfg.VerifyPassword(in.Current)
+	var err error
+	if correct {
+		err = server.inv.SetCredentials(cfg.Auth.Username, in.New)
+	}
+	<-passwordChecks
+	if !correct {
+		fail(w, http.StatusBadRequest, "Current password is incorrect.")
+		return
+	}
+	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
