@@ -689,10 +689,14 @@ func noPacks(releases []sonarr.Release) []sonarr.Release {
 	return kept
 }
 
+// errUnranked: a season has files, but none of their qualities is in its
+// series' profile, so a pack can't be held to them.
+var errUnranked = errors.New("sonarr: no file of the season has a quality of its profile")
+
 // seasonFloor is the rank, in its series' quality profile, of a season's
-// lowest file: -1 when there's none to hold a pack to (no files, or
-// qualities the profile doesn't have). An error when the files or the
-// profile can't be read.
+// lowest file: -1 when the season has no files. errUnranked when none of
+// its files' qualities is in the profile; another error when the files or
+// the profile can't be read.
 func seasonFloor(client *sonarr.Client, seriesID, season int) (floor int, ranks map[int]int, err error) {
 	qualities, err := client.SeasonQualities(seriesID, season)
 	if err != nil {
@@ -714,6 +718,9 @@ func seasonFloor(client *sonarr.Client, seriesID, season int) (floor int, ranks 
 			floor = r
 		}
 	}
+	if floor < 0 {
+		return -1, ranks, errUnranked
+	}
 	return floor, ranks, nil
 }
 
@@ -722,11 +729,18 @@ func seasonFloor(client *sonarr.Client, seriesID, season int) (floor int, ranks 
 // be of a lower quality than the best of the files it replaces (one
 // release for the whole season is worth it), never than the worst. Single
 // episodes, and a season without files, are left as they are. When the
-// season's files or the profile can't be read, no pack is taken (it would
-// replace files unchecked), and unread says so: the single episodes are,
+// season's files or the profile can't be read, or none of its files has a
+// quality of the profile, no pack is taken (it would replace files
+// unchecked); unread says the reading failed: the single episodes are,
 // and the pack is sought again soon, not counted as a try.
 func (driver *Driver) notBelowSeason(client *sonarr.Client, pack *SeasonPack, releases []sonarr.Release) (kept []sonarr.Release, unread bool) {
 	floor, ranks, err := seasonFloor(client, pack.SeriesID, pack.Season)
+	if errors.Is(err, errUnranked) {
+		// Files of qualities the profile doesn't have (it changed since):
+		// a pack would replace them unchecked. Not a passing failure: the
+		// single episodes go on, no pack is taken.
+		return noPacks(releases), false
+	}
 	if err != nil {
 		return noPacks(releases), true
 	}

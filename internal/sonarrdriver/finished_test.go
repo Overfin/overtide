@@ -49,6 +49,13 @@ func TestPackNotBelowSeason(t *testing.T) {
 		t.Fatalf("profile not read: %v", got)
 	}
 	fake.ProfileItems = saved
+	// Files of qualities the profile doesn't have: no pack, the episodes
+	// stay, and it isn't a reading that failed.
+	fake.Series[7] = map[string]any{"id": 7, "qualityProfileId": 1, "seasons": []any{}}
+	fake.Files[14] = map[string]any{"id": 14, "seriesId": 7, "seasonNumber": 1, "quality": q(99)}
+	if got, unread := driver.notBelowSeason(client, &SeasonPack{SeriesID: 7, Season: 1}, []sonarr.Release{release("pack", true, 1), release("episode", false, 1)}); unread || len(got) != 1 || got[0].Title != "episode" {
+		t.Fatalf("unranked files: %v %v", got, unread)
+	}
 	// A season without files: nothing to hold it to.
 	if got, _ := driver.notBelowSeason(client, &SeasonPack{SeriesID: 5, Season: 2}, []sonarr.Release{release("sd pack", true, 1)}); len(got) != 1 {
 		t.Fatalf("no files: %v", got)
