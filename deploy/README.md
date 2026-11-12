@@ -55,7 +55,9 @@ them does Overtide read `X-Forwarded-For`, taking the rightmost address in it
 that isn't a listed proxy: entries a browser sent itself, at the left, are
 never believed. From anyone else, the header is ignored. Empty (the default),
 it's never read. List only your own proxies, and have them add the address
-they heard from to `X-Forwarded-For` (most do by default).
+they heard from to `X-Forwarded-For` (most do by default). Keep the entries
+narrow: a machine inside a listed range that reaches Overtide directly can
+write any address in the header, and so get past the sign-in limit.
 
 ## Paths
 
