@@ -660,6 +660,13 @@ func (service *Service) setCredentials(username, password string, firstOnly bool
 	if err != nil {
 		return err
 	}
+	// A first account after a reset (auth erased from config.json): the
+	// former account's sessions mustn't sign anyone in to the new one.
+	if firstOnly && service.db != nil {
+		if err := service.db.DeleteAllSessions(); err != nil {
+			return fmt.Errorf("end the former sessions: %w", err)
+		}
+	}
 
 	if err := config.Save(service.configPath, updatedCfg); err != nil {
 		return fmt.Errorf("persist config: %w", err)

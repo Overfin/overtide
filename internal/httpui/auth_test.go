@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/inventory"
@@ -174,6 +175,23 @@ func TestSetupCreatesAccountAndSignsIn(t *testing.T) {
 	}
 	if login(t, handler, "evil", "another-password").Code != http.StatusUnauthorized {
 		t.Fatal("the second setup's account signs in")
+	}
+}
+
+// After a reset (auth erased from config.json), the former account's
+// sessions sign no one in: not before the new account, not after.
+func TestResetEndsFormerSessions(t *testing.T) {
+	handler, database := newAuthTestServer(t)
+	former := &http.Cookie{Name: sessionCookieName, Value: "a-session-of-the-former-account"}
+	if err := database.CreateSession(former.Value, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if response := getPath(t, handler, "/api/dashboard", former); response.Code != http.StatusUnauthorized {
+		t.Fatalf("before setup: %d", response.Code)
+	}
+	setUp(t, handler)
+	if valid, _ := database.SessionValid(former.Value); valid {
+		t.Fatal("the former session outlived the new account")
 	}
 }
 

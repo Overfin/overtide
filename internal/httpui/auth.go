@@ -248,6 +248,10 @@ func (server *Server) authGate(next http.Handler) http.Handler {
 
 // signedIn reports whether r comes with a valid session.
 func (server *Server) signedIn(r *http.Request) bool {
+	// No account (auth erased to set Overtide up again): no session holds.
+	if server.inv.Config().Auth.Username == "" {
+		return false
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		return false
