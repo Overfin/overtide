@@ -635,6 +635,34 @@ func (service *Service) TorrentLivePaths(ctx context.Context, svcID, hash string
 	return paths, true, nil
 }
 
+// TorrentFileNames returns a torrent's files as qBittorrent lists them now,
+// by name (its folder's, "/"-separated, the torrent's own folder first):
+// asked of the qBittorrent the index has it in. found is false when no
+// configured one has it.
+func (service *Service) TorrentFileNames(ctx context.Context, hash string) (names []string, found bool, err error) {
+	hash = strings.ToLower(hash)
+	for _, t := range service.TorrentSnapshot() {
+		if !strings.EqualFold(t.Hash, hash) {
+			continue
+		}
+		service.mu.RLock()
+		client, ok := service.qb[t.ServiceID]
+		service.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		files, err := client.WithContext(ctx).Files(map[string]model.Torrent{hash: t})
+		if err != nil {
+			return nil, true, err
+		}
+		for _, f := range files[hash] {
+			names = append(names, f.Name)
+		}
+		return names, true, nil
+	}
+	return nil, false, nil
+}
+
 // TorrentPathsClaimedByOthers returns which of paths a torrent of svcID's
 // qBittorrent other than those in except uses now, asked of the client.
 func (service *Service) TorrentPathsClaimedByOthers(ctx context.Context, svcID string, paths []string, except map[string]bool) ([]string, error) {

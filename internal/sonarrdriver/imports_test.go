@@ -10,6 +10,7 @@ import (
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/services/overfin"
+	"github.com/overfin/overtide/internal/services/sonarr"
 )
 
 // file is a download's file as Sonarr's manual import lists it.
@@ -376,5 +377,27 @@ func TestWaitEndsWhenSeasonSettled(t *testing.T) {
 	states, _ = driver.States()
 	if d := states["s"].Imports["A"]; !d.Done || len(d.Waiting) != 0 || len(fake.Imported) != 0 {
 		t.Fatalf("settled: %+v, %v", d, fake.Imported)
+	}
+}
+
+// Torrents whose folders have the same name share one, and Sonarr lists it
+// whole: only the torrent's own files are the download's, whatever the
+// services' mounts.
+func TestOwnFiles(t *testing.T) {
+	files := []sonarr.ImportItem{
+		{Path: "/data/torrents/Saison 1/911 S01E01.mkv"},
+		{Path: "/data/torrents/Saison 1/Malcolm in the Middle S01E15.mkv"},
+		{Path: `D:\torrents\Saison 1\911 S01E02.mkv`},
+		{Path: "/data/torrents/Other/Saison 1/911 S01E03.mkv"},
+		{Path: "/data/torrents/x911 S01E01.mkv"},
+	}
+	got := ownFiles(files, []string{"Saison 1/911 S01E01.mkv", "Saison 1/911 S01E02.mkv"})
+	var paths []string
+	for _, f := range got {
+		paths = append(paths, f.Path)
+	}
+	want := []string{"/data/torrents/Saison 1/911 S01E01.mkv", `D:\torrents\Saison 1\911 S01E02.mkv`}
+	if !slices.Equal(paths, want) {
+		t.Errorf("own files: %v", paths)
 	}
 }

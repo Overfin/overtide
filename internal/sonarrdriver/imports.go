@@ -168,6 +168,47 @@ func (driver *Driver) importFrom(ctx context.Context, cfg config.Config, client 
 	}
 }
 
+// downloadFiles is a finished download's files as Sonarr lists them, but
+// only the torrent's own. Sonarr lists the whole folder the torrent is in,
+// and torrents whose folders have the same name ("Saison 1") share one:
+// another series' files would be offered as this download's. Matched by
+// the name qBittorrent gives each file (its folder's and its own), which
+// a path ends with however the services mount the disk. A download the
+// torrent client doesn't have (gone, or not a torrent) keeps Sonarr's list.
+func (driver *Driver) downloadFiles(ctx context.Context, client *sonarr.Client, downloadID string) ([]sonarr.ImportItem, error) {
+	files, err := client.DownloadFiles(downloadID)
+	if err != nil || driver.inv == nil {
+		return files, err
+	}
+	names, found, err := driver.inv.TorrentFileNames(ctx, downloadID)
+	if err != nil {
+		return nil, fmt.Errorf("the torrent's files: %w", err)
+	}
+	if !found {
+		return files, nil
+	}
+	return ownFiles(files, names), nil
+}
+
+// ownFiles keeps the files whose path ends with one of the torrent's names.
+func ownFiles(files []sonarr.ImportItem, names []string) []sonarr.ImportItem {
+	own := map[string]bool{}
+	for _, name := range names {
+		own[strings.TrimPrefix(strings.ReplaceAll(name, `\`, "/"), "/")] = true
+	}
+	out := files[:0:0]
+	for _, file := range files {
+		path := strings.ReplaceAll(file.Path, `\`, "/")
+		for i := len(path) - 1; i >= 0; i-- {
+			if path[i] == '/' && own[path[i+1:]] {
+				out = append(out, file)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // importDownload looks at one download that isn't in Sonarr's queue.
 func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, client *sonarr.Client, state *State, id string, download *downloadImport, series sonarr.Title) error {
 	now := driver.now()
@@ -199,7 +240,7 @@ func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, cli
 	}
 	// A download still going has no list, and just after a restart Sonarr
 	// has none of any: asked again next run, until it's clearly gone.
-	files, err := client.DownloadFiles(id)
+	files, err := driver.downloadFiles(ctx, client, id)
 	if err != nil && !sonarr.StillGoing(err) {
 		log.Printf("[adding] the files of %s: %v", download.Title, err)
 	}

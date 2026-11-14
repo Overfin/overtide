@@ -90,7 +90,7 @@ func (driver *Driver) importChosen(ctx context.Context, choice ImportChoice) (ma
 		return nil, err
 	}
 	client = client.WithContext(ctx)
-	files, err := client.DownloadFiles(choice.DownloadID)
+	files, err := driver.downloadFiles(ctx, client, choice.DownloadID)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +379,7 @@ func (driver *Driver) ImportOptions(ctx context.Context, serviceID, downloadID s
 		return options[i].Episode < options[j].Episode
 	})
 	guesses := map[string][]int{}
-	files, err := client.DownloadFiles(downloadID)
+	files, err := driver.downloadFiles(ctx, client, downloadID)
 	if err == nil {
 		for _, file := range files {
 			for _, e := range file.Episodes {
