@@ -491,10 +491,12 @@ type EpisodeOrders struct {
 }
 
 // OrderSeason is one season in TMDB's own order. Rearranged: another order
-// on TMDB puts other episodes in its places.
+// on TMDB puts other episodes in its places; OtherSizes, how many episodes
+// those orders put in the season (nil from an Overfin that doesn't say).
 type OrderSeason struct {
 	Season     int            `json:"season"`
 	Rearranged bool           `json:"rearranged"`
+	OtherSizes []int          `json:"otherSizes"`
 	Episodes   []OrderEpisode `json:"episodes"`
 }
 

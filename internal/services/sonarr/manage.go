@@ -86,6 +86,9 @@ type Episode struct {
 	EpisodeFileID  int       `json:"episodeFileId"`
 	Monitored      bool      `json:"monitored"`
 	AirDateUTC     time.Time `json:"airDateUtc"`
+	// AirDate is the day it aired where it aired (YYYY-MM-DD), as TMDB
+	// gives it.
+	AirDate string `json:"airDate"`
 }
 
 // Episodes returns a series' episodes.

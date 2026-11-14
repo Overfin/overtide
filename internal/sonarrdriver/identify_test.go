@@ -262,3 +262,71 @@ func TestAbsoluteNumbers(t *testing.T) {
 		t.Errorf("%v, waiting %v", got, waiting)
 	}
 }
+
+// A whole season in Sonarr's order settles what the numbers alone don't:
+// another order rearranges the season but has another size, or TMDB counts
+// another number of episodes. Anything less than proof still waits.
+func TestPackFits(t *testing.T) {
+	now := *arrfake.Day("2026-11-01")
+	seasons := map[int]int{1: 3, 2: 2}
+	episodes := sonarrEpisodes(now, seasons)
+	for i := range episodes {
+		episodes[i].AirDate = episodes[i].AirDateUTC.Format("2006-01-02")
+	}
+	whole := []sonarr.ImportItem{packFile("S.S01E01.mkv", 1, 101), packFile("S.S01E02-E03.mkv", 1, 102, 103)}
+	rearranged := func(sizes []int) *overfin.EpisodeOrders {
+		o := tmdbOrders(now, seasons)
+		for i := range o.Seasons {
+			o.Seasons[i].OtherSizes = []int{}
+			if o.Seasons[i].Season == 1 {
+				o.Seasons[i].Rearranged, o.Seasons[i].OtherSizes = true, sizes
+			}
+		}
+		return o
+	}
+
+	// Another order of 4 episodes: 3 files' worth can only be Sonarr's.
+	imports, waiting := identify(whole, episodes, rearranged([]int{4}), now)
+	if got := chosen(imports); len(waiting) != 0 || !slices.Equal(got["S.S01E02-E03.mkv"], []int{102, 103}) {
+		t.Errorf("another size: %v, waiting %v", got, waiting)
+	}
+	// Another order of 3: it could be that one.
+	if imports, waiting = identify(whole, episodes, rearranged([]int{2, 3}), now); len(imports) != 0 || len(waiting) != 2 {
+		t.Errorf("same size: %v, waiting %v", imports, waiting)
+	}
+	// An Overfin that doesn't give sizes settles nothing.
+	if imports, waiting = identify(whole, episodes, rearranged(nil), now); len(imports) != 0 {
+		t.Errorf("no sizes: %v, waiting %v", imports, waiting)
+	}
+	// Not the whole season, or an episode twice: waits.
+	if imports, _ = identify(whole[:1], episodes, rearranged([]int{4}), now); len(imports) != 0 {
+		t.Errorf("part of the season: %v", imports)
+	}
+	twice := append(slices.Clone(whole), packFile("S.S01E03.REPACK.mkv", 1, 103))
+	if imports, _ = identify(twice, episodes, rearranged([]int{4}), now); len(imports) != 0 {
+		t.Errorf("an episode twice: %v", imports)
+	}
+	// TMDB's own order the same size but in another order (dates and
+	// titles differ): waits.
+	shuffled := rearranged([]int{4})
+	for i := range shuffled.Seasons {
+		if shuffled.Seasons[i].Season == 1 {
+			for j := range shuffled.Seasons[i].Episodes {
+				shuffled.Seasons[i].Episodes[j].Name, shuffled.Seasons[i].Episodes[j].AirDate = "Other "+strconv.Itoa(j), "2001-01-0"+strconv.Itoa(j+1)
+			}
+		}
+	}
+	if imports, _ = identify(whole, episodes, shuffled, now); len(imports) != 0 {
+		t.Errorf("TMDB's order differs: %v", imports)
+	}
+
+	// TMDB counts 5 where Sonarr has 3 (Hunter x Hunter's 58 and 62), and
+	// no other order: Sonarr's whole season goes in.
+	more := tmdbOrders(now, map[int]int{1: 5, 2: 2})
+	for i := range more.Seasons {
+		more.Seasons[i].OtherSizes = []int{}
+	}
+	if imports, waiting = identify(whole, episodes, more, now); len(imports) != 2 || len(waiting) != 0 {
+		t.Errorf("TMDB counts more: %v, waiting %v", imports, waiting)
+	}
+}

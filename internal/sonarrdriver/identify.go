@@ -179,6 +179,99 @@ func seasonCheck(season int, episodes []sonarr.Episode, orders *overfin.EpisodeO
 	return ""
 }
 
+// packFits says, for each season of a download, whether its files are a
+// whole season in Sonarr's order beyond doubt, though the numbers alone
+// can't be believed (seasonCheck): by their numbers, the files hold each
+// of Sonarr's episodes of the season once, and no other order has that
+// many episodes in it. TMDB's own order having as many must number them as
+// Sonarr does (each place's air date or title the same). A release of that
+// size can then only follow Sonarr's order. An Overfin that doesn't give the
+// other orders' sizes settles nothing.
+func packFits(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *overfin.EpisodeOrders) map[int]bool {
+	out := map[int]bool{}
+	if orders == nil {
+		return out
+	}
+	seasonOf := map[int]int{}
+	bySeason := map[int][]sonarr.Episode{}
+	for _, e := range episodes {
+		seasonOf[e.ID] = e.SeasonNumber
+		bySeason[e.SeasonNumber] = append(bySeason[e.SeasonNumber], e)
+	}
+	held := map[int]map[int]int{} // season -> episode ID -> files holding it
+	broken := map[int]bool{}      // a file of the season Sonarr makes nothing of
+	for _, item := range files {
+		season := -1
+		if item.SeasonNumber != nil {
+			season = *item.SeasonNumber
+		} else if s := fileSeason(item.Path); s >= 0 {
+			season = s
+		}
+		if season < 0 {
+			continue
+		}
+		if len(item.Episodes) == 0 {
+			broken[season] = true
+			continue
+		}
+		for _, e := range item.Episodes {
+			if seasonOf[e.ID] != season {
+				broken[season] = true
+				continue
+			}
+			if held[season] == nil {
+				held[season] = map[int]int{}
+			}
+			held[season][e.ID]++
+		}
+	}
+	for season, ids := range held {
+		size := len(bySeason[season])
+		if broken[season] || season == 0 || len(ids) != size {
+			continue
+		}
+		once := true
+		for _, n := range ids {
+			once = once && n == 1
+		}
+		var tmdb *overfin.OrderSeason
+		for i := range orders.Seasons {
+			if orders.Seasons[i].Season == season {
+				tmdb = &orders.Seasons[i]
+			}
+		}
+		if !once || tmdb == nil || tmdb.OtherSizes == nil || slices.Contains(tmdb.OtherSizes, size) {
+			continue
+		}
+		if len(tmdb.Episodes) == size && !sameOrder(bySeason[season], tmdb.Episodes) {
+			continue
+		}
+		out[season] = true
+	}
+	return out
+}
+
+// sameOrder says whether Sonarr and TMDB put the same episodes in a season's
+// places: each number's air date or title the same.
+func sameOrder(sonarrs []sonarr.Episode, tmdbs []overfin.OrderEpisode) bool {
+	byNumber := map[int]sonarr.Episode{}
+	for _, e := range sonarrs {
+		byNumber[e.EpisodeNumber] = e
+	}
+	for _, t := range tmdbs {
+		s, ok := byNumber[t.Episode]
+		if !ok {
+			return false
+		}
+		sameDate := t.AirDate != "" && s.AirDate == t.AirDate
+		sameTitle := comparableTitle(t.Name) != "" && comparableTitle(t.Name) == comparableTitle(s.Title)
+		if !sameDate && !sameTitle {
+			return false
+		}
+	}
+	return true
+}
+
 // titlesOf indexes the titles a file's name may give: Sonarr's, and TMDB's in
 // the server's language, each for the Sonarr episode it means. TMDB's episode
 // is Sonarr's by their English title, or by number in a season whose numbers
@@ -263,6 +356,8 @@ func identify(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *over
 		}
 	}
 
+	packs := packFits(kept, episodes, orders)
+
 	type choice struct {
 		item     sonarr.ImportItem
 		episodes []int
@@ -302,6 +397,9 @@ func identify(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *over
 			c.why = fmt.Sprintf("The download has %d files for season %d, which has %d episodes in Sonarr, and its name has no title to go by.", claimed[*item.SeasonNumber], *item.SeasonNumber, inSeason[*item.SeasonNumber])
 		default:
 			c.why = seasonCheck(*item.SeasonNumber, episodes, orders, now)
+			if packs[*item.SeasonNumber] {
+				c.why = ""
+			}
 			if c.why == "" {
 				c.episodes = ids
 			}
