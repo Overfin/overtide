@@ -1,15 +1,22 @@
 package sonarrdriver
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"path"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/services/sonarr"
+	"github.com/overfin/overtide/internal/videolength"
 )
 
 // importChoicesKey is where the operator's choices wait for the next run. A
@@ -340,52 +347,210 @@ func (driver *Driver) WaitingImports() ([]WaitingImport, error) {
 	return out, nil
 }
 
-// EpisodeOption is an episode a waiting file may be said to be.
+// EpisodeOption is an episode a waiting file may be said to be: Sonarr's,
+// with what TMDB says of it when TMDB's episode is known to be this one
+// (Translated, in the server's language; Runtime, in minutes).
 type EpisodeOption struct {
-	ID      int    `json:"id"`
-	Season  int    `json:"season"`
-	Episode int    `json:"episode"`
-	Title   string `json:"title"`
+	ID         int    `json:"id"`
+	Season     int    `json:"season"`
+	Episode    int    `json:"episode"`
+	Title      string `json:"title"`
+	Translated string `json:"translated,omitempty"`
+	AirDate    string `json:"airDate,omitempty"`
+	Runtime    int    `json:"runtime,omitempty"`
+}
+
+// Meaning is what a file's number means in one order: Sonarr's, TMDB's own,
+// or one of TMDB's others (Order is its name). Nothing when the order has
+// no such episode.
+type Meaning struct {
+	Order      string `json:"order"`
+	Season     int    `json:"season"`
+	Episode    int    `json:"episode"`
+	Title      string `json:"title,omitempty"`
+	Translated string `json:"translated,omitempty"`
+	AirDate    string `json:"airDate,omitempty"`
+	Runtime    int    `json:"runtime,omitempty"`
+	Missing    bool   `json:"missing,omitempty"`
+}
+
+// FileFacts is what helps tell a waiting file apart: how long it lasts
+// (seconds, 0 when it can't be read) and what its number means in each
+// order.
+type FileFacts struct {
+	Seconds  int       `json:"seconds,omitempty"`
+	Meanings []Meaning `json:"meanings"`
+}
+
+// ImportChoices is what the operator chooses from for a download.
+type ImportChoices struct {
+	Episodes []EpisodeOption      `json:"episodes"`
+	Guesses  map[string][]int     `json:"guesses"`
+	Files    map[string]FileFacts `json:"files"`
 }
 
 // ImportOptions gives what the operator chooses from for a download: its
-// series' episodes, and what Sonarr makes of each file's number.
-func (driver *Driver) ImportOptions(ctx context.Context, serviceID, downloadID string) ([]EpisodeOption, map[string][]int, error) {
+// series' episodes, what Sonarr makes of each file's number, and what helps
+// tell the files apart (FileFacts).
+func (driver *Driver) ImportOptions(ctx context.Context, serviceID, downloadID string) (*ImportChoices, error) {
 	states, err := driver.States()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	state := states[serviceID]
 	if state == nil || state.Imports[downloadID] == nil {
-		return nil, nil, fmt.Errorf("that download isn't known")
+		return nil, fmt.Errorf("that download isn't known")
 	}
+	download := state.Imports[downloadID]
 	client, err := driver.inv.SonarrClient(serviceID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	client = client.WithContext(ctx)
-	episodes, err := client.Episodes(state.Imports[downloadID].SeriesID)
+	episodes, err := client.Episodes(download.SeriesID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	options := make([]EpisodeOption, 0, len(episodes))
-	for _, e := range episodes {
-		options = append(options, EpisodeOption{ID: e.ID, Season: e.SeasonNumber, Episode: e.EpisodeNumber, Title: e.Title})
-	}
-	sort.Slice(options, func(i, j int) bool {
-		if options[i].Season != options[j].Season {
-			return options[i].Season < options[j].Season
+	// Asked now, not from a run's cache: a form is opened now and then.
+	var orders *overfin.EpisodeOrders
+	if tmdbID := driver.tmdbOf(client, download.SeriesID); tmdbID != 0 {
+		if orders, err = driver.inv.OverfinClient().WithContext(ctx).EpisodeOrders(tmdbID); err != nil {
+			log.Printf("[adding] what Overfin says of series %d: %v", tmdbID, err)
+			orders = nil
 		}
-		return options[i].Episode < options[j].Episode
+	}
+	tmdbOf := tmdbEpisodes(episodes, orders, driver.now())
+	out := &ImportChoices{Episodes: make([]EpisodeOption, 0, len(episodes)), Guesses: map[string][]int{}, Files: map[string]FileFacts{}}
+	for _, e := range episodes {
+		option := EpisodeOption{ID: e.ID, Season: e.SeasonNumber, Episode: e.EpisodeNumber, Title: e.Title, AirDate: e.AirDate}
+		if t, ok := tmdbOf[e.ID]; ok {
+			option.Translated, option.Runtime = t.Translated, t.Runtime
+		}
+		out.Episodes = append(out.Episodes, option)
+	}
+	sort.Slice(out.Episodes, func(i, j int) bool {
+		if out.Episodes[i].Season != out.Episodes[j].Season {
+			return out.Episodes[i].Season < out.Episodes[j].Season
+		}
+		return out.Episodes[i].Episode < out.Episodes[j].Episode
 	})
-	guesses := map[string][]int{}
 	files, err := driver.downloadFiles(ctx, client, downloadID)
-	if err == nil {
-		for _, file := range files {
-			for _, e := range file.Episodes {
-				guesses[file.Path] = append(guesses[file.Path], e.ID)
+	if err != nil {
+		return out, nil // the episodes are still worth choosing from
+	}
+	for _, file := range files {
+		for _, e := range file.Episodes {
+			out.Guesses[file.Path] = append(out.Guesses[file.Path], e.ID)
+		}
+		facts := FileFacts{Meanings: meanings(file.Path, episodes, tmdbOf, orders)}
+		if length, err := videolength.Of(file.Path); err == nil {
+			facts.Seconds = int(length.Seconds())
+		}
+		out.Files[file.Path] = facts
+	}
+	return out, nil
+}
+
+// tmdbEpisodes is, by Sonarr episode, TMDB's own episode known to be the
+// same: by their English title, else by number in a season whose numbers
+// can be believed, else by an air date only one episode of each has.
+func tmdbEpisodes(episodes []sonarr.Episode, orders *overfin.EpisodeOrders, now time.Time) map[int]overfin.OrderEpisode {
+	out := map[int]overfin.OrderEpisode{}
+	if orders == nil {
+		return out
+	}
+	titles := titleIndex{}
+	byNumber := map[[2]int]int{}
+	byDate := map[string][]int{}
+	for _, e := range episodes {
+		titles.add(e.Title, e.ID)
+		byNumber[[2]int{e.SeasonNumber, e.EpisodeNumber}] = e.ID
+		if e.AirDate != "" {
+			byDate[e.AirDate] = append(byDate[e.AirDate], e.ID)
+		}
+	}
+	tmdbDates := map[string]int{}
+	for _, season := range orders.Seasons {
+		for _, e := range season.Episodes {
+			if e.AirDate != "" {
+				tmdbDates[e.AirDate]++
 			}
 		}
 	}
-	return options, guesses, nil
+	for _, season := range orders.Seasons {
+		numbersHold := seasonCheck(season.Season, episodes, orders, now) == ""
+		for _, e := range season.Episodes {
+			var id int
+			if same := titles[comparableTitle(e.Name)]; len(same) == 1 {
+				id = same[0]
+			} else if numbersHold {
+				id = byNumber[[2]int{season.Season, e.Episode}]
+			} else if ids := byDate[e.AirDate]; e.AirDate != "" && len(ids) == 1 && tmdbDates[e.AirDate] == 1 {
+				id = ids[0]
+			}
+			if _, taken := out[id]; id != 0 && !taken {
+				out[id] = e
+			}
+		}
+	}
+	return out
+}
+
+// fileNumber is the season and episode a file's name gives, ok false when
+// it gives none.
+func fileNumber(file string) (season, episode int, ok bool) {
+	match := fileNumberMark.FindStringSubmatch(path.Base(strings.ReplaceAll(file, `\`, "/")))
+	if match == nil {
+		return 0, 0, false
+	}
+	season, _ = strconv.Atoi(match[1] + match[3])
+	episode, _ = strconv.Atoi(match[2] + match[4])
+	return season, episode, true
+}
+
+var fileNumberMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(\d{1,3})[ ._-]?e(\d{1,4})|(\d{1,3})x(\d{2,4}))`)
+
+// meanings is what a file's number means in Sonarr's order, TMDB's own and
+// each of TMDB's others.
+func meanings(file string, episodes []sonarr.Episode, tmdbOf map[int]overfin.OrderEpisode, orders *overfin.EpisodeOrders) []Meaning {
+	season, episode, ok := fileNumber(file)
+	if !ok {
+		return []Meaning{}
+	}
+	out := []Meaning{}
+	sonarrs := Meaning{Order: "Sonarr", Season: season, Episode: episode, Missing: true}
+	for _, e := range episodes {
+		if e.SeasonNumber == season && e.EpisodeNumber == episode {
+			sonarrs.Title, sonarrs.AirDate, sonarrs.Missing = e.Title, e.AirDate, false
+			if t, ok := tmdbOf[e.ID]; ok {
+				sonarrs.Translated, sonarrs.Runtime = t.Translated, t.Runtime
+			}
+		}
+	}
+	out = append(out, sonarrs)
+	if orders == nil {
+		return out
+	}
+	in := func(name string, seasons []overfin.OrderSeason) Meaning {
+		m := Meaning{Order: name, Season: season, Episode: episode, Missing: true}
+		for _, s := range seasons {
+			if s.Season != season {
+				continue
+			}
+			for _, e := range s.Episodes {
+				if e.Episode == episode {
+					m.Title, m.Translated, m.AirDate, m.Runtime, m.Missing = e.Name, e.Translated, e.AirDate, e.Runtime, false
+				}
+			}
+		}
+		return m
+	}
+	out = append(out, in("TMDB", orders.Seasons))
+	for _, other := range orders.Others {
+		// Only the orders that rearrange this season say something else.
+		if slices.ContainsFunc(other.Seasons, func(s overfin.OrderSeason) bool { return s.Season == season }) {
+			out = append(out, in(cmp.Or(other.Name, "Another order on TMDB"), other.Seasons))
+		}
+	}
+	return out
 }

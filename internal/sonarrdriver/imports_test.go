@@ -289,9 +289,14 @@ func TestImportChoices(t *testing.T) {
 	if err != nil || len(waiting) != 3 || len(fake.Imported) != 0 {
 		t.Fatalf("waiting: %+v, %v, %v", waiting, err, fake.Imported)
 	}
-	options, guesses, err := driver.ImportOptions(ctx, "s", "A")
-	if err != nil || len(options) != 2 || options[0].ID != 101 || options[0].Title != "Title 1" || !slices.Equal(guesses["/dl/A/Show.S01E02.mkv"], []int{102}) {
-		t.Fatalf("options: %+v %v %v", options, guesses, err)
+	choices, err := driver.ImportOptions(ctx, "s", "A")
+	if err != nil || len(choices.Episodes) != 2 || choices.Episodes[0].ID != 101 || choices.Episodes[0].Title != "Title 1" || !slices.Equal(choices.Guesses["/dl/A/Show.S01E02.mkv"], []int{102}) {
+		t.Fatalf("options: %+v %v", choices, err)
+	}
+	// What its number means in Sonarr's order (no Overfin here); the file
+	// isn't on disk, so no length.
+	if facts := choices.Files["/dl/A/Show.S01E02.mkv"]; facts.Seconds != 0 || len(facts.Meanings) != 1 || facts.Meanings[0].Order != "Sonarr" || facts.Meanings[0].Title != "Title 2" {
+		t.Errorf("facts: %+v", facts)
 	}
 
 	// Refused: nonsense, and no file named.

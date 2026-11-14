@@ -101,9 +101,40 @@ export interface WaitingImport {
   files: WaitingFile[];
 }
 
+export interface EpisodeOption {
+  id: number;
+  season: number;
+  episode: number;
+  title: string;
+  /** translated: TMDB's name in the server's language. */
+  translated?: string;
+  airDate?: string;
+  /** runtime: TMDB's, in minutes. */
+  runtime?: number;
+}
+
+/** Meaning is what a file's number means in one order. */
+export interface Meaning {
+  order: string;
+  season: number;
+  episode: number;
+  title?: string;
+  translated?: string;
+  airDate?: string;
+  runtime?: number;
+  missing?: boolean;
+}
+
+export interface FileFacts {
+  /** seconds: how long the file lasts, absent when it can't be read. */
+  seconds?: number;
+  meanings: Meaning[];
+}
+
 export interface ImportOptions {
-  episodes: { id: number; season: number; episode: number; title: string }[];
+  episodes: EpisodeOption[];
   guesses: Record<string, number[]>;
+  files: Record<string, FileFacts>;
 }
 
 export interface AddingSettings {

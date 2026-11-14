@@ -18,14 +18,15 @@ func (server *Server) importsList(w http.ResponseWriter, r *http.Request) {
 }
 
 // importOptions answers GET /api/adding/imports/{service}/{download}: the
-// series' episodes, and what Sonarr makes of each file's number.
+// series' episodes, what Sonarr makes of each file's number, and what helps
+// tell the files apart (sonarrdriver.ImportChoices).
 func (server *Server) importOptions(w http.ResponseWriter, r *http.Request) {
-	episodes, guesses, err := server.adder.Sonarr().ImportOptions(r.Context(), r.PathValue("service"), r.PathValue("download"))
+	choices, err := server.adder.Sonarr().ImportOptions(r.Context(), r.PathValue("service"), r.PathValue("download"))
 	if err != nil {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"episodes": episodes, "guesses": guesses})
+	writeJSON(w, http.StatusOK, choices)
 }
 
 // importChoose answers POST /api/adding/imports/{service}/{download}: what the

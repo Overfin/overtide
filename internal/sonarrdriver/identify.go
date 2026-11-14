@@ -273,37 +273,16 @@ func sameOrder(sonarrs []sonarr.Episode, tmdbs []overfin.OrderEpisode) bool {
 }
 
 // titlesOf indexes the titles a file's name may give: Sonarr's, and TMDB's in
-// the server's language, each for the Sonarr episode it means. TMDB's episode
-// is Sonarr's by their English title, or by number in a season whose numbers
-// can be believed.
+// English and in the server's language, each for the Sonarr episode it
+// means (tmdbEpisodes).
 func titlesOf(episodes []sonarr.Episode, orders *overfin.EpisodeOrders, now time.Time) titleIndex {
 	index := titleIndex{}
-	byNumber := map[[2]int]int{}
 	for _, e := range episodes {
 		index.add(e.Title, e.ID)
-		byNumber[[2]int{e.SeasonNumber, e.EpisodeNumber}] = e.ID
 	}
-	if orders == nil {
-		return index
-	}
-	sonarrTitles := titleIndex{}
-	for _, e := range episodes {
-		sonarrTitles.add(e.Title, e.ID)
-	}
-	for _, season := range orders.Seasons {
-		numbersHold := seasonCheck(season.Season, episodes, orders, now) == ""
-		for _, e := range season.Episodes {
-			var id int
-			if same := sonarrTitles[comparableTitle(e.Name)]; len(same) == 1 {
-				id = same[0]
-			} else if numbersHold {
-				id = byNumber[[2]int{season.Season, e.Episode}]
-			}
-			if id != 0 {
-				index.add(e.Name, id)
-				index.add(e.Translated, id)
-			}
-		}
+	for id, e := range tmdbEpisodes(episodes, orders, now) {
+		index.add(e.Name, id)
+		index.add(e.Translated, id)
 	}
 	return index
 }

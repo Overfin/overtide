@@ -330,3 +330,40 @@ func TestPackFits(t *testing.T) {
 		t.Errorf("TMDB counts more: %v, waiting %v", imports, waiting)
 	}
 }
+
+// What a file's number means in each order, and TMDB's names for Sonarr's
+// episodes: by title, by number where they hold, by a date only they share.
+func TestMeanings(t *testing.T) {
+	now := *arrfake.Day("2026-11-01")
+	episodes := []sonarr.Episode{
+		{ID: 101, SeasonNumber: 1, EpisodeNumber: 1, Title: "Pokemon I Choose You", AirDate: "1997-04-01", AirDateUTC: now.AddDate(-29, 0, 0)},
+		{ID: 102, SeasonNumber: 1, EpisodeNumber: 2, Title: "Emergency", AirDate: "1997-04-08", AirDateUTC: now.AddDate(-29, 0, 0)},
+	}
+	orders := &overfin.EpisodeOrders{
+		Seasons: []overfin.OrderSeason{{Season: 1, Rearranged: true, OtherSizes: []int{2}, Episodes: []overfin.OrderEpisode{
+			{Episode: 1, Name: "Pokémon - I Choose You!", Translated: "Le départ", AirDate: "1997-04-01", Runtime: 22},
+			{Episode: 2, Name: "Pokémon Emergency!", Translated: "Pokémon aux urgences", AirDate: "1997-04-08", Runtime: 23},
+		}}},
+		Others: []overfin.OtherOrder{{Name: "DVD", Seasons: []overfin.OrderSeason{{Season: 1, Episodes: []overfin.OrderEpisode{
+			{Episode: 1, Name: "Pokémon Emergency!", Translated: "Pokémon aux urgences"},
+			{Episode: 2, Name: "Pokémon - I Choose You!", Translated: "Le départ"},
+		}}}}},
+	}
+	tmdb := tmdbEpisodes(episodes, orders, now)
+	// The first by title; the second by its air date (its title differs,
+	// and the season's numbers can't be believed).
+	if tmdb[101].Translated != "Le départ" || tmdb[102].Translated != "Pokémon aux urgences" {
+		t.Errorf("TMDB's episodes: %+v", tmdb)
+	}
+	got := meanings("/d/Pokemon - S01E02 - Truc.mp4", episodes, tmdb, orders)
+	if len(got) != 3 || got[0].Order != "Sonarr" || got[0].Title != "Emergency" || got[0].Translated != "Pokémon aux urgences" || got[0].Runtime != 23 ||
+		got[1].Order != "TMDB" || got[1].Translated != "Pokémon aux urgences" || got[2].Order != "DVD" || got[2].Translated != "Le départ" {
+		t.Errorf("meanings: %+v", got)
+	}
+	if got := meanings("/d/Pokemon - S01E09.mp4", episodes, tmdb, orders); len(got) != 3 || !got[0].Missing || !got[1].Missing || !got[2].Missing {
+		t.Errorf("past the end: %+v", got)
+	}
+	if got := meanings("/d/Bonus.mp4", episodes, tmdb, orders); len(got) != 0 {
+		t.Errorf("no number: %+v", got)
+	}
+}

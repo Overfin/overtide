@@ -488,6 +488,15 @@ func (client *Client) WishStatus(tmdb int, season *int, state string, nextTry ti
 // EpisodeOrders is what TMDB says of a series' episodes.
 type EpisodeOrders struct {
 	Seasons []OrderSeason `json:"seasons"`
+	// Others are TMDB's other orders, with only the seasons they rearrange.
+	Others []OtherOrder `json:"others"`
+}
+
+// OtherOrder is one of TMDB's other orders of a series.
+type OtherOrder struct {
+	Name    string        `json:"name"`
+	Type    int           `json:"type"`
+	Seasons []OrderSeason `json:"seasons"`
 }
 
 // OrderSeason is one season in TMDB's own order. Rearranged: another order
@@ -507,6 +516,7 @@ type OrderEpisode struct {
 	AirDate    string `json:"airDate"`
 	Name       string `json:"name"`
 	Translated string `json:"translated"`
+	Runtime    int    `json:"runtime"` // minutes, 0 when TMDB doesn't know
 }
 
 // EpisodeOrders asks Overfin what TMDB says of a series' episodes. nil
