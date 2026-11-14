@@ -57,7 +57,27 @@
   }
 
   load();
-  loadWaiting();
+
+  // What waits to be imported, asked again every 5 seconds while the page
+  // is shown, as the Now card is: files come and go with each run.
+  async function refreshWaiting() {
+    if (document.hidden) return;
+    try {
+      waiting = (await get<{ imports: WaitingImport[] }>('/api/adding/imports')).imports;
+    } catch {
+      // Not answering now: the next turn tries again.
+    }
+  }
+
+  $effect(() => {
+    loadWaiting();
+    const timer = setInterval(refreshWaiting, 5000);
+    document.addEventListener('visibilitychange', refreshWaiting);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWaiting);
+    };
+  });
 
   const seasons = $derived(data ? data.groups.filter((g) => g.state === 'seasons' || g.state === 'episodes').reduce((n, g) => n + g.count, 0) : 0);
   const titles = $derived(data ? data.groups.filter((g) => g.state === 'waiting' || g.state === 'not released').reduce((n, g) => n + g.count, 0) : 0);
