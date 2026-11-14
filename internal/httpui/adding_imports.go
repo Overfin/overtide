@@ -29,7 +29,7 @@ func (server *Server) importOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 // importChoose answers POST /api/adding/imports/{service}/{download}: what the
-// operator says of a download. The next run, started now, does it.
+// operator says of a download, done now (ChooseImport).
 func (server *Server) importChoose(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Action string           `json:"action"`
@@ -40,13 +40,16 @@ func (server *Server) importChoose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	choice := sonarrdriver.ImportChoice{ServiceID: r.PathValue("service"), DownloadID: r.PathValue("download"), Action: body.Action, Files: body.Files}
-	if err := server.adder.Sonarr().ChooseImport(choice); err != nil {
+	if err := server.adder.Sonarr().ChooseImport(r.Context(), choice); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := server.runAdding(addingTaskID); err != nil {
-		fail(w, http.StatusServiceUnavailable, err.Error())
-		return
+	// Another release is searched for by a run: one starts now.
+	if choice.Action == sonarrdriver.ChoiceAnother {
+		if err := server.runAdding(addingTaskID); err != nil {
+			fail(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 	}
 	done(w)
 }

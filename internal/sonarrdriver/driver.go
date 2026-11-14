@@ -58,8 +58,11 @@ type Driver struct {
 	// Overtide imports for them. ordersCache: what Overfin said of series.
 	autoImportOff map[string]bool
 	ordersCache   map[int]cachedOrders
-	// choicesMu guards the operator's choices, which come while a run goes.
+	// choicesMu guards the operator's choices, which come while a run goes,
+	// and applying: those a run took and hasn't saved yet, by service and
+	// download, so the Adding page still shows them as chosen meanwhile.
 	choicesMu sync.Mutex
+	applying  map[string]applyingChoice
 }
 
 // New is a driver that stops nothing and counts nothing until its fields
@@ -151,7 +154,14 @@ func (driver *Driver) SaveStates(states map[string]*State) error {
 	if err != nil {
 		return err
 	}
-	return driver.inv.Store().SetMeta(episodesKey, string(encoded))
+	if err := driver.inv.Store().SetMeta(episodesKey, string(encoded)); err != nil {
+		return err
+	}
+	// What a run took is in the states now.
+	driver.choicesMu.Lock()
+	driver.applying = nil
+	driver.choicesMu.Unlock()
+	return nil
 }
 
 func stateFor(states map[string]*State, serviceID string) *State {

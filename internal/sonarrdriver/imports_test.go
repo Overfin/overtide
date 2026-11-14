@@ -294,29 +294,45 @@ func TestImportChoices(t *testing.T) {
 	}
 
 	// Refused: nonsense, and no file named.
-	if driver.ChooseImport(ImportChoice{ServiceID: "s", DownloadID: "A", Action: "burn"}) == nil {
+	if driver.ChooseImport(ctx, ImportChoice{ServiceID: "s", DownloadID: "A", Action: "burn"}) == nil {
 		t.Error("an unknown action taken")
 	}
-	if driver.ChooseImport(ImportChoice{ServiceID: "s", DownloadID: "A", Action: ChoiceEpisodes}) == nil {
+	if driver.ChooseImport(ctx, ImportChoice{ServiceID: "s", DownloadID: "A", Action: ChoiceEpisodes}) == nil {
 		t.Error("no files taken")
 	}
 
 	// Across what Sonarr guessed; an episode of another series is ignored,
 	// so that file stays waiting.
-	if err := driver.ChooseImport(ImportChoice{ServiceID: "s", DownloadID: "A", Action: ChoiceEpisodes, Files: map[string][]int{
+	if err := driver.ChooseImport(ctx, ImportChoice{ServiceID: "s", DownloadID: "A", Action: ChoiceEpisodes, Files: map[string][]int{
 		"/dl/A/Show.S01E01.mkv": {102}, "/dl/A/Show.S01E02.mkv": {999},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.ChooseImport(ImportChoice{ServiceID: "s", DownloadID: "B", Action: ChoiceAnother}); err != nil {
+	if err := driver.ChooseImport(ctx, ImportChoice{ServiceID: "s", DownloadID: "B", Action: ChoiceAnother}); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.ChooseImport(ImportChoice{ServiceID: "s", DownloadID: "C", Action: ChoiceIgnore}); err != nil {
+	if err := driver.ChooseImport(ctx, ImportChoice{ServiceID: "s", DownloadID: "C", Action: ChoiceIgnore}); err != nil {
 		t.Fatal(err)
 	}
-	driver.ImportDownloads(ctx, cfg, false)
+	// Done at once: the file given its episode is imported, B and C leave
+	// the list, before any run.
 	if !slices.Equal(fake.ImportedTo["/dl/A/Show.S01E01.mkv"], []int{102}) || fake.ImportedTo["/dl/A/Show.S01E02.mkv"] != nil || len(fake.Imported) != 1 {
 		t.Fatalf("chosen: %v %v", fake.ImportedTo, fake.Imported)
+	}
+	waiting, _ = driver.WaitingImports()
+	if len(waiting) != 1 || waiting[0].DownloadID != "A" || len(waiting[0].Files) != 1 || waiting[0].Files[0].Path != "/dl/A/Show.S01E02.mkv" {
+		t.Fatalf("waiting at once: %+v", waiting)
+	}
+	// The run records them, and doesn't import that file again (Sonarr's
+	// history has it).
+	fake.Events["A"] = append(fake.Events["A"], map[string]any{"eventType": "downloadFolderImported", "date": arrfake.ISO(now),
+		"data": map[string]any{"droppedPath": "/dl/A/Show.S01E01.mkv"}})
+	driver.ImportDownloads(ctx, cfg, false)
+	if len(fake.Imported) != 1 {
+		t.Fatalf("imported again: %v", fake.Imported)
+	}
+	if waiting, _ = driver.WaitingImports(); len(waiting) != 1 || len(waiting[0].Files) != 1 {
+		t.Fatalf("waiting after the run: %+v", waiting)
 	}
 	states, _ := driver.States()
 	imports := states["s"].Imports

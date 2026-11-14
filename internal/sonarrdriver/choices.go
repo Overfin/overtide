@@ -35,13 +35,30 @@ type ImportChoice struct {
 	Files map[string][]int `json:"files,omitempty"`
 }
 
-// ChooseImport notes the operator's choice: the next run applies it.
-func (driver *Driver) ChooseImport(choice ImportChoice) error {
+// ChooseImport does what the operator said of a download, now: files given
+// their episodes are imported at once, and the download leaves the waiting
+// list at once whatever the action (chosen). The choice is also kept for
+// the next run, which records it (applyChoices): a run going on meanwhile
+// holds the imports' state for minutes, and would write over a change made
+// to it here.
+func (driver *Driver) ChooseImport(ctx context.Context, choice ImportChoice) error {
 	switch choice.Action {
 	case ChoiceEpisodes:
 		if len(choice.Files) == 0 {
 			return fmt.Errorf("no file was given an episode")
 		}
+		imported, err := driver.importChosen(ctx, choice)
+		if err != nil {
+			return err
+		}
+		// Only those: a file given no episode of the series still waits.
+		kept := map[string][]int{}
+		for path, ids := range choice.Files {
+			if imported[path] {
+				kept[path] = ids
+			}
+		}
+		choice.Files = kept
 	case ChoiceAnother, ChoiceIgnore:
 	default:
 		return fmt.Errorf("unknown action")
@@ -53,6 +70,48 @@ func (driver *Driver) ChooseImport(choice ImportChoice) error {
 		return err
 	}
 	return driver.writeChoices(append(choices, choice))
+}
+
+// importChosen imports the files of a download the operator gave their
+// episodes, now. The run that records the choice finds them imported, and
+// leaves them. It returns the files imported, by path.
+func (driver *Driver) importChosen(ctx context.Context, choice ImportChoice) (map[string]bool, error) {
+	states, err := driver.States()
+	if err != nil {
+		return nil, err
+	}
+	state := states[choice.ServiceID]
+	if state == nil || state.Imports[choice.DownloadID] == nil || state.Imports[choice.DownloadID].Done {
+		return nil, fmt.Errorf("that download isn't waiting")
+	}
+	download := state.Imports[choice.DownloadID]
+	client, err := driver.inv.SonarrClient(choice.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	client = client.WithContext(ctx)
+	files, err := client.DownloadFiles(choice.DownloadID)
+	if err != nil {
+		return nil, err
+	}
+	episodes, err := client.Episodes(download.SeriesID)
+	if err != nil {
+		return nil, err
+	}
+	items, _ := operatorSays(files, nil, nil, choice.Files, episodes)
+	if len(items) == 0 {
+		return nil, fmt.Errorf("none of these files is still there, or none was given an episode of the series")
+	}
+	imported := map[string]bool{}
+	for i := range items {
+		items[i].DownloadID = choice.DownloadID
+		imported[items[i].Path] = true
+	}
+	if _, err := client.Import(download.SeriesID, items); err != nil {
+		return nil, err
+	}
+	log.Printf("[adding] imported %d files of %s, as the operator said", len(items), download.Title)
+	return imported, nil
 }
 
 func (driver *Driver) readChoices() ([]ImportChoice, error) {
@@ -70,6 +129,44 @@ func (driver *Driver) writeChoices(choices []ImportChoice) error {
 		return err
 	}
 	return driver.inv.Store().SetMeta(importChoicesKey, string(encoded))
+}
+
+// applyingChoice is a choice a run took, and when.
+type applyingChoice struct {
+	choice ImportChoice
+	at     time.Time
+}
+
+// applyingFor is how long a choice taken shows as chosen without a save: a
+// run that failed before saving leaves it, and the files show as waiting
+// again.
+const applyingFor = 30 * time.Minute
+
+func choiceKey(serviceID, downloadID string) string { return serviceID + "/" + downloadID }
+
+// chosen is what the operator said of each download that the state
+// doesn't show yet: the choices kept for a run, and those one took and
+// hasn't saved. They count at once wherever the waiting files are read, so
+// what the operator did shows when they do it, whatever a run is doing.
+func (driver *Driver) chosen() map[string][]ImportChoice {
+	driver.choicesMu.Lock()
+	defer driver.choicesMu.Unlock()
+	out := map[string][]ImportChoice{}
+	now := driver.now()
+	for key, a := range driver.applying {
+		if now.Sub(a.at) < applyingFor {
+			out[key] = append(out[key], a.choice)
+		}
+	}
+	choices, err := driver.readChoices()
+	if err != nil {
+		log.Printf("[adding] the operator's choices: %v", err)
+	}
+	for _, choice := range choices {
+		key := choiceKey(choice.ServiceID, choice.DownloadID)
+		out[key] = append(out[key], choice)
+	}
+	return out
 }
 
 // takeChoices returns a Sonarr's choices, and leaves the others.
@@ -93,6 +190,12 @@ func (driver *Driver) takeChoices(serviceID string) []ImportChoice {
 		if err := driver.writeChoices(others); err != nil {
 			log.Printf("[adding] the operator's choices: %v", err)
 			return nil
+		}
+		if driver.applying == nil {
+			driver.applying = map[string]applyingChoice{}
+		}
+		for _, choice := range mine {
+			driver.applying[choiceKey(choice.ServiceID, choice.DownloadID)] = applyingChoice{choice, driver.now()}
 		}
 	}
 	return mine
@@ -202,6 +305,7 @@ func (driver *Driver) WaitingImports() ([]WaitingImport, error) {
 	if err != nil {
 		return nil, err
 	}
+	chosen := driver.chosen()
 	out := []WaitingImport{}
 	for serviceID, state := range states {
 		names := driver.seriesNames(serviceID)
@@ -210,6 +314,19 @@ func (driver *Driver) WaitingImports() ([]WaitingImport, error) {
 				continue
 			}
 			files := slices.Clone(download.Waiting)
+			// What the operator said counts already: another release or
+			// none, it's gone; files given episodes are imported.
+			gone := false
+			for _, choice := range chosen[choiceKey(serviceID, id)] {
+				gone = gone || choice.Action != ChoiceEpisodes
+				files = slices.DeleteFunc(files, func(file waitingFile) bool {
+					_, said := choice.Files[file.Path]
+					return said
+				})
+			}
+			if gone || len(files) == 0 {
+				continue
+			}
 			sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 			out = append(out, WaitingImport{ServiceID: serviceID, DownloadID: id, Series: names[download.SeriesID], Release: download.Title, GrabbedAt: download.GrabbedAt, Files: files})
 		}

@@ -35,8 +35,8 @@
 
   async function another(item: WaitingImport) {
     await post(`/api/adding/imports/${encodeURIComponent(item.serviceId)}/${encodeURIComponent(item.downloadId)}`, { action: 'another' });
-    toast('Another release will be tried: the next run looks for one.');
-    setTimeout(loadWaiting, 3000);
+    toast('Left: another release is being looked for.');
+    await loadWaiting();
   }
 
   async function ignore(item: WaitingImport) {
@@ -46,8 +46,8 @@
     );
     if (!sure) return;
     await post(`/api/adding/imports/${encodeURIComponent(item.serviceId)}/${encodeURIComponent(item.downloadId)}`, { action: 'ignore' });
-    toast('Ignored: the next run leaves it alone.');
-    setTimeout(loadWaiting, 3000);
+    toast('Ignored.');
+    await loadWaiting();
   }
 
   async function run() {
@@ -145,8 +145,8 @@
     item={choosing}
     saved={() => {
       choosing = null;
-      toast('Noted: the next run imports them.');
-      setTimeout(loadWaiting, 3000);
+      toast('Imported.');
+      loadWaiting();
     }}
     close={() => (choosing = null)}
   />
