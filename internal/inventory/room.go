@@ -2,6 +2,8 @@ package inventory
 
 import (
 	"fmt"
+
+	"github.com/overfin/overtide/internal/config"
 	"path/filepath"
 	"strings"
 )
@@ -11,6 +13,8 @@ const (
 	RoomOK       = "ok"
 	RoomCritical = "critical"
 	RoomUnknown  = "unknown"
+	// RoomOverShare: the folder holds more than its share of the disk.
+	RoomOverShare = "over-share"
 )
 
 // Room says whether titles may be added to a folder (a Radarr or Sonarr
@@ -37,9 +41,44 @@ func (service *Service) Room(folder string) (state, reason string) {
 				if used := float64(device.OvertideUsedBytes()) / float64(usable) * 100; used >= critical {
 					return RoomCritical, fmt.Sprintf("Its disk is past its critical threshold (%.1f%% used, critical %.1f%%)", used, critical)
 				}
+				if folder := device.FolderOf(root); folder != "" {
+					if bytes, limit, on := device.Share(cfg, folder); on && bytes > limit {
+						return RoomOverShare, fmt.Sprintf("Its root folder %s is over its share of the disk (%s, share %s)", folder, human(bytes), human(limit))
+					}
+				}
 				return RoomOK, ""
 			}
 		}
 	}
 	return RoomUnknown, "Overtide doesn't know its disk (" + folder + ")"
+}
+
+// Share is what a root folder of the device holds and its share of the
+// disk's space up to the target, in bytes; false when the disk's space
+// isn't shared between its folders.
+func (d StorageDevice) Share(cfg config.Config, folder string) (bytes, limit uint64, on bool) {
+	threshold := cfg.Storage.DeviceThresholds[d.RepresentativePath]
+	if !threshold.SharesOn() {
+		return 0, 0, false
+	}
+	target, _ := cfg.ThresholdsFor(d.RepresentativePath)
+	share := threshold.Folders[folder].SharePercent
+	for _, f := range d.Folders {
+		if f.Path == folder {
+			bytes = f.Bytes
+		}
+	}
+	return bytes, uint64(float64(d.UsableBytes()) * target / 100 * share / 100), true
+}
+
+// human writes a size in binary units, one decimal.
+func human(bytes uint64) string {
+	value := float64(bytes)
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
+	i := 0
+	for value >= 1024 && i < len(units)-1 {
+		value /= 1024
+		i++
+	}
+	return fmt.Sprintf("%.1f %s", value, units[i])
 }

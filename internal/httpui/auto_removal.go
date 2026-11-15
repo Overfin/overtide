@@ -12,6 +12,7 @@ import (
 
 	"github.com/overfin/overtide/internal/cleanup"
 	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/inventory"
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/store"
 	"github.com/overfin/overtide/internal/tasks"
@@ -67,7 +68,7 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 			continue
 		}
 		target, critical := cfg.ThresholdsFor(device.RepresentativePath)
-		plan, err := cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, nil, cfg.Removal.CopiesWithTitles)
+		plan, err := cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, nil, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
 		if err != nil || !plan.Available {
 			continue
 		}
@@ -401,4 +402,18 @@ func (server *Server) queueRemoval(database *store.Store, form url.Values, descr
 	}
 	_, err = server.tasks.Submit(tasks.Request{TaskID: removalTaskID, Kind: tasks.TriggerEvent, Priority: tasks.PriorityMutation, Durable: true, CoalescingKey: fmt.Sprintf("operation:%d", historyID), Cause: cause + descriptor.Label, Payload: payload})
 	return err
+}
+
+// shareFolders are a disk's root folders sharing its space, for its
+// cleanup plan; nil when its space isn't shared.
+func shareFolders(cfg config.Config, device inventory.StorageDevice) []cleanup.Folder {
+	if !cfg.Storage.DeviceThresholds[device.RepresentativePath].SharesOn() {
+		return nil
+	}
+	folders := []cleanup.Folder{}
+	for _, folder := range device.Folders {
+		bytes, share, _ := device.Share(cfg, folder.Path)
+		folders = append(folders, cleanup.Folder{Path: folder.Path, Bytes: bytes, Share: share})
+	}
+	return folders
 }

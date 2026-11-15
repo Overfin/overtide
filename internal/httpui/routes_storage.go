@@ -189,6 +189,21 @@ type deviceSettingsJSON struct {
 	TargetUsagePercent      float64  `json:"targetUsagePercent"`
 	CriticalUsagePercent    float64  `json:"criticalUsagePercent"`
 	AutomaticRemovalEnabled bool     `json:"automaticRemovalEnabled"`
+	// UsableBytes is the space the target is a part of; Folders, the disk's
+	// Radarr and Sonarr root folders. Folders sent back nil leave theirs
+	// as they are.
+	UsableBytes uint64               `json:"usableBytes"`
+	Folders     []folderSettingsJSON `json:"folders"`
+}
+
+// folderSettingsJSON is one root folder in a disk's settings window.
+type folderSettingsJSON struct {
+	Path           string  `json:"path"`
+	Service        string  `json:"service"`
+	Bytes          uint64  `json:"bytes"`
+	SharePercent   float64 `json:"sharePercent"`
+	TitlesPerDay   int     `json:"titlesPerDay"`
+	UpgradesPerDay int     `json:"upgradesPerDay"`
 }
 
 // apiDeviceSettings is a device's settings window: its whole identity
@@ -198,13 +213,19 @@ func (server *Server) apiDeviceSettings(w http.ResponseWriter, r *http.Request) 
 	cfg := server.inv.Config()
 	target, critical := cfg.ThresholdsFor(path)
 	out := deviceSettingsJSON{Path: path, RootLabels: []string{}, Name: cfg.DeviceName(path), TargetUsagePercent: target, CriticalUsagePercent: critical,
-		AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path)}
+		AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path), Folders: []folderSettingsJSON{}}
 	for _, device := range server.inv.StorageDevices() {
 		if device.RepresentativePath == path {
 			if device.RootLabels != nil {
 				out.RootLabels = device.RootLabels
 			}
 			out.Filesystem = device.Filesystem
+			out.UsableBytes = device.UsableBytes()
+			saved := cfg.Storage.DeviceThresholds[path].Folders
+			for _, folder := range device.Folders {
+				out.Folders = append(out.Folders, folderSettingsJSON{Path: folder.Path, Service: folder.Service, Bytes: folder.Bytes,
+					SharePercent: saved[folder.Path].SharePercent, TitlesPerDay: cfg.TitlesPerDayFor(folder.Path), UpgradesPerDay: cfg.UpgradesPerDayFor(folder.Path)})
+			}
 			break
 		}
 	}
@@ -219,7 +240,15 @@ func (server *Server) apiSetDeviceSettings(w http.ResponseWriter, r *http.Reques
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := server.inv.SetDeviceThreshold(in.Path, in.Name, in.TargetUsagePercent, in.CriticalUsagePercent, in.AutomaticRemovalEnabled); err != nil {
+	var folders map[string]config.FolderSettings
+	if in.Folders != nil {
+		folders = make(map[string]config.FolderSettings, len(in.Folders))
+		for _, folder := range in.Folders {
+			titles, upgrades := folder.TitlesPerDay, folder.UpgradesPerDay
+			folders[folder.Path] = config.FolderSettings{SharePercent: folder.SharePercent, TitlesPerDay: &titles, UpgradesPerDay: &upgrades}
+		}
+	}
+	if err := server.inv.SetDeviceThreshold(in.Path, in.Name, in.TargetUsagePercent, in.CriticalUsagePercent, in.AutomaticRemovalEnabled, folders); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}

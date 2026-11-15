@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +60,17 @@ type Action struct {
 	LastActivity     int64          `json:"lastActivity,omitempty"`
 	ReclaimableBytes int64          `json:"reclaimableBytes"`
 	Reasons          []model.Reason `json:"reasons,omitempty"`
+	// Folder is the root folder of a title (or of a copy's title) when
+	// the disk's space is shared between its folders (see Folder).
+	Folder string `json:"folder,omitempty"`
+}
+
+// Folder is a root folder of a disk whose space is shared between its
+// folders: what it holds and its share, in bytes.
+type Folder struct {
+	Path  string `json:"path"`
+	Bytes uint64 `json:"bytes"`
+	Share uint64 `json:"share"`
 }
 
 // ActionKey is a stable identifier for one Action, independent of its
@@ -117,6 +129,10 @@ type Plan struct {
 	SelectedBytes uint64   `json:"selectedBytes"`
 	Message       string   `json:"message"`
 	Error         string   `json:"error,omitempty"`
+	// Folders, when the disk's space is shared between its root folders:
+	// then titles go one at a time, from the folder furthest over its
+	// share, until the disk is back at its target or no folder is over.
+	Folders []Folder `json:"folders,omitempty"`
 }
 
 // torrentsHoldBack reports whether any of a title's hardlinked torrents
@@ -378,7 +394,101 @@ func enforceSeasonOrder(actions []Action) {
 // Enough is what a plan takes of the actions a caller allows, from its
 // Ordered ones: what's left out then doesn't count toward the need.
 func (plan Plan) Enough(allowed []Action) []Action {
+	if plan.Folders != nil {
+		return byShares(allowed, plan.NeedBytes, plan.Folders)
+	}
 	return takeUntil(allowed, plan.NeedBytes)
+}
+
+// byShares takes, in a disk whose space is shared between its root
+// folders: first what has no folder (lone torrents, which come first in
+// the order) as takeUntil does, then one title at a time from the folder
+// furthest over its share, in bytes, counting the folders again after each:
+// the first in order of that folder. It stops when the disk has what it
+// needs, or no folder is over its share. A copy taken frees no space in
+// its title's folder.
+func byShares(ordered []Action, need uint64, folders []Folder) []Action {
+	var taken []Action
+	var freed int64
+	held := map[string]int64{}
+	share := map[string]int64{}
+	for _, folder := range folders {
+		held[folder.Path], share[folder.Path] = int64(folder.Bytes), int64(folder.Share)
+	}
+	used := make([]bool, len(ordered))
+	for i, action := range ordered {
+		if freed >= int64(need) {
+			return taken
+		}
+		if action.Folder == "" && action.Kind == StandaloneTorrent {
+			taken, freed, used[i] = append(taken, action), freed+action.ReclaimableBytes, true
+		}
+	}
+	emptied := map[string]bool{}
+	for freed < int64(need) {
+		furthest, over := "", int64(0)
+		for _, folder := range folders {
+			if gap := held[folder.Path] - share[folder.Path]; gap > over && !emptied[folder.Path] {
+				furthest, over = folder.Path, gap
+			}
+		}
+		if furthest == "" {
+			break
+		}
+		next := -1
+		for i, action := range ordered {
+			if !used[i] && action.Folder == furthest {
+				next = i
+				break
+			}
+		}
+		if next < 0 {
+			emptied[furthest] = true // nothing left to take there
+			continue
+		}
+		action := ordered[next]
+		used[next] = true
+		taken = append(taken, action)
+		freed += action.ReclaimableBytes
+		if !action.Copy {
+			held[furthest] -= action.ReclaimableBytes
+		}
+	}
+	return taken
+}
+
+// inFolders sets each action's root folder: its title's, a copy's being
+// its title's when copies go with their titles, among the folders.
+func inFolders(ordered []Action, media []model.Media, folders []Folder, copiesWithTitles bool) {
+	of := func(path string) string {
+		path = filepath.Clean(path)
+		best := ""
+		for _, folder := range folders {
+			if (path == folder.Path || strings.HasPrefix(path, folder.Path+string(filepath.Separator))) && len(folder.Path) > len(best) {
+				best = folder.Path
+			}
+		}
+		return best
+	}
+	pathByTitle := map[string]string{}
+	for _, m := range media {
+		pathByTitle[titleKey(m.Type, m.ServiceID, m.SourceID)] = m.Path
+	}
+	for i := range ordered {
+		action := &ordered[i]
+		switch {
+		case action.Media.Path != "":
+			action.Folder = of(action.Media.Path)
+		case action.Copy && copiesWithTitles:
+			for _, t := range action.Torrents {
+				for _, ref := range t.MediaItems {
+					if path := pathByTitle[titleKey(ref.Type, ref.ServiceID, ref.SourceID)]; path != "" && action.Folder == "" {
+						action.Folder = of(path)
+					}
+				}
+			}
+		}
+	}
 }
 
 // takeUntil takes actions in order until they reclaim need bytes.
@@ -414,7 +524,10 @@ func takeUntil(ordered []Action, need uint64) []Action {
 // overlay (excluding an item from one run, or one just kept but not yet
 // reflected in Media/Torrents' own Protected field) without waiting for anything to actually change on disk. Every
 // other caller passes nil.
-func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool, copiesWithTitles bool) (Plan, error) {
+//
+// folders, when not nil, are the disk's root folders sharing its space:
+// see byShares.
+func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool, copiesWithTitles bool, folders []Folder) (Plan, error) {
 	plan := Plan{Path: path, TargetUsagePercent: targetUsage, CriticalUsagePercent: criticalUsage, Reliable: reliable}
 	var filesystemStats syscall.Statfs_t
 	if err := syscall.Statfs(path, &filesystemStats); err != nil {
@@ -480,6 +593,11 @@ func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, m
 	ordered := order(mediaTier, torrentTier, copiesWithTitles)
 	enforceSeasonOrder(ordered)
 	final := takeUntil(ordered, plan.NeedBytes)
+	if folders != nil {
+		plan.Folders = folders
+		inFolders(ordered, media, folders, copiesWithTitles)
+		final = byShares(ordered, plan.NeedBytes, folders)
+	}
 	plan.Actions = final
 	plan.Ordered = ordered
 	for _, action := range final {

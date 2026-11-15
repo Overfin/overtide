@@ -250,10 +250,15 @@ type upgradeRow struct {
 
 type upgradesData struct {
 	Rows []upgradeRow `json:"rows"`
-	// PerDay is the setting (0: upgrades off); Today, the searches of the
-	// last 24 hours.
-	PerDay int `json:"perDay"`
-	Today  int `json:"today"`
+	// Folders are the root folders' upgrades a day (0: none there) and
+	// their searches of the last 24 hours.
+	Folders []upgradesFolder `json:"folders"`
+}
+
+type upgradesFolder struct {
+	Root   string `json:"root"`
+	PerDay int    `json:"perDay"`
+	Today  int    `json:"today"`
 }
 
 // addingUpgrades answers GET /api/adding/upgrades: what waits for an
@@ -264,7 +269,10 @@ func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	data := upgradesData{Rows: []upgradeRow{}, PerDay: server.inv.Config().Adding.UpgradesPerDay, Today: server.adder.UpgradesToday()}
+	data := upgradesData{Rows: []upgradeRow{}, Folders: []upgradesFolder{}}
+	for _, day := range server.adder.Days() {
+		data.Folders = append(data.Folders, upgradesFolder{Root: day.Root, PerDay: day.UpgradesPerDay, Today: day.Upgrades})
+	}
 	for _, row := range rows {
 		data.Rows = append(data.Rows, upgradeRow{ID: row.Ref, Title: row.Title, Kind: kindName(row.Kind), Why: row.Why,
 			Value: row.Value, LastSearched: row.LastSearched, Next: row.Next})

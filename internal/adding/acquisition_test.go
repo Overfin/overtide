@@ -37,7 +37,7 @@ func TestSeasonsAndTheDailyLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.values = &overfin.Values{Seasons: map[int]map[int]float64{1002: {2: 1, 3: 9}}}
-	if err := service.recordStarted(2); err != nil { // the limit's reached
+	if err := service.recordStarted("/data/Series/2", 2); err != nil { // the limit's reached
 		t.Fatal(err)
 	}
 	wanted := map[int]sonarrdriver.EpisodeWant{1: {SeriesID: 1, Season: 1}, 2: {SeriesID: 2, Season: 2}, 3: {SeriesID: 2, Season: 3}}
@@ -53,13 +53,13 @@ func TestSeasonsAndTheDailyLimit(t *testing.T) {
 	if err != nil || used != 0 || len(fake.Searches()) != 0 {
 		t.Fatalf("the season just finished: %d, %v, %v", used, err, fake.Searches())
 	}
-	if times, _ := service.started(); len(times) != 2 {
+	if times, _ := service.started(service.rootOf("/data/Series/2")); len(times) != 2 {
 		t.Errorf("counted %d", len(times))
 	}
 	// A day later there's room for one again: the series' lowest season,
 	// though its next is more valued (a series comes a season at a time).
 	service.now = func() time.Time { return now.Add(25 * time.Hour) }
-	if err := service.recordStarted(1); err != nil {
+	if err := service.recordStarted("/data/Series/2", 1); err != nil {
 		t.Fatal(err)
 	}
 	used, err = service.replaceSeasons(context.Background(), cfg, 5, false, false)

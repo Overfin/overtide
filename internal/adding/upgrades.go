@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	// upgradesKey keeps when upgrade searches went over the last 24 hours;
+	// upgradesKey keeps when upgrade searches went over the last 24 hours,
+	// a list per root folder (folderKey);
 	// upgradedKey, when each title was last searched for one.
 	upgradesKey = "adding.upgrades"
 	upgradedKey = "adding.upgraded"
@@ -128,18 +129,10 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 // Seasons still airing, or lacking episodes, wait. In dry run, nothing goes.
 // It returns the searches it asked for.
 func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, entries []Entry, budget int, dryRun bool) (int, error) {
-	limit := cfg.Adding.UpgradesPerDay
-	if limit <= 0 || budget <= 0 || dryRun {
+	if budget <= 0 || dryRun || !service.anyUpgradeRoom(cfg) {
 		return 0, nil
 	}
-	times, err := service.lastDay(upgradesKey)
-	if err != nil {
-		return 0, err
-	}
-	room := min(limit-len(times), budget)
-	if room <= 0 {
-		return 0, nil
-	}
+	room := budget
 	// Seasons complete without their pack first: those are holes filled.
 	used, err := service.sonarr.PackUpgrades(ctx, cfg, room)
 	if err != nil {
@@ -178,7 +171,7 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 		if at, ok := searched[c.key()]; ok && service.now().Sub(at) < UpgradeAgain {
 			continue
 		}
-		if moving[fmt.Sprintf("%s|%s|%d", c.serviceID, c.kind, c.arrID)] || disk(cfg, c.path, false) != "" {
+		if moving[fmt.Sprintf("%s|%s|%d", c.serviceID, c.kind, c.arrID)] || !service.upgradeRoom(cfg, c.path) || disk(cfg, c.path, false) != "" {
 			continue
 		}
 		if c.kind == model.Series {
@@ -224,7 +217,7 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 			continue
 		}
 		searched[c.key()] = service.now()
-		if err := service.recordNow(upgradesKey, 1); err != nil {
+		if err := service.recordNow(folderKey(upgradesKey, service.rootOf(c.path)), 1); err != nil {
 			return used, err
 		}
 		if err := service.saveUpgradesSearched(searched); err != nil {
@@ -338,8 +331,24 @@ func (service *Service) RemoveUpgrade(ctx context.Context, ref string) error {
 	return ErrNotInList
 }
 
-// UpgradesToday counts the upgrade searches of the last 24 hours.
-func (service *Service) UpgradesToday() int {
-	times, _ := service.lastDay(upgradesKey)
-	return len(times)
+// upgradeRoom says whether one more upgrade search may go for what's at
+// path, under its root folder's upgrades a day.
+func (service *Service) upgradeRoom(cfg config.Config, path string) bool {
+	root := service.rootOf(path)
+	times, err := service.lastDay(folderKey(upgradesKey, root))
+	return err == nil && len(times) < cfg.UpgradesPerDayFor(root)
+}
+
+// anyUpgradeRoom says whether a root folder (or one not known, under the
+// default) may have an upgrade search now.
+func (service *Service) anyUpgradeRoom(cfg config.Config) bool {
+	if service.upgradeRoom(cfg, "") {
+		return true
+	}
+	for _, root := range service.inv.RootFolders() {
+		if service.upgradeRoom(cfg, root) {
+			return true
+		}
+	}
+	return false
 }

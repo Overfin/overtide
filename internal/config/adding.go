@@ -16,12 +16,10 @@ type AddingConfig struct {
 	// Searches is how many searches a run (every 15 minutes) may ask
 	// for; 0 means DefaultSearches.
 	Searches int `json:"searches,omitempty"`
-	// TitlesPerDay is how many titles may start downloading in 24 hours
-	// (a series, one per season), whatever brought them; 0 means
-	// DefaultTitlesPerDay.
-	TitlesPerDay int `json:"titles_per_day,omitempty"`
-	// UpgradesPerDay is how many searches for a better copy may go in 24
-	// hours; 0 means none.
+	// TitlesPerDay and UpgradesPerDay are what was set server-wide before
+	// each root folder had its own (FolderSettings): the default of a root
+	// folder without its own. 0 means DefaultTitlesPerDay, and no upgrades.
+	TitlesPerDay   int `json:"titles_per_day,omitempty"`
 	UpgradesPerDay int `json:"upgrades_per_day,omitempty"`
 	// Destinations say where titles go, in order (see DestinationFor).
 	Destinations []Destination `json:"destinations,omitempty"`

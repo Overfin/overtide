@@ -170,7 +170,7 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 // import). If unmonitoring fails, follow tries again.
 func (service *Service) downloading(entry *Entry, a tries.Title, dryRun bool) {
 	if !dryRun {
-		if err := service.recordStarted(entry.searches()); err != nil {
+		if err := service.recordStarted(service.entryFolder(service.inv.Config(), entry), entry.searches()); err != nil {
 			log.Printf("[adding] count the download of %s: %v", entry.Title, err)
 		}
 	}

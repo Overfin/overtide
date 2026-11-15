@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -180,7 +181,27 @@ func (service *Service) RemoveService(id string) error {
 // check runs, and no client is (de)activated. Editing the same device from
 // any service overlay that shares it converges to the same
 // config.SetDeviceThreshold entry.
-func (service *Service) SetDeviceThreshold(representativePath, name string, target, critical float64, automaticRemovalEnabled bool) error {
+//
+// folders, when not nil, are the disk's root folders' shares and daily
+// limits, saved with the rest: each must be a Radarr or Sonarr root folder
+// on that disk.
+func (service *Service) SetDeviceThreshold(representativePath, name string, target, critical float64, automaticRemovalEnabled bool, folders map[string]config.FolderSettings) error {
+	if folders != nil {
+		onDisk := map[string]bool{}
+		for _, device := range service.StorageDevices() {
+			if device.RepresentativePath == representativePath {
+				for _, folder := range device.Folders {
+					onDisk[folder.Path] = true
+				}
+			}
+		}
+		for path := range folders {
+			if !onDisk[filepath.Clean(path)] {
+				return fmt.Errorf("%s isn't a Radarr or Sonarr root folder on this disk", path)
+			}
+		}
+	}
+
 	service.configMu.Lock()
 	defer service.configMu.Unlock()
 
@@ -193,6 +214,9 @@ func (service *Service) SetDeviceThreshold(representativePath, name string, targ
 	service.mu.RUnlock()
 
 	updatedCfg, err := config.SetDeviceThreshold(currentCfg, representativePath, name, target, critical, automaticRemovalEnabled)
+	if err == nil && folders != nil {
+		updatedCfg, err = config.SetDeviceFolders(updatedCfg, representativePath, folders)
+	}
 	if err != nil {
 		return err
 	}

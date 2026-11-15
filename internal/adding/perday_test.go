@@ -21,25 +21,25 @@ func TestDailyLimit(t *testing.T) {
 	service := newTestService(t, cfg, now)
 	clock := now
 	service.now = func() time.Time { return clock }
-	if ok, _ := service.DailyLimit(5); !ok {
+	if ok, _ := service.DailyLimit("", 5); !ok {
 		t.Fatal("a series bigger than the day, nothing started: held back")
 	}
 	for _, offset := range []time.Duration{0, time.Hour, 2 * time.Hour} {
 		clock = now.Add(offset)
-		if err := service.recordStarted(1); err != nil {
+		if err := service.recordStarted("", 1); err != nil {
 			t.Fatal(err)
 		}
 	}
 	clock = now.Add(3 * time.Hour)
-	ok, until := service.DailyLimit(1)
+	ok, until := service.DailyLimit("", 1)
 	if ok || !until.Equal(now.Add(24*time.Hour)) {
 		t.Fatalf("at the limit: %v until %v", ok, until)
 	}
-	if _, until := service.DailyLimit(2); !until.Equal(now.Add(25 * time.Hour)) {
+	if _, until := service.DailyLimit("", 2); !until.Equal(now.Add(25 * time.Hour)) {
 		t.Fatalf("two more: until %v", until)
 	}
 	clock = now.Add(24*time.Hour + time.Minute)
-	if ok, _ := service.DailyLimit(1); !ok {
+	if ok, _ := service.DailyLimit("", 1); !ok {
 		t.Fatal("the oldest is over 24 hours old: still held back")
 	}
 }
@@ -51,7 +51,7 @@ func TestRunHoldsEveryTitleAtTheDailyLimit(t *testing.T) {
 	cfg.Adding.Mode, cfg.Adding.TitlesPerDay = config.AddingOn, 1
 	service := newTestService(t, cfg, now)
 	service.disk = func(config.Config, string, bool) string { return "" }
-	if err := service.recordStarted(1); err != nil {
+	if err := service.recordStarted("", 1); err != nil {
 		t.Fatal(err)
 	}
 	service.inv.Store().SetMeta(tagsKey, "done") // no Overtide tags to replace
@@ -89,7 +89,7 @@ func TestDownloadsCounted(t *testing.T) {
 	service.downloading(&Entry{Source: FromRequest, Kind: "series", Seasons: []int{1, 2}, ArrID: 4}, a, false)
 	service.downloading(&Entry{Source: FromRequest, Kind: "movie", ArrID: 2}, a, false)
 	service.downloading(&Entry{Source: FromOverfin, Kind: "movie", ArrID: 3}, a, true)
-	if times, err := service.started(); err != nil || len(times) != 4 {
+	if times, err := service.started(""); err != nil || len(times) != 4 {
 		t.Fatalf("counted %d, %v", len(times), err)
 	}
 	if suggested.State != Waiting || !slices.Equal(suggested.Grabbed, []int{1}) || !slices.Equal(suggested.trySeasons(), []int{2}) || !suggested.filling() {
@@ -113,5 +113,18 @@ func TestDownloadsCounted(t *testing.T) {
 	sortForTries(list)
 	if list[1].Key != "a" {
 		t.Fatalf("after a failure: %+v", list)
+	}
+}
+
+// Each root folder counts its own titles a day.
+func TestDailyLimitByFolder(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Adding.TitlesPerDay = 1
+	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
+	if err := service.recordNow(folderKey(startedKey, "/data/Films"), 1); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := service.DailyLimit("", 1); !ok {
+		t.Fatal("another folder's day counted")
 	}
 }

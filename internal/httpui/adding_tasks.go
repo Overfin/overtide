@@ -73,13 +73,11 @@ func addingTypeLabel(kind string) string {
 // addingSettingsData is the Settings page's adding section: the settings,
 // what the last "Manage all" pass did, and where titles go.
 type addingSettingsData struct {
-	Mode           string                `json:"mode"`
-	Manage         string                `json:"manage"`
-	Searches       int                   `json:"searches"`
-	TitlesPerDay   int                   `json:"titlesPerDay"`
-	UpgradesPerDay int                   `json:"upgradesPerDay"`
-	Summary        *adding.ManageSummary `json:"summary,omitempty"`
-	Destinations   []destinationRow      `json:"destinations"`
+	Mode         string                `json:"mode"`
+	Manage       string                `json:"manage"`
+	Searches     int                   `json:"searches"`
+	Summary      *adding.ManageSummary `json:"summary,omitempty"`
+	Destinations []destinationRow      `json:"destinations"`
 	// EventsURL is Overtide's address for Radarr's and Sonarr's events,
 	// EventsProblem what keeps them from coming ("" when nothing does).
 	EventsURL     string `json:"eventsUrl"`
@@ -105,7 +103,7 @@ func (server *Server) addingSettings(w http.ResponseWriter, r *http.Request) {
 			}()
 		}
 	}
-	data := addingSettingsData{Mode: cfg.Adding.Mode, Manage: cfg.Adding.Manage, Searches: cfg.Adding.SearchesPerRun(), TitlesPerDay: cfg.Adding.PerDay(), UpgradesPerDay: cfg.Adding.UpgradesPerDay,
+	data := addingSettingsData{Mode: cfg.Adding.Mode, Manage: cfg.Adding.Manage, Searches: cfg.Adding.SearchesPerRun(),
 		EventsURL: cfg.Adding.EventsURL, EventsProblem: server.adder.EventsProblem(), Destinations: server.destinationRows(r.Context())}
 	if data.Mode == "" {
 		data.Mode = config.AddingOff
@@ -122,11 +120,9 @@ func (server *Server) addingSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type addingForm struct {
-	Mode           string `json:"mode"`
-	Manage         string `json:"manage"`
-	Searches       int    `json:"searches"`
-	TitlesPerDay   int    `json:"titlesPerDay"`
-	UpgradesPerDay int    `json:"upgradesPerDay"`
+	Mode     string `json:"mode"`
+	Manage   string `json:"manage"`
+	Searches int    `json:"searches"`
 	// EventsURL, when sent, replaces Overtide's address for Radarr and
 	// Sonarr ("" lets Overtide find it).
 	EventsURL *string `json:"eventsUrl"`
@@ -145,7 +141,10 @@ func (server *Server) addingSettingsSave(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	if err := server.inv.SetAdding(in.Mode, in.Manage, in.Searches, in.TitlesPerDay, in.UpgradesPerDay); err != nil {
+	// Titles and upgrades a day are each root folder's now, in its disk's
+	// settings; what was set server-wide stays, as their default.
+	cfg := server.inv.Config()
+	if err := server.inv.SetAdding(in.Mode, in.Manage, in.Searches, cfg.Adding.PerDay(), cfg.Adding.UpgradesPerDay); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}

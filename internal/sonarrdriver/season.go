@@ -172,6 +172,7 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 			seasons[key] = pack
 		}
 		full := driver.fullDisk(cfg, svc.ID)
+		folders := driver.seriesFolders(svc.ID)
 		names := driver.seriesNames(svc.ID)
 		// Seasons of series that left Sonarr (removed there by hand) go.
 		for key, pack := range state.Seasons {
@@ -228,7 +229,7 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 				continue
 			}
 			if !fresh {
-				if !driver.DailyLimit(1) {
+				if !driver.DailyLimit(folders[pack.SeriesID], 1) {
 					continue
 				}
 			}
@@ -306,7 +307,7 @@ func (driver *Driver) seekPack(ctx context.Context, cfg config.Config, serviceID
 		}
 		pack.Release, pack.GrabbedAt, pack.DownloadID = chosen.Title, now, ""
 		if !upgrade { // an upgrade counts in the upgrades a day
-			if err := driver.Started(1); err != nil {
+			if err := driver.Started(driver.seriesFolders(serviceID)[pack.SeriesID], 1); err != nil {
 				log.Printf("[adding] count the download of %s: %v", chosen.Title, err)
 			}
 		}

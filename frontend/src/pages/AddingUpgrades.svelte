@@ -17,8 +17,7 @@
   }
   interface Upgrades {
     rows: UpgradeRow[];
-    perDay: number;
-    today: number;
+    folders: { root: string; perDay: number; today: number }[];
   }
 
   let data = $state<Upgrades | null>(null);
@@ -59,10 +58,14 @@
 {#if !data}
   <Loading />
 {:else}
-  {#if data.perDay === 0}
-    <Notice>Upgrades are off: set how many a day in Settings, under Adding.</Notice>
+  {#if !data.folders.some((f) => f.perDay > 0)}
+    <Notice>Upgrades are off: set how many a day for each root folder in Storage, in its disk's settings.</Notice>
   {:else}
-    <p class="muted">{data.today} of {data.perDay} upgrade searches used in the last 24 hours.</p>
+    {#each data.folders as folder (folder.root)}
+      <p class="muted">
+        {folder.root}: {folder.perDay === 0 ? 'no upgrades' : `${folder.today} of ${folder.perDay} upgrade searches used in the last 24 hours`}.
+      </p>
+    {/each}
   {/if}
   <div class="toolbar">
     <label class="field"><span>Search</span><input type="search" bind:value={q} placeholder="Title…" /></label>

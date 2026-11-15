@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"math"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -424,6 +426,104 @@ type DeviceThreshold struct {
 	// page presents this as a checked-by-default "Enable on this device"
 	// checkbox.
 	AutomaticRemovalDisabled bool `json:"automatic_removal_disabled,omitempty"`
+	// Folders are this disk's Radarr and Sonarr root folders, each with
+	// its share of the disk and its own daily limits (see FolderSettings),
+	// keyed by the root folder's path.
+	Folders map[string]FolderSettings `json:"folders,omitempty"`
+}
+
+// FolderSettings is one root folder's own settings on its disk.
+type FolderSettings struct {
+	// SharePercent is the folder's part of its disk's space up to the
+	// target, 0 to 100. A disk's shares add up to 100, or are all 0: off.
+	// A folder over its share gets nothing added and no upgrades, and
+	// when the disk needs room, removal takes from folders over theirs.
+	SharePercent float64 `json:"share_percent,omitempty"`
+	// TitlesPerDay and UpgradesPerDay are the folder's own daily limits;
+	// unset, what the server-wide settings said before folders had their
+	// own (AddingConfig.TitlesPerDay, UpgradesPerDay), else 10 and 0.
+	TitlesPerDay   *int `json:"titles_per_day,omitempty"`
+	UpgradesPerDay *int `json:"upgrades_per_day,omitempty"`
+}
+
+// SharesOn reports whether a disk's space is shared between its folders.
+func (threshold DeviceThreshold) SharesOn() bool {
+	for _, folder := range threshold.Folders {
+		if folder.SharePercent > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// folderSettings is a root folder's settings, from whichever disk has them.
+func (configuration Config) folderSettings(root string) FolderSettings {
+	root = filepath.Clean(root)
+	for _, threshold := range configuration.Storage.DeviceThresholds {
+		for path, folder := range threshold.Folders {
+			if filepath.Clean(path) == root {
+				return folder
+			}
+		}
+	}
+	return FolderSettings{}
+}
+
+// TitlesPerDayFor is how many titles may start downloading in 24 hours
+// in a root folder ("" when not known: the default).
+func (configuration Config) TitlesPerDayFor(root string) int {
+	if n := configuration.folderSettings(root).TitlesPerDay; root != "" && n != nil {
+		return min(max(*n, 0), MaxTitlesPerDay)
+	}
+	return configuration.Adding.PerDay()
+}
+
+// UpgradesPerDayFor is how many upgrade searches may go in 24 hours for
+// what's in a root folder; 0 means none.
+func (configuration Config) UpgradesPerDayFor(root string) int {
+	if n := configuration.folderSettings(root).UpgradesPerDay; root != "" && n != nil {
+		return min(max(*n, 0), MaxUpgradesPerDay)
+	}
+	return min(max(configuration.Adding.UpgradesPerDay, 0), MaxUpgradesPerDay)
+}
+
+// SetDeviceFolders sets a disk's root folders' shares and daily limits,
+// all of them: a folder left out loses its own.
+func SetDeviceFolders(configuration Config, representativePath string, folders map[string]FolderSettings) (Config, error) {
+	threshold := configuration.Storage.DeviceThresholds[representativePath]
+	total := 0.0
+	clean := make(map[string]FolderSettings, len(folders))
+	for path, folder := range folders {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "." || path == "" {
+			return configuration, fmt.Errorf("a root folder needs its path")
+		}
+		if folder.SharePercent < 0 || folder.SharePercent > 100 {
+			return configuration, fmt.Errorf("a root folder's share must be between 0 and 100%%")
+		}
+		if folder.TitlesPerDay != nil && (*folder.TitlesPerDay < 1 || *folder.TitlesPerDay > MaxTitlesPerDay) {
+			return configuration, fmt.Errorf("titles a day must be between 1 and %d", MaxTitlesPerDay)
+		}
+		if folder.UpgradesPerDay != nil && (*folder.UpgradesPerDay < 0 || *folder.UpgradesPerDay > MaxUpgradesPerDay) {
+			return configuration, fmt.Errorf("upgrades a day must be between 0 and %d", MaxUpgradesPerDay)
+		}
+		total += folder.SharePercent
+		clean[path] = folder
+	}
+	if total != 0 && math.Abs(total-100) > 0.01 {
+		return configuration, fmt.Errorf("the root folders' shares must add up to 100%% (they add up to %.1f%%)", total)
+	}
+	if len(clean) == 0 {
+		clean = nil
+	}
+	updated := configuration
+	updated.Storage.DeviceThresholds = maps.Clone(configuration.Storage.DeviceThresholds)
+	if updated.Storage.DeviceThresholds == nil {
+		updated.Storage.DeviceThresholds = map[string]DeviceThreshold{}
+	}
+	threshold.Folders = clean
+	updated.Storage.DeviceThresholds[representativePath] = threshold
+	return updated, nil
 }
 
 // defaultTargetUsagePercent and defaultCriticalUsagePercent are used for any
@@ -497,7 +597,7 @@ func SetDeviceThreshold(configuration Config, representativePath, name string, t
 	if trimmedName == "" && existingID > 0 {
 		trimmedName = fmt.Sprintf("Device #%d", existingID)
 	}
-	updated.Storage.DeviceThresholds[representativePath] = DeviceThreshold{TargetUsagePercent: target, CriticalUsagePercent: critical, Name: trimmedName, ID: existingID, AutomaticRemovalDisabled: !automaticRemovalEnabled}
+	updated.Storage.DeviceThresholds[representativePath] = DeviceThreshold{TargetUsagePercent: target, CriticalUsagePercent: critical, Name: trimmedName, ID: existingID, AutomaticRemovalDisabled: !automaticRemovalEnabled, Folders: configuration.Storage.DeviceThresholds[representativePath].Folders}
 	return updated, nil
 }
 

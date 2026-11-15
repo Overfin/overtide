@@ -260,7 +260,7 @@ func TestSeasonWithoutPack(t *testing.T) {
 	if pack == nil || pack.Tries != 1 || !pack.GrabbedAt.IsZero() || !states["s"].Wanted[2].Grabbed {
 		t.Fatalf("after the search: %+v, %+v", pack, states["s"].Wanted)
 	}
-	if started, _ := service.started(); len(started) != 0 {
+	if started, _ := service.started(service.rootOf("/data/Series/2")); len(started) != 0 {
 		t.Errorf("single episodes counted in the titles a day: %d", len(started))
 	}
 	// The next run: episode 4 first, no pack search before its time, and

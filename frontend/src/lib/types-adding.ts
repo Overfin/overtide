@@ -141,8 +141,6 @@ export interface AddingSettings {
   mode: string;
   manage: string;
   searches: number;
-  titlesPerDay: number;
-  upgradesPerDay: number;
   summary?: Summary;
   destinations: Destination[];
   eventsUrl: string;

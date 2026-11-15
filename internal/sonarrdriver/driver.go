@@ -40,12 +40,16 @@ type Driver struct {
 	Ready       func() bool
 	Unavailable func(since time.Time) (bool, string)
 	Stopped     func() bool
-	// DailyLimit says whether n more downloads may start now, under the
-	// titles a day; Started counts n downloads started now.
-	DailyLimit func(n int) bool
-	Started    func(n int) error
-	// Upgraded counts one upgrade search now, under the upgrades a day.
-	Upgraded func() error
+	// DailyLimit says whether n more downloads may start now in the root
+	// folder holding folder (a series' folder), under its titles a day;
+	// Started counts n downloads started now there.
+	DailyLimit func(folder string, n int) bool
+	Started    func(folder string, n int) error
+	// UpgradeRoom says whether one more upgrade search may go for a series
+	// in folder, under its root folder's upgrades a day; Upgraded counts
+	// one now.
+	UpgradeRoom func(cfg config.Config, folder string) bool
+	Upgraded    func(folder string) error
 	// SeasonValue is a season's score, 0 when unknown: the most valued go
 	// first.
 	SeasonValue func(ctx context.Context, cfg config.Config, serviceID string, seriesID, season int) float64
@@ -76,9 +80,10 @@ func New(inv *inventory.Service, now func() time.Time) *Driver {
 		Ready:       func() bool { return true },
 		Unavailable: func(time.Time) (bool, string) { return false, "" },
 		Stopped:     func() bool { return false },
-		DailyLimit:  func(int) bool { return true },
-		Started:     func(int) error { return nil },
-		Upgraded:    func() error { return nil },
+		DailyLimit:  func(string, int) bool { return true },
+		Started:     func(string, int) error { return nil },
+		UpgradeRoom: func(config.Config, string) bool { return true },
+		Upgraded:    func(string) error { return nil },
 		SeasonValue: func(context.Context, config.Config, string, int, int) float64 { return 0 },
 		Step:        func(string, string) {},
 	}
@@ -226,14 +231,7 @@ func (driver *Driver) Upgradable() (func(ctx context.Context, serviceID string, 
 // can't say, it counts as full, or a failed refresh would switch the disk
 // checks off.
 func (driver *Driver) fullDisk(cfg config.Config, serviceID string) func(seriesID int) bool {
-	folders := map[int]string{}
-	if items, _, err := driver.inv.Snapshot(); err == nil {
-		for _, m := range items {
-			if m.ServiceID == serviceID && m.Type == model.Series {
-				folders[m.SourceID] = m.Path
-			}
-		}
-	}
+	folders := driver.seriesFolders(serviceID)
 	full := map[int]bool{}
 	return func(seriesID int) bool {
 		if checked, ok := full[seriesID]; ok {
@@ -250,6 +248,19 @@ func (driver *Driver) fullDisk(cfg config.Config, serviceID string) func(seriesI
 		full[seriesID] = unknown != nil || (folder != "" && driver.Room(cfg, folder) != "")
 		return full[seriesID]
 	}
+}
+
+// seriesFolders are the folders of a Sonarr's series by ID, as last read.
+func (driver *Driver) seriesFolders(serviceID string) map[int]string {
+	folders := map[int]string{}
+	if items, _, err := driver.inv.Snapshot(); err == nil {
+		for _, m := range items {
+			if m.ServiceID == serviceID && m.Type == model.Series {
+				folders[m.SourceID] = m.Path
+			}
+		}
+	}
+	return folders
 }
 
 // seriesNames are the series of a Sonarr by ID, as last read.

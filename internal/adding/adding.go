@@ -310,15 +310,16 @@ func New(inv *inventory.Service) *Service {
 	driver.Ready = service.ready
 	driver.Unavailable = service.unavailable
 	driver.Stopped = func() bool { return service.trackersDown != "" }
-	driver.DailyLimit = func(n int) bool {
-		ok, until := service.DailyLimit(n)
+	driver.DailyLimit = func(folder string, n int) bool {
+		ok, until := service.DailyLimit(folder, n)
 		if !ok {
 			service.setLive(func(l *Live) { l.DailyUntil = until })
 		}
 		return ok
 	}
 	driver.Started = service.recordStarted
-	driver.Upgraded = func() error { return service.recordNow(upgradesKey, 1) }
+	driver.Upgraded = func(folder string) error { return service.recordNow(folderKey(upgradesKey, service.rootOf(folder)), 1) }
+	driver.UpgradeRoom = service.upgradeRoom
 	driver.SeasonValue = service.seasonValue
 	driver.Step = service.step
 	service.sonarr = driver
@@ -473,8 +474,8 @@ func (service *Service) Run(ctx context.Context) error {
 			if searches > 0 && searches+entry.searches() > budget {
 				continue
 			}
-			// Everything that comes in shares the titles a day.
-			if ok, until := service.DailyLimit(entry.searches()); !ok {
+			// Everything that comes in a root folder shares its titles a day.
+			if ok, until := service.DailyLimit(service.entryFolder(cfg, entry), entry.searches()); !ok {
 				service.setLive(func(l *Live) { l.DailyUntil = until })
 				continue
 			}

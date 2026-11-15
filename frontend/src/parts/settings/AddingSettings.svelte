@@ -12,8 +12,6 @@
   let failure = $state('');
   let mode = $state('off');
   let manage = $state('own');
-  let titlesPerDay = $state(10);
-  let upgradesPerDay = $state(0);
   let searches = $state(3);
   let eventsUrl = $state('');
   let status = $state<{ text: string; kind: '' | 'ok' | 'error' }>({ text: '', kind: '' });
@@ -23,7 +21,7 @@
   async function load() {
     try {
       data = await get<AddingSettings>('/api/settings/adding');
-      ({ mode, manage, titlesPerDay, upgradesPerDay, searches, eventsUrl } = data);
+      ({ mode, manage, searches, eventsUrl } = data);
       failure = '';
     } catch (err) {
       failure = (err as Error).message;
@@ -33,7 +31,7 @@
   async function save() {
     status = { text: '', kind: '' };
     try {
-      await put('/api/settings/adding', { mode, manage, searches: Number(searches), titlesPerDay: Number(titlesPerDay), upgradesPerDay: Number(upgradesPerDay), eventsUrl: eventsUrl.trim() });
+      await put('/api/settings/adding', { mode, manage, searches: Number(searches), eventsUrl: eventsUrl.trim() });
       status = { text: 'Saved.', kind: 'ok' };
       await load();
     } catch (err) {
@@ -84,12 +82,6 @@
     </Setting>
     {#if data.eventsProblem}<Notice warn>{data.eventsProblem}</Notice>{/if}
   {/if}
-  <Setting label="Titles a day" hint="How many titles may start downloading in 24 hours, whatever brought them: wishes first, then older incomplete seasons, then the rest. Past it, they wait, for months if need be. A series counts once per season, and one with more seasons than that still goes, alone in its day. Episodes of a season airing don't wait and don't count; a season just finished doesn't wait but counts. 10 by default.">
-    {#snippet children(ids)}<input type="number" min="1" max="500" bind:value={titlesPerDay} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
-  </Setting>
-  <Setting label="Upgrades a day" hint="How many searches for a better copy may go in 24 hours, for what's below its quality profile's cutoff, the most valued first. A season is one search, a season still airing waits, and a title is searched again after 30 days at the earliest. A season that came episode by episode as it aired, or without its pack, gets a whole-season pack here: one of a lower quality than its best episodes is taken (one release for the season), never one below its worst. They use the searches left after everything else. Custom format scores aren't looked at. 0, the default, is no upgrades.">
-    {#snippet children(ids)}<input type="number" min="0" max="500" bind:value={upgradesPerDay} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
-  </Setting>
   <Setting label="Searches every 15 minutes" hint="At most. With Prowlarr connected, searches also stop short of each tracker's query limit. 3 by default.">
     {#snippet children(ids)}<input type="number" min="1" max="60" bind:value={searches} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
   </Setting>

@@ -109,6 +109,19 @@ export interface DeviceSettings {
   targetUsagePercent: number;
   criticalUsagePercent: number;
   automaticRemovalEnabled: boolean;
+  /** The space the target is a part of; folders, the disk's Radarr and Sonarr root folders. */
+  usableBytes: number;
+  folders: FolderSettings[];
+}
+
+/** One root folder of a disk: what it holds, its share of the disk up to the target (0 when off) and its daily limits. */
+export interface FolderSettings {
+  path: string;
+  service: string;
+  bytes: number;
+  sharePercent: number;
+  titlesPerDay: number;
+  upgradesPerDay: number;
 }
 
 export interface CleanupRow {

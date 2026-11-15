@@ -3,6 +3,7 @@ package inventory
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/overfin/overtide/internal/config"
@@ -53,7 +54,7 @@ func TestSyncDeviceRegistryPersistsIDAndDefaultNameForANewDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reloadedAgain.Storage.DeviceThresholds[root] != entry {
+	if !reflect.DeepEqual(reloadedAgain.Storage.DeviceThresholds[root], entry) {
 		t.Fatalf("expected re-running with the same live device to change nothing, got %#v", reloadedAgain.Storage.DeviceThresholds[root])
 	}
 }

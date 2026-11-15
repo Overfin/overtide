@@ -72,12 +72,33 @@ func TestStorageDevicesCollapsesRootsAndAttributesHardlinkedClaims(t *testing.T)
 		{ServiceName: "Downloader", Hash: "abc", Path: shared},
 	}
 	service.storageRoots = []storageRoot{
-		{Path: radarrRoot, Service: config.Service{ID: "radarr", Name: "Movies"}, Label: "movies"},
-		{Path: qbRoot, Service: config.Service{ID: "qbittorrent", Name: "Downloader"}, Label: "downloads"},
+		{Path: radarrRoot, Service: config.Service{ID: "radarr", Name: "Movies", Type: "radarr"}, Label: "movies"},
+		{Path: qbRoot, Service: config.Service{ID: "qbittorrent", Name: "Downloader", Type: "qbittorrent"}, Label: "downloads"},
 	}
 	service.mu.Unlock()
 
 	devices := service.StorageDevices()
+	// The root folder holds its file once, its torrent's hardlink aside;
+	// the torrent client's folder is no root folder.
+	if len(devices) == 1 {
+		folders := devices[0].Folders
+		if want := uint64(realDiskSize(t, managed)); len(folders) != 1 || folders[0].Path != radarrRoot || folders[0].Bytes != want {
+			t.Fatalf("root folders %#v", folders)
+		}
+		if service.RootFolderOf(filepath.Join(radarrRoot, "Film (2020)")) != radarrRoot || service.RootFolderOf(shared) != "" {
+			t.Fatal("RootFolderOf")
+		}
+		// Over its share (0% of the disk), nothing more goes in it.
+		service.mu.Lock()
+		service.cfg.Storage.DeviceThresholds = map[string]config.DeviceThreshold{devices[0].RepresentativePath: {Folders: map[string]config.FolderSettings{radarrRoot: {}, "/other": {SharePercent: 100}}}}
+		service.mu.Unlock()
+		if state, why := service.Room(radarrRoot); state != RoomOverShare {
+			t.Fatalf("room %s: %s", state, why)
+		}
+		service.mu.Lock()
+		service.cfg.Storage.DeviceThresholds = nil
+		service.mu.Unlock()
+	}
 	if len(devices) != 1 {
 		t.Fatalf("expected roots on one filesystem to collapse into one device, got %d: %#v", len(devices), devices)
 	}

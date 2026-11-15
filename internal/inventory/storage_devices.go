@@ -3,6 +3,7 @@ package inventory
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -44,6 +45,34 @@ type StorageDevice struct {
 	// save path here, its separate incomplete-downloads directory on
 	// another disk) doesn't show the other device's path under this one.
 	ServiceRoots map[string][]string
+	// Folders are the Radarr and Sonarr root folders on this device, by
+	// path, with what each holds: a file hardlinked elsewhere (a torrent's
+	// copy, say) counts once, in its root folder.
+	Folders []FolderUsage
+}
+
+// FolderUsage is one Radarr or Sonarr root folder on a device.
+type FolderUsage struct {
+	Path    string
+	Service string
+	Bytes   uint64
+}
+
+// FolderOf is the device's root folder holding path (a title's folder, a
+// file, or the root folder itself), "" when none does.
+func (d StorageDevice) FolderOf(path string) string {
+	return folderOf(d.Folders, path)
+}
+
+func folderOf(folders []FolderUsage, path string) string {
+	path = filepath.Clean(path)
+	best := ""
+	for _, folder := range folders {
+		if (path == folder.Path || strings.HasPrefix(path, folder.Path+string(filepath.Separator))) && len(folder.Path) > len(best) {
+			best = folder.Path
+		}
+	}
+	return best
 }
 
 // UsableBytes is this device's capacity once space already held by things
@@ -96,6 +125,8 @@ type deviceGroup struct {
 	// rootPaths is this device's own subset of each service's root paths,
 	// keyed by service name — see StorageDevice.ServiceRoots.
 	rootPaths map[string]map[string]bool
+	// folders are its Radarr and Sonarr root folders: path to service.
+	folders map[string]string
 }
 
 // betterRepresentative reports whether path should name its device instead
@@ -135,7 +166,7 @@ func (service *Service) knownDeviceRoots() (groups map[uint64]*deviceGroup, orde
 		device := uint64(stat.Dev)
 		group, exists := groups[device]
 		if !exists {
-			group = &deviceGroup{device: device, rootLabels: map[string]bool{}, representative: root.Path, rootPaths: map[string]map[string]bool{}}
+			group = &deviceGroup{device: device, rootLabels: map[string]bool{}, representative: root.Path, rootPaths: map[string]map[string]bool{}, folders: map[string]string{}}
 			groups[device] = group
 			order = append(order, device)
 		}
@@ -150,6 +181,9 @@ func (service *Service) knownDeviceRoots() (groups map[uint64]*deviceGroup, orde
 				group.rootPaths[root.Service.Name] = map[string]bool{}
 			}
 			group.rootPaths[root.Service.Name][root.Path] = true
+		}
+		if (root.Service.Type == "radarr" || root.Service.Type == "sonarr") && root.Purpose == "" {
+			group.folders[filepath.Clean(root.Path)] = root.Service.Name
 		}
 	}
 	return groups, order
@@ -234,11 +268,23 @@ func (service *Service) StorageDevices() []StorageDevice {
 
 	claimedByDevice := make(map[uint64]map[string]uint64, len(groups))
 	unmanagedByDevice := make(map[uint64]uint64, len(groups))
-	for device := range groups {
+	foldersByDevice := make(map[uint64][]FolderUsage, len(groups))
+	folderBytes := map[string]uint64{}
+	for device, group := range groups {
 		claimedByDevice[device] = map[string]uint64{}
+		for path, name := range group.folders {
+			foldersByDevice[device] = append(foldersByDevice[device], FolderUsage{Path: path, Service: name})
+		}
+		sort.Slice(foldersByDevice[device], func(i, j int) bool { return foldersByDevice[device][i].Path < foldersByDevice[device][j].Path })
 	}
 	for _, id := range physicalOrder {
 		entry := physicalFiles[id]
+		for _, path := range entry.paths {
+			if folder := folderOf(foldersByDevice[entry.device], path); folder != "" {
+				folderBytes[folder] += uint64(entry.size)
+				break
+			}
+		}
 		owner := ""
 		for _, path := range entry.paths {
 			if name := mediaOwner[path]; name != "" {
@@ -274,6 +320,10 @@ func (service *Service) StorageDevices() []StorageDevice {
 			Available: capabilities.Visible, Error: capabilities.Error, Filesystem: capabilities.Filesystem,
 			TotalBytes: capabilities.TotalBytes, FreeBytes: capabilities.FreeBytes, ReservedBytes: capabilities.ReservedBytes, UnmanagedBytes: unmanagedByDevice[device],
 			ServiceRoots: serviceRoots,
+		}
+		for _, folder := range foldersByDevice[device] {
+			folder.Bytes = folderBytes[folder.Path]
+			result.Folders = append(result.Folders, folder)
 		}
 		var claimedNames []string
 		for name := range claimedByDevice[device] {
@@ -491,4 +541,38 @@ func sortedKeys(set map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// RootFolders are the Radarr and Sonarr root folders, as the last file
+// reconciliation found them, by path.
+func (service *Service) RootFolders() []string {
+	return service.RootFoldersOf("")
+}
+
+// RootFoldersOf are one Radarr's or Sonarr's root folders (all of them
+// for serviceID ""), by path.
+func (service *Service) RootFoldersOf(serviceID string) []string {
+	service.mu.RLock()
+	roots := append([]storageRoot(nil), service.storageRoots...)
+	service.mu.RUnlock()
+	seen := map[string]bool{}
+	for _, root := range roots {
+		if (root.Service.Type == "radarr" || root.Service.Type == "sonarr") && root.Purpose == "" && (serviceID == "" || root.Service.ID == serviceID) {
+			seen[filepath.Clean(root.Path)] = true
+		}
+	}
+	return sortedKeys(seen)
+}
+
+// RootFolderOf is the Radarr or Sonarr root folder holding path (a title's
+// folder, or a root folder itself), "" when none does.
+func (service *Service) RootFolderOf(path string) string {
+	if path == "" {
+		return ""
+	}
+	var folders []FolderUsage
+	for _, root := range service.RootFolders() {
+		folders = append(folders, FolderUsage{Path: root})
+	}
+	return folderOf(folders, path)
 }

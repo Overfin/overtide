@@ -53,12 +53,13 @@ func (driver *Driver) PackUpgrades(ctx context.Context, cfg config.Config, room 
 		}
 		client = client.WithContext(ctx)
 		full := driver.fullDisk(cfg, svc.ID)
+		folders := driver.seriesFolders(svc.ID)
 		names := driver.seriesNames(svc.ID)
 		for _, pack := range due {
 			if used >= room || ctx.Err() != nil || driver.Stopped() || !driver.Ready() {
 				return used, nil
 			}
-			if full(pack.SeriesID) {
+			if full(pack.SeriesID) || !driver.UpgradeRoom(cfg, folders[pack.SeriesID]) {
 				continue
 			}
 			list, err := client.Episodes(pack.SeriesID)
@@ -67,7 +68,7 @@ func (driver *Driver) PackUpgrades(ctx context.Context, cfg config.Config, room 
 			}
 			used++
 			driver.seekPack(ctx, cfg, svc.ID, client, state, pack, list, names[pack.SeriesID], true)
-			if err := driver.Upgraded(); err != nil {
+			if err := driver.Upgraded(folders[pack.SeriesID]); err != nil {
 				return used, err
 			}
 			if err := driver.SaveStates(states); err != nil {

@@ -87,8 +87,10 @@ func (server *Server) nowData(ctx context.Context) nowData {
 	if live.Stopped != "" && !live.Running {
 		data.Holding = append(data.Holding, "The last run's searches stopped: "+live.Stopped+".")
 	}
-	if ok, until := server.adder.DailyLimit(1); !ok {
-		data.Holding = append(data.Holding, fmt.Sprintf("The day's limit of %d titles is reached: new titles start again at %s.", cfg.Adding.PerDay(), until.Local().Format("Jan 2 15:04")))
+	for _, day := range server.adder.Days() {
+		if !day.TitlesUntil.IsZero() {
+			data.Holding = append(data.Holding, fmt.Sprintf("The day's limit of %d titles in %s is reached: new titles start there again at %s.", day.TitlesPerDay, day.Root, day.TitlesUntil.Local().Format("Jan 2 15:04")))
+		}
 	}
 	if ok, why := server.pacer.Ready(); !ok {
 		data.Holding = append(data.Holding, "No search now: "+why+".")
@@ -132,11 +134,12 @@ func (server *Server) nowData(ctx context.Context) nowData {
 				earliest = status.NextRun
 			}
 		}
-		if ok, until := server.adder.DailyLimit(1); !ok && until.After(earliest) {
-			earliest = until
-		}
 		for _, entry := range next {
 			at := earliest
+			// Not before its folder's day lets new titles start.
+			if ok, until := server.adder.EntryLimit(entry); !ok && until.After(at) {
+				at = until
+			}
 			if entry.NextTry.After(at) {
 				at = entry.NextTry
 			}
