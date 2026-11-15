@@ -99,6 +99,8 @@ export interface WaitingImport {
   release: string;
   grabbedAt: string;
   files: WaitingFile[];
+  /** The torrent client doesn't have it: none of its files is imported. */
+  notInClient?: boolean;
 }
 
 export interface EpisodeOption {

@@ -107,7 +107,7 @@
 
 {#if waiting.length}
   <details class="card" open>
-    <summary>Waiting to be imported <Badge kind="plain">{waiting.reduce((n, item) => n + item.files.length, 0)}</Badge></summary>
+    <summary>Waiting to be imported <Badge kind="plain">{waiting.reduce((n, item) => n + Math.max(item.files.length, item.notInClient ? 1 : 0), 0)}</Badge></summary>
     <p class="hint">Nothing says which episode these files are, so they aren't imported on a guess. Nothing is needed from you: Overtide keeps trying, with other releases too. You can settle them yourself.</p>
     {#each waiting as item (item.serviceId + item.downloadId)}
       <div class="waiting">
@@ -117,11 +117,14 @@
             <div class="muted release">{item.release}</div>
           </div>
           <div class="waiting-actions">
-            <button type="button" onclick={() => (choosing = item)}>Choose episodes</button>
+            {#if !item.notInClient}<button type="button" onclick={() => (choosing = item)}>Choose episodes</button>{/if}
             <Busy action={() => another(item)}>Try another release</Busy>
             <Busy kind="danger" action={() => ignore(item)}>Ignore</Busy>
           </div>
         </div>
+        {#if item.notInClient}
+          <p class="muted">The torrent client doesn't have this download, so Overtide can't tell which files are its own: none is imported. Its files go in once the torrent is back in the client.</p>
+        {:else}
         <details>
           <summary class="muted">{item.files.length} {item.files.length === 1 ? 'file' : 'files'}</summary>
           <div class="table-wrap">
@@ -135,6 +138,7 @@
             </table>
           </div>
         </details>
+        {/if}
       </div>
     {/each}
   </details>

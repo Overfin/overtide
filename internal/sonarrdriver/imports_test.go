@@ -406,3 +406,44 @@ func TestOwnFiles(t *testing.T) {
 		t.Errorf("own files: %v", paths)
 	}
 }
+
+// The torrent client alone says which files are a download's: one it
+// doesn't have imports nothing, however Sonarr lists the folder, and the
+// page says why; once it has it again, its own files go in.
+func TestImportNotInClient(t *testing.T) {
+	now := *arrfake.Day("2026-11-01")
+	fake, driver, cfg := importTestDriver(t, now)
+	ctx := context.Background()
+	driver.knowOrders(5, &overfin.EpisodeOrders{Seasons: []overfin.OrderSeason{{Season: 1, Episodes: []overfin.OrderEpisode{
+		{Episode: 1, AirDate: "2025-01-01", Name: "Title 1"}, {Episode: 2, AirDate: "2025-01-01", Name: "Title 2"}}}}})
+	fake.Grabs = []map[string]any{{"downloadId": "D", "seriesId": 1, "sourceTitle": "Show.S01", "date": arrfake.ISO(now.Add(-time.Hour))}}
+	fake.FullQueue = []map[string]any{}
+	// A folder torrents share: another series' file is listed too.
+	fake.Downloads["D"] = []map[string]any{file("/dl/Saison 1/Show.S01E01.mkv", 1, 101), file("/dl/Saison 1/Show.S01E02.mkv", 1, 102),
+		file("/dl/Saison 1/Other.S01E01.mkv", 1, 101)}
+	inClient := false
+	driver.torrentFiles = func(_ context.Context, hash string) ([]string, bool, error) {
+		if !inClient {
+			return nil, false, nil
+		}
+		return []string{"Saison 1/Show.S01E01.mkv", "Saison 1/Show.S01E02.mkv"}, true, nil
+	}
+
+	driver.ImportDownloads(ctx, cfg, false)
+	if len(fake.Imported) != 0 {
+		t.Fatalf("not in the client, imported: %v", fake.Imported)
+	}
+	waiting, err := driver.WaitingImports()
+	if err != nil || len(waiting) != 1 || !waiting[0].NotInClient || len(waiting[0].Files) != 0 {
+		t.Fatalf("listed: %+v, %v", waiting, err)
+	}
+
+	inClient = true
+	driver.ImportDownloads(ctx, cfg, false)
+	if len(fake.Imported) != 1 || !slices.Equal(fake.Imported[0], []string{"/dl/Saison 1/Show.S01E01.mkv", "/dl/Saison 1/Show.S01E02.mkv"}) {
+		t.Fatalf("imported: %v", fake.Imported)
+	}
+	if waiting, _ := driver.WaitingImports(); len(waiting) != 0 {
+		t.Errorf("still listed: %+v", waiting)
+	}
+}

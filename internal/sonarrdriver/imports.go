@@ -2,6 +2,7 @@ package sonarrdriver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -45,6 +46,9 @@ type downloadImport struct {
 	Waiting []waitingFile `json:"waiting,omitempty"`
 	// Chosen: the episodes the operator said some files are, by file.
 	Chosen map[string][]int `json:"chosen,omitempty"`
+	// NotInClient: at the last look, the torrent client didn't have it, so
+	// none of its files could be told its own (ErrNotInClient).
+	NotInClient bool `json:"notInClient,omitempty"`
 }
 
 // cachedOrders is what Overfin said of a series, and when.
@@ -168,13 +172,12 @@ func (driver *Driver) importFrom(ctx context.Context, cfg config.Config, client 
 	}
 }
 
+// ErrNotInClient: the torrent client doesn't have the download, so which
+// files are its own can't be told, and none is imported.
+var ErrNotInClient = errors.New("the torrent client doesn't have this download")
+
 // downloadFiles is a finished download's files as Sonarr lists them, but
-// only the torrent's own. Sonarr lists the whole folder the torrent is in,
-// and torrents whose folders have the same name ("Saison 1") share one:
-// another series' files would be offered as this download's. Matched by
-// the name qBittorrent gives each file (its folder's and its own), which
-// a path ends with however the services mount the disk. A download the
-// torrent client doesn't have (gone, or not a torrent) keeps Sonarr's list.
+// only the torrent's own (torrentOwn).
 func (driver *Driver) downloadFiles(ctx context.Context, client *sonarr.Client, downloadID string) ([]sonarr.ImportItem, error) {
 	files, err := client.DownloadFiles(downloadID)
 	if err != nil {
@@ -183,14 +186,18 @@ func (driver *Driver) downloadFiles(ctx context.Context, client *sonarr.Client, 
 	return driver.torrentOwn(ctx, downloadID, files)
 }
 
-// torrentOwn keeps, of a download's files as Sonarr lists them, those of
-// the torrent itself (ownFiles). A download the torrent client doesn't
-// have (gone, or not a torrent) keeps Sonarr's list.
+// torrentOwn keeps, of a download's files as Sonarr lists them, those the
+// torrent client gives for the torrent (ownFiles): the client alone says
+// which files are a download's. Sonarr lists the whole folder a torrent is
+// in, and torrents whose folders have the same name ("Saison 1") share
+// one: another series' files would be offered as this download's. A
+// download the client doesn't have (gone, or not a torrent) has none:
+// ErrNotInClient.
 func (driver *Driver) torrentOwn(ctx context.Context, downloadID string, files []sonarr.ImportItem) ([]sonarr.ImportItem, error) {
 	list := driver.torrentFiles
 	if list == nil {
 		if driver.inv == nil {
-			return files, nil
+			return nil, ErrNotInClient
 		}
 		list = driver.inv.TorrentFileNames
 	}
@@ -199,7 +206,7 @@ func (driver *Driver) torrentOwn(ctx context.Context, downloadID string, files [
 		return nil, fmt.Errorf("the torrent's files: %w", err)
 	}
 	if !found {
-		return files, nil
+		return nil, ErrNotInClient
 	}
 	return ownFiles(files, names), nil
 }
@@ -255,7 +262,8 @@ func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, cli
 	// A download still going has no list, and just after a restart Sonarr
 	// has none of any: asked again next run, until it's clearly gone.
 	files, err := driver.downloadFiles(ctx, client, id)
-	if err != nil && !sonarr.StillGoing(err) {
+	download.NotInClient = errors.Is(err, ErrNotInClient)
+	if err != nil && !sonarr.StillGoing(err) && !download.NotInClient {
 		log.Printf("[adding] the files of %s: %v", download.Title, err)
 	}
 	if err != nil || len(files) == 0 {

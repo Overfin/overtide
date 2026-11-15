@@ -304,6 +304,9 @@ type WaitingImport struct {
 	Release    string        `json:"release"`
 	GrabbedAt  time.Time     `json:"grabbedAt"`
 	Files      []waitingFile `json:"files"`
+	// NotInClient: the torrent client doesn't have it, so none of its files
+	// can be told its own, and none is imported.
+	NotInClient bool `json:"notInClient,omitempty"`
 }
 
 // WaitingImports lists the downloads whose files wait, the latest first.
@@ -317,7 +320,11 @@ func (driver *Driver) WaitingImports() ([]WaitingImport, error) {
 	for serviceID, state := range states {
 		names := driver.seriesNames(serviceID)
 		for id, download := range state.Imports {
-			if download.Done || len(download.Waiting) == 0 {
+			if download.Done || (len(download.Waiting) == 0 && !download.NotInClient) {
+				continue
+			}
+			if download.NotInClient {
+				out = append(out, WaitingImport{ServiceID: serviceID, DownloadID: id, Series: names[download.SeriesID], Release: download.Title, GrabbedAt: download.GrabbedAt, Files: []waitingFile{}, NotInClient: true})
 				continue
 			}
 			files := slices.Clone(download.Waiting)

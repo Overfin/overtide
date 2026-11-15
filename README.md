@@ -65,6 +65,12 @@ Advanced** at the top: it's the **Enable** box in that section) and Overtide
 does the importing instead, for everything Sonarr downloads, however it started.
 Leave it on and nothing changes. Radarr isn't concerned.
 
+Which files are a download's, only the torrent client says: Sonarr lists the
+whole folder a torrent is in, and torrents whose folder has the same name
+("Saison 1") share one. A file the client doesn't list for that torrent is
+never imported with it, and a download the client no longer has imports
+nothing (the Adding page says so).
+
 Each finished download is imported file by file:
 
 1. A title in the file's name that matches one episode wins over its number,

@@ -2,6 +2,7 @@ package sonarrdriver
 
 import (
 	"context"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,6 +40,20 @@ func testDriver(t *testing.T, fake *arrfake.Arrs, manage string) (*Driver, confi
 	cfg := arrfake.Config(t, fake, manage)
 	driver := newTestDriver(t, cfg, fake.Now)
 	tries.PollEvery = time.Millisecond
+	// The torrent client has every download, with every file Sonarr lists
+	// for it: the tests of the client saying otherwise set their own.
+	driver.torrentFiles = func(_ context.Context, hash string) ([]string, bool, error) {
+		fake.Mu.Lock()
+		defer fake.Mu.Unlock()
+		var names []string
+		for _, f := range fake.Downloads[hash] {
+			names = append(names, path.Base(f["path"].(string)))
+		}
+		for _, f := range fake.ImportAt {
+			names = append(names, path.Base(f["path"].(string)))
+		}
+		return names, true, nil
+	}
 	return driver, cfg
 }
 
