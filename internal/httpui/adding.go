@@ -1,8 +1,10 @@
 package httpui
 
 import (
+	stdcmp "cmp"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -253,6 +255,12 @@ type upgradesData struct {
 	// Folders are the root folders' upgrades a day (0: none there) and
 	// their searches of the last 24 hours.
 	Folders []upgradesFolder `json:"folders"`
+	// AllItems is how many wait, TotalItems how many match q; Paging, the
+	// page shown, as the other lists page.
+	AllItems   int      `json:"allItems"`
+	TotalItems int      `json:"totalItems"`
+	Q          string   `json:"q"`
+	Paging     pageInfo `json:"paging"`
 }
 
 type upgradesFolder struct {
@@ -262,20 +270,83 @@ type upgradesFolder struct {
 }
 
 // addingUpgrades answers GET /api/adding/upgrades: what waits for an
-// upgrade search, in its order.
+// upgrade search, filtered by q, sorted (by default in the order they're
+// searched) and paged like the other lists.
 func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
 	rows, err := server.adder.Upgrades(r.Context())
 	if err != nil {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	data := upgradesData{Rows: []upgradeRow{}, Folders: []upgradesFolder{}}
+	query := r.URL.Query()
+	data := upgradesData{Rows: []upgradeRow{}, Folders: []upgradesFolder{}, AllItems: len(rows), Q: query.Get("q")}
 	for _, day := range server.adder.Days() {
 		data.Folders = append(data.Folders, upgradesFolder{Root: day.Root, PerDay: day.UpgradesPerDay, Today: day.Upgrades})
 	}
+	all := make([]upgradeRow, 0, len(rows))
+	q := strings.ToLower(strings.TrimSpace(data.Q))
 	for _, row := range rows {
-		data.Rows = append(data.Rows, upgradeRow{ID: row.Ref, Title: row.Title, Kind: kindName(row.Kind), Why: row.Why,
+		if q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
+			continue
+		}
+		all = append(all, upgradeRow{ID: row.Ref, Title: row.Title, Kind: kindName(row.Kind), Why: row.Why,
 			Value: row.Value, LastSearched: row.LastSearched, Next: row.Next})
 	}
+	sortKey, order := query.Get("sort"), strings.ToLower(query.Get("order"))
+	if !slices.Contains([]string{"order", "title", "value", "last", "next"}, sortKey) {
+		sortKey = "order"
+	}
+	if order != "asc" && order != "desc" {
+		order = "asc"
+		if sortKey == "value" {
+			order = "desc"
+		}
+	}
+	sortUpgrades(all, sortKey, order)
+	data.TotalItems = len(all)
+	size := allowedPageSize(queryValueInt(query, "page_size", 50))
+	page, pages, from, to := pageOf(len(all), queryValueInt(query, "page", 1), size)
+	data.Rows = append(data.Rows, all[from:to]...)
+	data.Paging = pageInfo{Page: page, PageSize: size, TotalPages: pages, Sort: sortKey, Order: order}
 	writeJSON(w, http.StatusOK, data)
+}
+
+// sortUpgrades sorts the upgrades: "order" keeps the order they're
+// searched (reversed by desc), the others sort by their column, ties kept
+// in search order.
+func sortUpgrades(rows []upgradeRow, key, order string) {
+	cmp := func(a, b upgradeRow) int {
+		switch key {
+		case "title":
+			return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+		case "value":
+			return stdcmp.Compare(a.Value, b.Value)
+		case "last":
+			return a.LastSearched.Compare(b.LastSearched)
+		case "next":
+			return a.Next.Compare(b.Next)
+		}
+		return 0
+	}
+	if key == "order" {
+		if order == "desc" {
+			slices.Reverse(rows)
+		}
+		return
+	}
+	slices.SortStableFunc(rows, func(a, b upgradeRow) int {
+		if order == "desc" {
+			return cmp(b, a)
+		}
+		return cmp(a, b)
+	})
+}
+
+// pageOf places a page of size among total rows: the page (kept within
+// 1 and the last), how many pages, and the rows it shows, from to to.
+func pageOf(total, page, size int) (int, int, int, int) {
+	pages := max(1, (total+size-1)/size)
+	page = min(max(page, 1), pages)
+	from := min((page-1)*size, total)
+	return page, pages, from, min(from+size, total)
 }
