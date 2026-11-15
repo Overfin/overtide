@@ -546,3 +546,28 @@ func (client *Client) Server() (string, error) {
 
 // maxAnswer bounds a successful answer read whole.
 const maxAnswer = 512 << 20
+
+// Measures are whether the library follows the people using it, from
+// Overfin (/apps/v1/measures, the key's "What came and went"): totals for
+// the whole server over Days days, nothing per title or per person.
+type Measures struct {
+	Days     int `json:"days"`
+	Arrived  int `json:"arrived"`
+	Started  int `json:"started"`
+	Finished int `json:"finished"`
+	Left     int `json:"left"`
+	Missed   int `json:"missed"`
+	Library  int `json:"library"`
+	Watched  int `json:"watched"`
+}
+
+// Configured says whether Overfin is set up: an address and a key.
+func (client *Client) Configured() bool {
+	return client != nil && client.base != "" && client.key != ""
+}
+
+// Measures asks Overfin for its measures.
+func (client *Client) Measures() (Measures, error) {
+	var out Measures
+	return out, client.get("/apps/v1/measures", nil, &out)
+}

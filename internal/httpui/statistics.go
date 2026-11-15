@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/store"
 )
 
@@ -165,4 +166,30 @@ func periodStarts(since, today string, period store.Period) []string {
 		}
 	}
 	return out
+}
+
+// measuresData is whether the library follows its people, as Overfin
+// measures it; Connected false without Overfin, Problem when it didn't
+// answer (its key lacks "What came and went", say).
+type measuresData struct {
+	Connected bool              `json:"connected"`
+	Measures  *overfin.Measures `json:"measures,omitempty"`
+	Problem   string            `json:"problem,omitempty"`
+}
+
+// statisticsMeasures answers GET /api/statistics/measures: Overfin's
+// measures, asked apart so the rest of the page doesn't wait for Overfin.
+func (server *Server) statisticsMeasures(w http.ResponseWriter, r *http.Request) {
+	client := server.inv.OverfinClient()
+	if !client.Configured() {
+		writeJSON(w, http.StatusOK, measuresData{})
+		return
+	}
+	out := measuresData{Connected: true}
+	if m, err := client.WithContext(r.Context()).Measures(); err != nil {
+		out.Problem = err.Error()
+	} else {
+		out.Measures = &m
+	}
+	writeJSON(w, http.StatusOK, out)
 }

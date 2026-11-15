@@ -7,6 +7,7 @@
   import { human } from '../lib/types-storage';
   import BarChart from '../parts/statistics/BarChart.svelte';
   import LineChart from '../parts/statistics/LineChart.svelte';
+  import Measures from '../parts/statistics/Measures.svelte';
 
   interface Period {
     start: string;
@@ -89,6 +90,8 @@
 <PageHead title="Statistics" description="What Radarr and Sonarr imported, what was removed, and how full each disk is, over time." />
 
 <div class="statistics">
+  <Measures />
+
   <div class="ranges" role="group" aria-label="Range">
     {#each ranges as [value, label] (value)}
       <button type="button" class={range === value ? 'small primary' : 'small'} aria-pressed={range === value} onclick={() => (range = value)}>{label}</button>

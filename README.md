@@ -139,6 +139,7 @@ A tracker without a limit isn't paced: set one in Prowlarr.
 - **Torrents**: every torrent, what it backs, what removing it would free, its cross-seeds; and those qBittorrent still lists after their files left the disk, which take no space and can be removed from qBittorrent in one go.
 - **Unmanaged files**: files on disk no service claims, removed by hand only.
 - **Storage**: each disk with its target and its cleanup plan, and the Kept list.
+- **Statistics**: what came and went over time, each disk's use, and Overfin's measures of how the library is used (what arrived and got watched, what left and was missed).
 - **Services**, **Tasks** (the background work, with **Run now**), **History** (every removal, simulated or real), **Settings**.
 
 ## Concepts
