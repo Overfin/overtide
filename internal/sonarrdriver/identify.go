@@ -310,6 +310,16 @@ func notAnUpgrade(item sonarr.ImportItem) bool {
 // than what its episode has, as Sonarr's own import would (a whole season
 // replaces what it finds, so the season comes from one release).
 func identify(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *overfin.EpisodeOrders, now time.Time) (imports []sonarr.ImportItem, waiting []waitingFile) {
+	return identifyWith(files, episodes, orders, nil, now)
+}
+
+// identifyWith is identify with the files' lengths in minutes (fileLengths):
+// where lengths settle a season, the length rule (placeByLength) places its
+// files: those whose numbers can't be believed, and also those whose
+// numbers can when the lengths show files holding several episodes (a
+// release of 22-minute files where Sonarr counts 11-minute segments). A
+// file's title still wins: lengths that disagree with it settle nothing.
+func identifyWith(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *overfin.EpisodeOrders, lengths map[string]float64, now time.Time) (imports []sonarr.ImportItem, waiting []waitingFile) {
 	index := titlesOf(episodes, orders, now)
 	inSeason := map[int]int{}
 	for _, e := range episodes {
@@ -386,6 +396,50 @@ func identify(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *over
 		choices = append(choices, c)
 	}
 
+	// The length rule, season by season.
+	if lengths != nil {
+		bySeason := map[int][]int{}
+		for i, c := range choices {
+			if c.item.ByAbsolute {
+				continue
+			}
+			season := fileSeason(c.item.Path)
+			if c.item.SeasonNumber != nil {
+				season = *c.item.SeasonNumber
+			}
+			if season > 0 {
+				bySeason[season] = append(bySeason[season], i)
+			}
+		}
+		for season, idxs := range bySeason {
+			paths := make([]string, 0, len(idxs))
+			unsettled := false
+			for _, i := range idxs {
+				paths = append(paths, choices[i].item.Path)
+				unsettled = unsettled || (choices[i].why != "" && !choices[i].byTitle)
+			}
+			places, ok := placeByLength(season, paths, lengths, episodes, orders, now)
+			if !ok {
+				continue
+			}
+			several := false
+			agrees := true
+			for _, i := range idxs {
+				got := places[choices[i].item.Path]
+				several = several || len(got) > 1
+				if choices[i].byTitle && !slices.Contains(got, firstOf(choices[i].episodes)) {
+					agrees = false
+				}
+			}
+			if !agrees || !(unsettled || several) {
+				continue
+			}
+			for _, i := range idxs {
+				choices[i].episodes, choices[i].why = places[choices[i].item.Path], ""
+			}
+		}
+	}
+
 	// Two files for one episode: a title beats a number, and otherwise
 	// neither is believed.
 	byTitle, byNumber := map[int]int{}, map[int]int{}
@@ -425,4 +479,12 @@ func identify(files []sonarr.ImportItem, episodes []sonarr.Episode, orders *over
 		imports = append(imports, item)
 	}
 	return imports, waiting
+}
+
+// firstOf is ids' first, 0 for none.
+func firstOf(ids []int) int {
+	if len(ids) == 0 {
+		return 0
+	}
+	return ids[0]
 }

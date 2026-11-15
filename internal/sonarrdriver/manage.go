@@ -170,7 +170,7 @@ func (driver *Driver) Take(ctx context.Context, cfg config.Config, active map[st
 				return taken, err
 			}
 		}
-		monitored, err := driver.tendSeries(client, state, titles, labels, active, svc.ID, true, dryRun, driver.fullDisk(cfg, svc.ID))
+		monitored, err := driver.tendSeries(ctx, client, state, titles, labels, active, svc.ID, true, dryRun, driver.fullDisk(cfg, svc.ID))
 		if err != nil {
 			return taken, err
 		}
@@ -211,7 +211,7 @@ func (driver *Driver) Tend(ctx context.Context, cfg config.Config, active map[st
 				titles, err = client.Titles()
 			}
 			if err == nil {
-				_, err = driver.tendSeries(client, stateFor(states, svc.ID), titles, labels, active, svc.ID, false, dryRun, driver.fullDisk(cfg, svc.ID))
+				_, err = driver.tendSeries(ctx, client, stateFor(states, svc.ID), titles, labels, active, svc.ID, false, dryRun, driver.fullDisk(cfg, svc.ID))
 			}
 		}
 		if err != nil {
@@ -228,7 +228,7 @@ func (driver *Driver) Tend(ctx context.Context, cfg config.Config, active map[st
 // tendSeries keeps the airing seasons coming and finds incomplete ones, for
 // the series Overtide manages (all of them with manageAll). It returns how
 // many episodes are monitored.
-func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []sonarr.Title, labels map[int]string, active map[string]bool, serviceID string, manageAll, dryRun bool, full func(seriesID int) bool) (int, error) {
+func (driver *Driver) tendSeries(ctx context.Context, client *sonarr.Client, state *State, titles []sonarr.Title, labels map[int]string, active map[string]bool, serviceID string, manageAll, dryRun bool, full func(seriesID int) bool) (int, error) {
 	var managed []sonarr.Title
 	holds := map[string]bool{}
 	for _, t := range titles {
@@ -246,14 +246,14 @@ func (driver *Driver) tendSeries(client *sonarr.Client, state *State, titles []s
 	if err != nil {
 		return 0, err
 	}
-	return monitored, driver.findIncomplete(client, state, managed)
+	return monitored, driver.findIncomplete(ctx, client, state, managed, dryRun)
 }
 
 // findIncomplete puts in the wanted episodes, every LookEvery, those of the
 // seasons that have some of their files but lack episodes that aired. A
 // season with no file is one nobody wants, and one that lost a file within
 // tries.Cooldown was removed, not missed: neither is touched.
-func (driver *Driver) findIncomplete(client *sonarr.Client, state *State, titles []sonarr.Title) error {
+func (driver *Driver) findIncomplete(ctx context.Context, client *sonarr.Client, state *State, titles []sonarr.Title, dryRun bool) error {
 	now := driver.now()
 	if now.Sub(state.Looked) < LookEvery {
 		return nil
@@ -311,6 +311,7 @@ func (driver *Driver) findIncomplete(client *sonarr.Client, state *State, titles
 		for _, e := range lacking {
 			lackingIn[e.SeasonNumber]++
 		}
+		fixed := map[int]bool{} // seasons imported again just now
 		for number, count := range lackingIn {
 			// A pack of the whole season came after its last episode aired,
 			// and it's still short: its files don't match Sonarr's episodes,
@@ -327,6 +328,19 @@ func (driver *Driver) findIncomplete(client *sonarr.Client, state *State, titles
 			if !pack.GrabbedAt.IsZero() && !pack.Done {
 				continue // its download is being followed
 			}
+			// Its files hold several episodes each (segments): imported
+			// again with them, or, that failing, it needs a look.
+			repaired, several := driver.repairSeason(ctx, client, t, number, episodes, dryRun)
+			if repaired {
+				fixed[number] = true
+				continue // the lacking episodes have their files now
+			}
+			// One episode a file, and nothing in the download matched no
+			// episode: the pack lacked its end, or a special. Those are
+			// searched one by one, like any missing episode.
+			if !several && len(pack.Unmatched) == 0 {
+				continue
+			}
 			pack.Short = count
 			stillShort[key] = true
 			for id, want := range state.Wanted {
@@ -336,7 +350,7 @@ func (driver *Driver) findIncomplete(client *sonarr.Client, state *State, titles
 			}
 		}
 		for _, e := range lacking {
-			if removed[e.SeasonNumber] || state.Seasons[seasonKey(t.ID, e.SeasonNumber)].short() {
+			if removed[e.SeasonNumber] || fixed[e.SeasonNumber] || state.Seasons[seasonKey(t.ID, e.SeasonNumber)].short() {
 				continue
 			}
 			if _, there := state.Wanted[e.ID]; !there {

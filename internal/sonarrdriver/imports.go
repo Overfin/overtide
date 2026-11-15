@@ -296,7 +296,11 @@ func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, cli
 	if series.SeriesType == "anime" {
 		own = placeAbsolute(own, episodes, series.Title)
 	}
-	imports, waiting := identify(own, episodes, driver.episodeOrders(ctx, cfg, series.TMDBID), now)
+	paths := make([]string, 0, len(own))
+	for _, file := range own {
+		paths = append(paths, file.Path)
+	}
+	imports, waiting := identifyWith(own, episodes, driver.episodeOrders(ctx, cfg, series.TMDBID), fileLengths(paths), now)
 	imports, waiting = operatorSays(own, imports, waiting, download.Chosen, episodes)
 	var rest []sonarr.ImportItem
 	for _, item := range imports {
@@ -409,6 +413,20 @@ func (driver *Driver) episodeOrders(ctx context.Context, cfg config.Config, tmdb
 	}
 	driver.ordersCache[tmdbID] = cachedOrders{orders: orders, at: now}
 	return orders
+}
+
+// seriesOf is a series as Sonarr has it; false when it can't say.
+func (driver *Driver) seriesOf(client *sonarr.Client, seriesID int) (sonarr.Title, bool) {
+	titles, err := client.Titles()
+	if err != nil {
+		return sonarr.Title{}, false
+	}
+	for _, title := range titles {
+		if title.ID == seriesID {
+			return title, true
+		}
+	}
+	return sonarr.Title{}, false
 }
 
 // tmdbOf is a series' TMDB ID, 0 when Sonarr has none or can't say.

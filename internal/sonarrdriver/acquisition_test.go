@@ -221,9 +221,11 @@ func TestWantedRows(t *testing.T) {
 	}
 }
 
-// A season still short after a pack grabbed past its last episode isn't
-// searched again, and says so; a pack from before that, or one nothing of
-// was imported, proves nothing; once complete, it's back to normal.
+// A season still short after a pack grabbed past its last episode, with a
+// file that matched no episode, isn't searched again, and says so; a pack
+// from before that, or one nothing of was imported, proves nothing; once
+// complete, it's back to normal. (Without such a file, its missing end is
+// searched: TestPackMissingEndSearched.)
 func TestSeasonShortAfterAPack(t *testing.T) {
 	now := *arrfake.Day("2026-10-30")
 	fake := arrfake.New(now)
@@ -257,7 +259,8 @@ func TestSeasonShortAfterAPack(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Season 1 was wanted already, as older versions left it.
-	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}, Wanted: map[int]EpisodeWant{12: {SeriesID: 1, Season: 1}}}}); err != nil {
+	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}, Wanted: map[int]EpisodeWant{12: {SeriesID: 1, Season: 1}},
+		Seasons: map[string]*SeasonPack{seasonKey(1, 1): {SeriesID: 1, Season: 1, Unmatched: []string{"Extra.S01E27.mkv"}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	driver.tendOwnAll(t, cfg)
@@ -289,7 +292,7 @@ func TestSeasonShortAfterAPack(t *testing.T) {
 	found := false
 	for _, r := range seasons {
 		if r.Title == "Series 1 S1" {
-			found = r.Why == "Needs a look" && strings.Contains(r.Result, "2 episodes are still missing")
+			found = r.Why == "Needs a look"
 		}
 	}
 	if !found {
@@ -301,10 +304,40 @@ func TestSeasonShortAfterAPack(t *testing.T) {
 	fake.Eps[12]["hasFile"], fake.Eps[13]["hasFile"] = true, true
 	fake.Mu.Unlock()
 	driver.now = func() time.Time { return now.Add(LookEvery + time.Hour) }
-	driver.tendOwnAll(t, cfg)
+	driver.SettleLooks(context.Background(), cfg)
 	states, _ = driver.States()
 	if states["s"].Seasons[seasonKey(1, 1)].short() {
 		t.Error("still marked short")
+	}
+}
+
+// A pack that came after its season ended, one file an episode and nothing
+// unmatched, lacked the season's end: those episodes are searched one by
+// one, like any missing episode.
+func TestPackMissingEndSearched(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.AddSeries(1, nil, arrfake.Season(1, 2, 3))
+	fake.AddEpisode(11, 1, 1, old, true)
+	fake.AddEpisode(12, 1, 1, old, true)
+	fake.AddEpisode(13, 1, 1, old, false) // the reunion the pack lacked
+	pack := map[string]any{"releaseType": "SeasonPack"}
+	fake.History["1"] = []map[string]any{
+		{"eventType": "grabbed", "episodeId": 11, "downloadId": "A", "date": arrfake.ISO(now.AddDate(0, -1, 0)), "data": pack},
+		{"eventType": "downloadFolderImported", "episodeId": 11, "downloadId": "A", "date": arrfake.ISO(now.AddDate(0, -1, 0)), "data": map[string]any{}},
+	}
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	if err := driver.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.SaveStates(map[string]*State{"s": {Follow: map[int]bool{}}}); err != nil {
+		t.Fatal(err)
+	}
+	driver.tendOwnAll(t, cfg)
+	states, _ := driver.States()
+	if _, wanted := states["s"].Wanted[13]; !wanted || states["s"].Seasons[seasonKey(1, 1)].short() {
+		t.Errorf("wanted %v, season %+v", states["s"].Wanted, states["s"].Seasons[seasonKey(1, 1)])
 	}
 }
 

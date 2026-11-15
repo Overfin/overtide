@@ -520,6 +520,22 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 	if err != nil {
 		return 0, err
 	}
+	// Which file is which episode: an anime's absolute numbers first; then,
+	// when Overfin can say what numbers mean, the import's own rules
+	// (identify: titles, numbers that can be believed, lengths), a file
+	// they don't settle not imported. Without Overfin, Sonarr's numbers.
+	if series, ok := driver.seriesOf(client, seriesID); ok {
+		if series.SeriesType == "anime" {
+			items = placeAbsolute(items, list, series.Title)
+		}
+		if orders := driver.episodeOrders(ctx, driver.inv.Config(), series.TMDBID); orders != nil {
+			paths := make([]string, 0, len(items))
+			for _, item := range items {
+				paths = append(paths, item.Path)
+			}
+			items, _ = identifyWith(items, list, orders, fileLengths(paths), driver.now())
+		}
+	}
 	if wholeOnly && (!wholeSeason(items, list, season, driver.now()) || !notBelow(client, items, seriesID, season)) {
 		return 0, nil
 	}

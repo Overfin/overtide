@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/services/sonarr"
 )
 
 // Each service's own state, as it says it (its version, its failing health
@@ -86,6 +87,11 @@ func (service *Service) healthOf(ctx context.Context, cfg config.Config, svc con
 			version, err = v, e
 			for _, x := range p {
 				problems = append(problems, x.Message)
+			}
+			// A file of two episodes (cartoon segments) is imported as both:
+			// its name must say both, as Jellyfin reads them.
+			if style, serr := client.WithContext(ctx).MultiEpisodeStyle(); e == nil && serr == nil && !sonarr.ReadableMultiEpisode(style) {
+				problems = append(problems, "Multi-episode style: choose Prefixed Range (Settings, Media Management, Episode Naming), so a file holding two episodes is read as both")
 			}
 		}
 		if err != nil {

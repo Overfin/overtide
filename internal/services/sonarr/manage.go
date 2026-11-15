@@ -362,3 +362,19 @@ func (client *Client) RestoreMonitoring(seriesID int, m Monitoring) error {
 	}
 	return nil
 }
+
+// MultiEpisodeStyle is how Sonarr names a file holding several episodes:
+// 0 extend (S01E01-02), 1 duplicate (S01E01.S01E02), 2 repeat (S01E01E02),
+// 3 scene (S01E01-E02), 4 range (S01E01-02), 5 prefixed range (S01E01-E02).
+func (client *Client) MultiEpisodeStyle() (int, error) {
+	var naming struct {
+		MultiEpisodeStyle int `json:"multiEpisodeStyle"`
+	}
+	return naming.MultiEpisodeStyle, client.Get("/api/v3/config/naming", &naming)
+}
+
+// ReadableMultiEpisode reports whether a style names a file of several
+// episodes so that Jellyfin reads them all: each number after an "E".
+func ReadableMultiEpisode(style int) bool {
+	return style == 2 || style == 3 || style == 5
+}

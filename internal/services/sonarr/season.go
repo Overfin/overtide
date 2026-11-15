@@ -186,6 +186,15 @@ type ImportRejection struct {
 	Reason string `json:"reason"`
 }
 
+// FolderItems returns the files in a folder as Sonarr's manual import reads
+// them, imported already or not. Sonarr pins each to a series by its name;
+// the caller keeps only the files it means.
+func (client *Client) FolderItems(folder string) ([]ImportItem, error) {
+	query := url.Values{"folder": {folder}, "filterExistingFiles": {"false"}}
+	var items []ImportItem
+	return items, client.Get("/api/v3/manualimport?"+query.Encode(), &items)
+}
+
 // ImportItems returns the files of a download, imported already or not.
 func (client *Client) ImportItems(downloadID string, seriesID int) ([]ImportItem, error) {
 	query := url.Values{"downloadId": {downloadID}, "seriesId": {fmt.Sprint(seriesID)}, "filterExistingFiles": {"false"}}
@@ -197,6 +206,13 @@ func (client *Client) ImportItems(downloadID string, seriesID int) ([]ImportItem
 // thinks of them, replacing the episodes' files (into its recycle bin, if
 // it has one). It returns the command's ID.
 func (client *Client) Import(seriesID int, items []ImportItem) (int, error) {
+	return client.ImportAs(seriesID, items, "auto")
+}
+
+// ImportAs is Import with Sonarr's import mode: "copy" leaves the file
+// where it is (a hardlink, with Sonarr's hardlinks on), "auto" lets
+// Sonarr choose by whether the download still seeds.
+func (client *Client) ImportAs(seriesID int, items []ImportItem, mode string) (int, error) {
 	files := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		ids := make([]int, 0, len(item.Episodes))
@@ -210,5 +226,5 @@ func (client *Client) Import(seriesID int, items []ImportItem) (int, error) {
 	var command struct {
 		ID int `json:"id"`
 	}
-	return command.ID, client.Send(http.MethodPost, "/api/v3/command", map[string]any{"name": "ManualImport", "files": files, "importMode": "auto"}, &command)
+	return command.ID, client.Send(http.MethodPost, "/api/v3/command", map[string]any{"name": "ManualImport", "files": files, "importMode": mode}, &command)
 }

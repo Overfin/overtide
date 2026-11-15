@@ -80,10 +80,29 @@ Each finished download is imported file by file:
    other order on TMDB rearranges that season, Sonarr and TMDB agree on how
    many of its episodes aired, and the download doesn't hold more files for
    the season than it has episodes.
-3. Otherwise the file waits. Nothing is imported on a guess.
+3. Lengths: each file's length, read from its headers, against the
+   episodes' runtimes (TMDB's, through Overfin). Taken in the order their
+   names number them, the files are the episodes whose runtimes add up to
+   their lengths, in the one order (Sonarr's or another of TMDB's) where
+   every file lines up: a 22-minute file is two 11-minute segments, a
+   release in another order is placed by that order. Lengths settle files
+   whose numbers can't be believed, and also those whose numbers can when
+   they show files of several episodes.
+4. Otherwise the file waits. Nothing is imported on a guess.
 
 An anime's files named by absolute number ("Show 783") go on that episode:
-such a number means one episode, whatever the seasons' order.
+such a number means one episode, whatever the seasons' order. A whole-season
+pack goes through the same rules (with Overfin connected; without it,
+Sonarr's numbers).
+
+A file of several episodes is imported as all of them, and Sonarr names it
+with its multi-episode style: choose Prefixed Range (S01E01-E02), which
+Jellyfin reads as both; the Services page says so otherwise.
+
+A season imported one episode a file whose files hold two (a cartoon's
+segments, imported before these rules) is put right: each file's torrent
+twin is imported again with its episodes, as a hardlink. A pack that lacked
+its season's end, or a special, has those episodes searched one by one.
 
 Nothing is asked of you: Overtide keeps trying, other releases too, and a
 later release completing the season ends the wait. The Adding page lists what

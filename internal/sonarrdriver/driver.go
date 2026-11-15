@@ -31,7 +31,10 @@ type Driver struct {
 	// torrentFiles lists a torrent's files by name (tests set it; else the
 	// inventory asks qBittorrent).
 	torrentFiles func(ctx context.Context, hash string) (names []string, found bool, err error)
-	now          func() time.Time
+	// twinsOf finds library files' torrent twins (tests set it; else the
+	// file snapshot, torrentTwins).
+	twinsOf func(paths []string) map[string]torrentTwin
+	now     func() time.Time
 	// Room says why nothing may be added to a folder now, or "".
 	Room func(cfg config.Config, folder string) string
 	// Managed reports whether a series is Overtide's.
