@@ -32,6 +32,9 @@ type HistoryEvent struct {
 	ServiceName string `json:"serviceName,omitempty"`
 	// Dismissed: the operator said a failed operation needs nothing more.
 	Dismissed bool `json:"dismissed,omitempty"`
+	// PlanValue is the value of the title a cleanup plan removed (0 for
+	// anything else: a removal by hand, a torrent), set once at creation.
+	PlanValue float64 `json:"planValue,omitempty"`
 }
 
 func (s *Store) SaveHistoryEvent(e HistoryEvent) (int64, error) {
@@ -43,9 +46,9 @@ func (s *Store) SaveHistoryEvent(e HistoryEvent) (int64, error) {
 	if len(e.Payload) == 0 {
 		e.Payload = json.RawMessage(`{}`)
 	}
-	res, err := s.q.Exec(`INSERT INTO history_events(event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := s.q.Exec(`INSERT INTO history_events(event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name,plan_value) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.EventType, e.Status, boolInt(e.DryRun), e.RequestedKind, e.RequestedKey, e.RequestedLabel, e.ReclaimableBytes,
-		string(e.Payload), e.Error, rfc3339(e.CreatedAt), e.MediaBytes, e.ServiceName)
+		string(e.Payload), e.Error, rfc3339(e.CreatedAt), e.MediaBytes, e.ServiceName, e.PlanValue)
 	if err != nil {
 		return 0, err
 	}
@@ -83,7 +86,7 @@ func (s *Store) InterruptStartedHistoryEvents() error {
 	return s.exec(`UPDATE history_events SET status='interrupted', error=CASE WHEN error='' THEN 'application stopped before the removal operation was finalized' ELSE error END WHERE event_type='removal' AND status='started'`)
 }
 
-const historyColumns = `id,event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name,dismissed_at`
+const historyColumns = `id,event_type,status,dry_run,requested_kind,requested_key,requested_label,reclaimable_bytes,payload,error,created_at,media_bytes,service_name,dismissed_at,plan_value`
 
 // scanHistoryEvent reads one row of historyColumns.
 func scanHistoryEvent(row interface{ Scan(...any) error }) (HistoryEvent, error) {
@@ -91,7 +94,7 @@ func scanHistoryEvent(row interface{ Scan(...any) error }) (HistoryEvent, error)
 	var dryRun int64
 	var payload, created, dismissed string
 	err := row.Scan(&e.ID, &e.EventType, &e.Status, &dryRun, &e.RequestedKind, &e.RequestedKey, &e.RequestedLabel,
-		&e.ReclaimableBytes, &payload, &e.Error, &created, &e.MediaBytes, &e.ServiceName, &dismissed)
+		&e.ReclaimableBytes, &payload, &e.Error, &created, &e.MediaBytes, &e.ServiceName, &dismissed, &e.PlanValue)
 	if err != nil {
 		return e, err
 	}
@@ -173,4 +176,16 @@ func (s *Store) DismissHistoryEvent(id int64) error {
 		return fmt.Errorf("history event %d does not exist", id)
 	}
 	return nil
+}
+
+// RemovalLine is the highest value of the titles cleanup plans removed
+// since then (dry runs and failures aside): what removal has been taking
+// lately. ok is false when it removed none.
+func (s *Store) RemovalLine(since time.Time) (line float64, ok bool, err error) {
+	s.accessMu.Lock()
+	defer s.accessMu.Unlock()
+	var highest sql.NullFloat64
+	err = s.q.QueryRow(`SELECT max(plan_value) FROM history_events WHERE event_type='removal' AND status IN ('success','partial') AND dry_run=0 AND plan_value>0 AND created_at>=?`,
+		rfc3339(since.UTC())).Scan(&highest)
+	return highest.Float64, highest.Valid, err
 }

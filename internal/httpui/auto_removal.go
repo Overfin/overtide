@@ -377,7 +377,11 @@ func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause 
 		removals = append(removals, admitted{form, descriptor})
 	}
 	for _, removal := range removals {
-		if err := server.queueRemoval(database, removal.form, removal.descriptor, cause); err != nil {
+		value := 0.0
+		if row.Kind != cleanup.StandaloneTorrent {
+			value = row.Value
+		}
+		if err := server.queueRemoval(database, removal.form, removal.descriptor, cause, value); err != nil {
 			return err
 		}
 	}
@@ -385,13 +389,14 @@ func (server *Server) queueCleanup(row cleanup.Action, cfg config.Config, cause 
 }
 
 // queueRemoval records an admitted removal in history, then schedules it.
-func (server *Server) queueRemoval(database *store.Store, form url.Values, descriptor removalAdmission, cause string) error {
+// value is the removed title's, for the removal line (store.RemovalLine).
+func (server *Server) queueRemoval(database *store.Store, form url.Values, descriptor removalAdmission, cause string, value float64) error {
 	command := scheduledRemovalCommand{Form: cloneForm(form), DryRun: descriptor.DryRun, Cleanup: true, Automatic: cause == automaticCause}
 	queuedPayload, err := json.Marshal(queuedRemovalPayload{Command: command})
 	if err != nil {
 		return err
 	}
-	historyID, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "queued", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, ServiceName: descriptor.ServiceName, Payload: queuedPayload})
+	historyID, err := database.SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "queued", DryRun: descriptor.DryRun, RequestedKind: string(descriptor.Kind), RequestedKey: descriptor.Key, RequestedLabel: descriptor.Label, ServiceName: descriptor.ServiceName, Payload: queuedPayload, PlanValue: value})
 	if err != nil {
 		return fmt.Errorf("record operation before scheduling: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"time"
 
@@ -161,6 +162,10 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 		queue = append(queue, job{value: c.value, c: c})
 	}
 	sort.SliceStable(queue, func(i, j int) bool { return queue[i].value > queue[j].value })
+	// What removal takes isn't upgraded: sorted, the queue ends there.
+	if line, ok := service.removalLine(); ok {
+		queue = slices.DeleteFunc(queue, func(j job) bool { return j.value <= line })
+	}
 	moving := map[string]bool{}
 	for _, entry := range entries {
 		if entry.ArrID != 0 && !entry.waiting() && entry.State != Imported {
@@ -338,10 +343,17 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		}
 		out = append(out, row)
 	}
-	// One order, by value, as searchUpgrades goes.
+	// One order, by value, as searchUpgrades goes, without what removal
+	// takes.
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
+	if line, ok := service.removalLine(); ok {
+		out = slices.DeleteFunc(out, func(row UpgradeRow) bool { return row.Value <= line })
+	}
 	return out, nil
 }
+
+// RemovalLine is removalLine, for the Upgrades page.
+func (service *Service) RemovalLine() (float64, bool) { return service.removalLine() }
 
 // RemoveUpgrade keeps a title or a season from ever being searched for an
 // upgrade, by its row's Ref.
@@ -378,4 +390,20 @@ func (service *Service) anyUpgradeRoom(cfg config.Config) bool {
 		}
 	}
 	return false
+}
+
+// removalWindow is how far back the removal line looks.
+const removalWindow = 30 * 24 * time.Hour
+
+// removalLine is the highest value removal took in removalWindow: a title
+// valued that or less isn't upgraded, since it's what removal takes, and a
+// bigger copy would only cost the titles below it room. ok is false before
+// removal took anything.
+func (service *Service) removalLine() (float64, bool) {
+	line, ok, err := service.inv.Store().RemovalLine(service.now().Add(-removalWindow))
+	if err != nil {
+		log.Printf("[adding] the removal line: %v", err)
+		return 0, false
+	}
+	return line, ok
 }

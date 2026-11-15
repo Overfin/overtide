@@ -27,6 +27,7 @@
     totalItems: number;
     q: string;
     paging: Paging;
+    removalLine?: number;
   }
 
   let data = $state<Upgrades | null>(null);
@@ -94,6 +95,9 @@
         {folder.root}: {folder.perDay === 0 ? 'no upgrades' : `${folder.today} of ${folder.perDay} upgrade searches used in the last 24 hours`}.
       </p>
     {/each}
+  {/if}
+  {#if data.removalLine}
+    <p class="muted">Titles valued {data.removalLine.toFixed(1)} or less aren't upgraded: removal took titles up to that value in the last 30 days, and a bigger copy would only cost the titles below it their room.</p>
   {/if}
   <div class="toolbar">
     <label class="field"><span>Search</span><input type="search" bind:value={q} placeholder="Title…" /></label>

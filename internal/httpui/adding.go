@@ -261,6 +261,9 @@ type upgradesData struct {
 	TotalItems int      `json:"totalItems"`
 	Q          string   `json:"q"`
 	Paging     pageInfo `json:"paging"`
+	// RemovalLine: titles valued this or less aren't upgraded, removal
+	// having taken titles up to it lately (absent: it took none).
+	RemovalLine float64 `json:"removalLine,omitempty"`
 }
 
 type upgradesFolder struct {
@@ -282,6 +285,9 @@ func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
 	data := upgradesData{Rows: []upgradeRow{}, Folders: []upgradesFolder{}, AllItems: len(rows), Q: query.Get("q")}
 	for _, day := range server.adder.Days() {
 		data.Folders = append(data.Folders, upgradesFolder{Root: day.Root, PerDay: day.UpgradesPerDay, Today: day.Upgrades})
+	}
+	if line, ok := server.adder.RemovalLine(); ok {
+		data.RemovalLine = line
 	}
 	all := make([]upgradeRow, 0, len(rows))
 	q := strings.ToLower(strings.TrimSpace(data.Q))

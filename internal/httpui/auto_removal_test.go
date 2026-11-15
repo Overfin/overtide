@@ -16,6 +16,7 @@ import (
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/removal"
 	"github.com/overfin/overtide/internal/store"
+	"github.com/overfin/overtide/internal/tasks"
 )
 
 // TestActionIsUnassociatedTorrentTreatsFormerRelationshipAsKnown guards the
@@ -381,5 +382,22 @@ func TestAutomaticRemovalPassesWhatItMayNotTouch(t *testing.T) {
 	got := plan.Enough(autoActions(plan.Ordered, cfg))
 	if len(got) != 1 || got[0].Kind != cleanup.StandaloneMedia {
 		t.Errorf("got %+v, want the title", got)
+	}
+}
+
+// A title a cleanup plan removes records its value, for the removal line;
+// a torrent records none.
+func TestCleanupRecordsTheTitlesValue(t *testing.T) {
+	inv := newTestInventoryWithReconciledState(t)
+	manager, err := tasks.NewPersistent(inv.Store())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{inv: inv, tasks: manager}
+	action := cleanup.Action{Kind: cleanup.StandaloneMedia, Value: 33, Media: model.Media{Type: model.Movie, SourceID: 1, Title: "Test Movie"}}
+	_ = server.queueCleanup(action, inv.Config(), "Manual cleanup: ")
+	events, err := inv.Store().HistoryEvents(10)
+	if err != nil || len(events) != 1 || events[0].PlanValue != 33 {
+		t.Fatalf("history: %+v, %v", events, err)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/services/overfin"
 	"github.com/overfin/overtide/internal/sonarrdriver"
+	"github.com/overfin/overtide/internal/store"
 )
 
 // Seasons just finished don't wait for the titles a day but count in it;
@@ -303,5 +304,35 @@ func TestUpgradesOneOrder(t *testing.T) {
 	states, _ = service.sonarr.States()
 	if p := states[sonarrID].Seasons["5/1"]; p.LastTry.IsZero() && p.Tries == 0 && p.GrabbedAt.IsZero() {
 		t.Errorf("the pack wasn't searched: %+v, %v", p, fake.Searches())
+	}
+}
+
+// What removal takes isn't upgraded: a title valued at or below the
+// highest value cleanup plans removed lately leaves the queue and the page.
+func TestUpgradesAboveTheRemovalLine(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.Films[1] = map[string]any{"id": 1, "tmdbId": 11, "title": "Low", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "High", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.Cutoff["radarr"] = []map[string]any{{"id": 1}, {"id": 2}}
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	if err := service.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Adding.UpgradesPerDay = 5
+	service.values = &overfin.Values{Films: map[int]float64{11: 20, 12: 40}}
+	if _, err := service.inv.Store().SaveHistoryEvent(store.HistoryEvent{EventType: "removal", Status: "success", PlanValue: 20, CreatedAt: now.Add(-24 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := service.Upgrades(context.Background())
+	if err != nil || len(rows) != 1 || rows[0].Title != "High" {
+		t.Fatalf("page: %+v, %v", rows, err)
+	}
+	if used, err := service.searchUpgrades(context.Background(), cfg, nil, 5, false); err != nil || used != 1 {
+		t.Fatalf("%d searches, %v", used, err)
+	}
+	if got := fake.Searches(); !slices.Equal(got, []string{"search film [2]"}) {
+		t.Errorf("searched: %v", got)
 	}
 }
