@@ -106,6 +106,8 @@ export interface DeviceSettings {
   rootLabels: string[];
   filesystem: string;
   name: string;
+  /** The name it got when first seen ("Device #1"), whatever it's called since. */
+  defaultName?: string;
   targetUsagePercent: number;
   criticalUsagePercent: number;
   automaticRemovalEnabled: boolean;

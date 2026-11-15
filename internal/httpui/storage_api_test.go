@@ -285,26 +285,27 @@ func TestStorageStatsServesCheapJSONWithoutARemovalPlan(t *testing.T) {
 }
 
 // The device settings window starts from the device's current thresholds
-// and name, and whether automatic removal looks at it.
+// and name, and whether automatic removal looks at it; its title is the
+// name the device got when first seen, whatever it's called since.
 func TestDeviceSettingsShowCurrentThresholds(t *testing.T) {
 	server, _ := storageTestServer(t, `{"storage":{"device_thresholds":{
-		"/data/movies":{"target_usage_percent":70,"critical_usage_percent":85,"name":"Media Drive"},
+		"/data/movies":{"target_usage_percent":70,"critical_usage_percent":85,"name":"Media Drive","id":3},
 		"/data/off":{"target_usage_percent":80,"critical_usage_percent":90,"automatic_removal_disabled":true}}}}`)
 	handler := server.routes()
 	for _, tc := range []struct {
 		path               string
 		target, critical   float64
-		name               string
+		name, defaultName  string
 		automaticRemovalOn bool
 	}{
-		{"/data/movies", 70, 85, "Media Drive", true},
-		{"/data/off", 80, 90, "", false},
+		{"/data/movies", 70, 85, "Media Drive", "Device #3", true},
+		{"/data/off", 80, 90, "", "", false},
 	} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/storage/device?path="+url.QueryEscape(tc.path), nil))
 		got := decode[deviceSettingsJSON](t, recorder)
 		if recorder.Code != http.StatusOK || got.Path != tc.path || got.TargetUsagePercent != tc.target || got.CriticalUsagePercent != tc.critical ||
-			got.AutomaticRemovalEnabled != tc.automaticRemovalOn || (tc.name != "" && got.Name != tc.name) || got.RootLabels == nil {
+			got.AutomaticRemovalEnabled != tc.automaticRemovalOn || (tc.name != "" && got.Name != tc.name) || got.DefaultName != tc.defaultName || got.RootLabels == nil {
 			t.Fatalf("%s: %d %+v", tc.path, recorder.Code, got)
 		}
 	}

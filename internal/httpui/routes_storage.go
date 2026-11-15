@@ -182,13 +182,16 @@ func (server *Server) apiStorage(w http.ResponseWriter, r *http.Request) {
 }
 
 type deviceSettingsJSON struct {
-	Path                    string   `json:"path"`
-	RootLabels              []string `json:"rootLabels"`
-	Filesystem              string   `json:"filesystem"`
-	Name                    string   `json:"name"`
-	TargetUsagePercent      float64  `json:"targetUsagePercent"`
-	CriticalUsagePercent    float64  `json:"criticalUsagePercent"`
-	AutomaticRemovalEnabled bool     `json:"automaticRemovalEnabled"`
+	Path       string   `json:"path"`
+	RootLabels []string `json:"rootLabels"`
+	Filesystem string   `json:"filesystem"`
+	Name       string   `json:"name"`
+	// DefaultName is the name the disk got when first seen ("Device #1"),
+	// whatever it's called since: the settings window's title.
+	DefaultName             string  `json:"defaultName,omitempty"`
+	TargetUsagePercent      float64 `json:"targetUsagePercent"`
+	CriticalUsagePercent    float64 `json:"criticalUsagePercent"`
+	AutomaticRemovalEnabled bool    `json:"automaticRemovalEnabled"`
 	// UsableBytes is the space the target is a part of; Folders, the disk's
 	// Radarr and Sonarr root folders. Folders sent back nil leave theirs
 	// as they are.
@@ -214,6 +217,9 @@ func (server *Server) apiDeviceSettings(w http.ResponseWriter, r *http.Request) 
 	target, critical := cfg.ThresholdsFor(path)
 	out := deviceSettingsJSON{Path: path, RootLabels: []string{}, Name: cfg.DeviceName(path), TargetUsagePercent: target, CriticalUsagePercent: critical,
 		AutomaticRemovalEnabled: cfg.AutomaticRemovalEnabledFor(path), Folders: []folderSettingsJSON{}}
+	if id := cfg.Storage.DeviceThresholds[path].ID; id > 0 {
+		out.DefaultName = fmt.Sprintf("Device #%d", id)
+	}
 	for _, device := range server.inv.StorageDevices() {
 		if device.RepresentativePath == path {
 			if device.RootLabels != nil {
