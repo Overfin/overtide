@@ -26,7 +26,10 @@ type statsPeriod struct {
 }
 
 type statsDisk struct {
-	Device  string            `json:"device"`
+	Device string `json:"device"`
+	// Name is the disk's, as the Storage page shows it ("" for a disk
+	// Overtide no longer knows: its path then).
+	Name    string            `json:"name,omitempty"`
 	Samples []statsDiskSample `json:"samples"`
 }
 
@@ -130,7 +133,7 @@ func (server *Server) statistics(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			i = len(out.Disks)
 			index[s.Device] = i
-			out.Disks = append(out.Disks, statsDisk{Device: s.Device})
+			out.Disks = append(out.Disks, statsDisk{Device: s.Device, Name: server.inv.Config().DeviceName(s.Device)})
 		}
 		out.Disks[i].Samples = append(out.Disks[i].Samples, statsDiskSample{Day: s.Day, Used: s.UsedBytes, Services: s.ServicesBytes, Total: s.TotalBytes})
 	}

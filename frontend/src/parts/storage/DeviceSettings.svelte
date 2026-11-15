@@ -67,7 +67,7 @@
   }
 </script>
 
-<FormModal title="Device settings" description={settings ? identity(settings) : ''} {save} {close}>
+<FormModal title={settings?.name ? `Disk settings · ${settings.name}` : 'Disk settings'} description={settings ? identity(settings) : ''} {save} {close}>
   {#if failure}
     <Notice warn>{failure}</Notice>
   {:else if !settings}

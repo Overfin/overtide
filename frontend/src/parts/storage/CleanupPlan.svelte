@@ -138,7 +138,7 @@
     <div class="plan-foot">{@render buttons()}</div>
   </Card>
 {:else}
-  <Modal title="Cleanup plan" description={plan ? identity(plan) : ''} size="wide" {busy} {close}>
+  <Modal title={plan?.name ? `Cleanup plan · ${plan.name}` : 'Cleanup plan'} description={plan ? identity(plan) : ''} size="wide" {busy} {close}>
     {@render body()}
     {#snippet foot()}{@render buttons()}{/snippet}
   </Modal>

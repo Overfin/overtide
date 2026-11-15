@@ -111,9 +111,11 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 
 type cleanupPlanData struct {
 	RepresentativePath string
-	RootLabels         []string
-	Filesystem         string
-	Plan               cleanup.Plan
+	// Name is the disk's, as the Storage page shows it.
+	Name       string
+	RootLabels []string
+	Filesystem string
+	Plan       cleanup.Plan
 	// Excluded is the current set of action keys left out of Plan's own
 	// selection (see cleanup.Build) — rendered back into the Clean form as
 	// hidden fields so submitting Clean, or protecting one more row,
@@ -142,7 +144,7 @@ func (server *Server) planForDevice(path string, excluded map[string]bool) (clea
 	}
 	for _, view := range server.deviceViews(items, ts, planningReliable, excluded) {
 		if view.Storage.RepresentativePath == path {
-			return cleanupPlanData{RepresentativePath: path, RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList, DryRun: server.inv.Config().Removal.DryRun}, true
+			return cleanupPlanData{RepresentativePath: path, Name: view.Name, RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList, DryRun: server.inv.Config().Removal.DryRun}, true
 		}
 	}
 	return cleanupPlanData{RepresentativePath: path, Excluded: excludedList}, false

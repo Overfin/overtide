@@ -28,7 +28,7 @@
     since: string;
     periods: Period[];
     totals: Period;
-    disks: { device: string; samples: { day: string; used: number; services: number; total: number }[] }[];
+    disks: { device: string; name?: string; samples: { day: string; used: number; services: number; total: number }[] }[];
     samplesSince?: string;
   }
 
@@ -82,7 +82,7 @@
   const diskSeries = $derived(
     (data?.disks ?? []).slice(0, 3).map((d, i) => {
       const byDay = new Map(d.samples.map((s) => [s.day, s.total > 0 ? (s.used / s.total) * 100 : NaN]));
-      return { label: d.device, color: `var(--series-${i + 1})`, values: diskDays.map((x) => byDay.get(x) ?? NaN) };
+      return { label: d.name || d.device, color: `var(--series-${i + 1})`, values: diskDays.map((x) => byDay.get(x) ?? NaN) };
     }),
   );
 </script>

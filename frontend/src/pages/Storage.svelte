@@ -82,7 +82,7 @@
           <p>{identity(d)}</p>
         </div>
         <div class="actions-row device-actions">
-          <button type="button" class="small ghost" aria-label="Device settings" title="Device settings" onclick={() => (settingsFor = d.path)}>🔧</button>
+          <button type="button" class="small ghost" aria-label={`Settings of ${d.name || d.path}`} title="Disk settings" onclick={() => (settingsFor = d.path)}>🔧</button>
         </div>
       </div>
       {#if d.available}
@@ -104,7 +104,7 @@
         {#if data.autoRemovalDisabled}
           <p class="muted">Automatic removal is off. Enable it in <a href="/settings">Settings</a> to see suggestions.</p>
         {:else if !d.enabled}
-          <p class="muted">Automatic removal is off for this device. Enable it in Device settings (🔧) to see suggestions.</p>
+          <p class="muted">Automatic removal is off for this disk. Turn it on in its settings (🔧) to see suggestions.</p>
         {:else if d.plan && d.plan.needBytes > 0}
           <p class="bad"><b>Cleanup active.</b><br />{d.plan.message}<br />{d.plan.actions} action(s) selected · {human(d.plan.selectedBytes)} planned.{#if d.plan.actions}{' '}<a href="/removal">See it on the Removal page</a>.{/if}</p>
         {:else}

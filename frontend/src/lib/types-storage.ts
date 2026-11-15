@@ -134,6 +134,8 @@ export interface CleanupRow {
 
 export interface CleanupPlan {
   path: string;
+  /** The disk's name, as the Storage page shows it. */
+  name?: string;
   rootLabels: string[];
   filesystem: string;
   dryRun: boolean;

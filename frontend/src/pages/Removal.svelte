@@ -35,7 +35,7 @@
   <Notice>Automatic removal is off: turn it on in <a href="/settings">Settings</a> to see what it would remove.</Notice>
 {:else if devices.length}
   {#each devices as d (d.path)}
-    <CleanupPlan inline path={d.path} title={d.path} cleaned={load} />
+    <CleanupPlan inline path={d.path} title={d.name || d.path} cleaned={load} />
   {/each}
 {:else}
   <Empty>No disk has removal on: turn it on for a disk in Storage, in its settings (🔧).</Empty>

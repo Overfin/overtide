@@ -269,7 +269,9 @@ type cleanupRowJSON struct {
 }
 
 type cleanupPlanJSON struct {
-	Path       string   `json:"path"`
+	Path string `json:"path"`
+	// Name is the disk's, as the Storage page shows it.
+	Name       string   `json:"name,omitempty"`
 	RootLabels []string `json:"rootLabels"`
 	Filesystem string   `json:"filesystem"`
 	DryRun     bool     `json:"dryRun"`
@@ -327,7 +329,7 @@ func cleanupRow(action cleanup.Action) cleanupRowJSON {
 }
 
 func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
-	out := cleanupPlanJSON{Path: data.RepresentativePath, RootLabels: data.RootLabels, Filesystem: data.Filesystem, DryRun: data.DryRun,
+	out := cleanupPlanJSON{Path: data.RepresentativePath, Name: data.Name, RootLabels: data.RootLabels, Filesystem: data.Filesystem, DryRun: data.DryRun,
 		Message: data.Plan.Message, SelectedBytes: data.Plan.SelectedBytes, Excluded: data.Excluded, Torrents: []cleanupRowJSON{}, Media: []cleanupRowJSON{}}
 	if out.RootLabels == nil {
 		out.RootLabels = []string{}
