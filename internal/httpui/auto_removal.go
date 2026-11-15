@@ -68,7 +68,10 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 			continue
 		}
 		target, critical := cfg.ThresholdsFor(device.RepresentativePath)
-		plan, err := cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, nil, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
+		// Titles someone wants wait a last watch first (holdDepartures).
+		plan, err := server.holdDepartures(ctx, cfg, device.RepresentativePath, func(excluded map[string]bool) (cleanup.Plan, error) {
+			return cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, excluded, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
+		})
 		if err != nil || !plan.Available {
 			continue
 		}

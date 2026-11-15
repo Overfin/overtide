@@ -7,6 +7,7 @@
   import { Card, Modal, Loading, Notice, Status, ask } from '@overfin/ui';
   import { get, post } from '../../lib/api';
   import '../../styles/adding.css';
+  import { short } from '../../lib/words-adding';
   import { human, identity, type CleanupPlan, type CleanupRow } from '../../lib/types-storage';
 
   // inline: on a page (the Removal page), not in a window; close is then
@@ -87,6 +88,18 @@
   });
 </script>
 
+{#snippet heldList()}
+  {#if plan?.held?.length}
+    <details class="card">
+      <summary>Held for a last watch <span class="badge plain">{plan.held.length}</span></summary>
+      <p class="muted">Someone keeps these for later or is partway through them: Overfin tells them when each leaves, and the plan skips it until then.</p>
+      <ul class="held">
+        {#each plan.held as h (h.title)}<li><span class="name">{h.title}</span> <span class="muted">· until {short(h.until)}</span></li>{/each}
+      </ul>
+    </details>
+  {/if}
+{/snippet}
+
 {#snippet body()}
   {#if !plan}
     {#if failure}<Notice warn>{failure}</Notice>{:else}<Loading text="Asking Overfin for current scores…" />{/if}
@@ -120,8 +133,9 @@
       {/if}
     {/each}
   {:else}
-    <p class="good">Nothing currently needs cleanup on this device.</p>
+    <p class="good">Nothing currently needs cleanup on this disk.</p>
   {/if}
+  {@render heldList()}
 {/snippet}
 
 {#snippet buttons()}

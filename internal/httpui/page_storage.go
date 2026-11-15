@@ -112,7 +112,9 @@ func (server *Server) storageStats(w http.ResponseWriter, r *http.Request) {
 type cleanupPlanData struct {
 	RepresentativePath string
 	// Name is the disk's, as the Storage page shows it.
-	Name       string
+	Name string
+	// Held are its titles Overfin holds for a last watch.
+	Held       []heldTitle
 	RootLabels []string
 	Filesystem string
 	Plan       cleanup.Plan
@@ -144,7 +146,7 @@ func (server *Server) planForDevice(path string, excluded map[string]bool) (clea
 	}
 	for _, view := range server.deviceViews(items, ts, planningReliable, excluded) {
 		if view.Storage.RepresentativePath == path {
-			return cleanupPlanData{RepresentativePath: path, Name: view.Name, RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList, DryRun: server.inv.Config().Removal.DryRun}, true
+			return cleanupPlanData{RepresentativePath: path, Name: view.Name, Held: server.heldOn(path), RootLabels: view.Storage.RootLabels, Filesystem: view.Storage.Filesystem, Plan: view.Plan, Excluded: excludedList, DryRun: server.inv.Config().Removal.DryRun}, true
 		}
 	}
 	return cleanupPlanData{RepresentativePath: path, Excluded: excludedList}, false

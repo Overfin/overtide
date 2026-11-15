@@ -138,6 +138,8 @@ export interface CleanupPlan {
   path: string;
   /** The disk's name, as the Storage page shows it. */
   name?: string;
+  /** Titles Overfin holds for a last watch: skipped until then. */
+  held: { title: string; until: string }[];
   rootLabels: string[];
   filesystem: string;
   dryRun: boolean;

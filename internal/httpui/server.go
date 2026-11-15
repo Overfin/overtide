@@ -45,6 +45,8 @@ type Server struct {
 	problemsMu    sync.Mutex
 	problemsCache []problemJSON
 	problemsAt    time.Time
+	// holds are the titles Overfin holds for a last watch (departures.go).
+	holds departureHolds
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
@@ -173,7 +175,9 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 		var p cleanup.Plan
 		var planErr error
 		if enabled {
-			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, excluded, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
+			// What Overfin holds for a last watch is skipped, as in
+			// automatic removal (holdDepartures).
+			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, server.heldKeys(excluded), cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
 		} else {
 			// No point building a plan nothing will ever act on — an explicit
 			// per-device opt-out, same reasoning as the global AutoMode

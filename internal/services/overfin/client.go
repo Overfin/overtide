@@ -571,3 +571,50 @@ func (client *Client) Measures() (Measures, error) {
 	var out Measures
 	return out, client.get("/apps/v1/measures", nil, &out)
 }
+
+// Departure is a title Overtide plans to remove, as Overfin's departures
+// know it: a film, a season (with its number) or a whole series, by TMDB
+// ID; HoldUntil, in the answer, when someone wants it and it waits.
+type Departure struct {
+	Kind      string    `json:"kind"`
+	TMDB      string    `json:"tmdbId"`
+	Season    *int      `json:"season,omitempty"`
+	HoldUntil time.Time `json:"holdUntil,omitzero"`
+}
+
+// Departures asks Overfin which of the titles planned for removal should
+// wait for a last watch (/apps/v1/departures, the key's "What came and
+// went"): each comes back, with HoldUntil when held.
+func (client *Client) Departures(titles []Departure) ([]Departure, error) {
+	if len(titles) == 0 {
+		return nil, nil
+	}
+	b, err := json.Marshal(map[string]any{"titles": titles})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(client.requestContext(), http.MethodPost, client.base+"/apps/v1/departures", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+client.key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, fmt.Errorf("overfin refused the key: it needs \"What came and went\" in Overfin's Apps")
+	case resp.StatusCode/100 != 2:
+		return nil, fmt.Errorf("overfin departures: %s", resp.Status)
+	}
+	var out struct {
+		Titles []Departure `json:"titles"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAnswer)).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Titles, nil
+}

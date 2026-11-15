@@ -277,11 +277,14 @@ type cleanupRowJSON struct {
 type cleanupPlanJSON struct {
 	Path string `json:"path"`
 	// Name is the disk's, as the Storage page shows it.
-	Name       string   `json:"name,omitempty"`
-	RootLabels []string `json:"rootLabels"`
-	Filesystem string   `json:"filesystem"`
-	DryRun     bool     `json:"dryRun"`
-	Message    string   `json:"message"`
+	Name string `json:"name,omitempty"`
+	// Held are the titles Overfin holds for a last watch: skipped until
+	// then.
+	Held       []heldJSON `json:"held"`
+	RootLabels []string   `json:"rootLabels"`
+	Filesystem string     `json:"filesystem"`
+	DryRun     bool       `json:"dryRun"`
+	Message    string     `json:"message"`
 	// OldScores: Overfin couldn't be asked just now, so the plan is made on
 	// the scores last read.
 	OldScores     bool             `json:"oldScores,omitempty"`
@@ -335,10 +338,13 @@ func cleanupRow(action cleanup.Action) cleanupRowJSON {
 }
 
 func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
-	out := cleanupPlanJSON{Path: data.RepresentativePath, Name: data.Name, RootLabels: data.RootLabels, Filesystem: data.Filesystem, DryRun: data.DryRun,
+	out := cleanupPlanJSON{Path: data.RepresentativePath, Name: data.Name, Held: []heldJSON{}, RootLabels: data.RootLabels, Filesystem: data.Filesystem, DryRun: data.DryRun,
 		Message: data.Plan.Message, SelectedBytes: data.Plan.SelectedBytes, Excluded: data.Excluded, Torrents: []cleanupRowJSON{}, Media: []cleanupRowJSON{}}
 	if out.RootLabels == nil {
 		out.RootLabels = []string{}
+	}
+	for _, h := range data.Held {
+		out.Held = append(out.Held, heldJSON{Title: h.Title, Until: h.Until})
 	}
 	if out.Excluded == nil {
 		out.Excluded = []string{}
@@ -487,4 +493,10 @@ func (server *Server) apiKeep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	done(w)
+}
+
+// heldJSON is a title held for a last watch, and until when.
+type heldJSON struct {
+	Title string    `json:"title"`
+	Until time.Time `json:"until"`
 }
