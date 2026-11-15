@@ -96,7 +96,7 @@
 {#if data}
   <p class="muted">
     {#if data.mode === 'off'}
-      Adding is off.
+      Adding is off: nothing is searched for. What's downloaded is still imported, and seasons imported wrong are put right.
     {:else}
       <a href="/adding/waiting">{titles} {titles === 1 ? 'title waits' : 'titles wait'}</a>{' · '}<a href="/adding/seasons">{seasons} {seasons === 1 ? 'season or episode is' : 'seasons and episodes are'} wanted</a>{#if data.nextRead}{' · '}suggestions read next at {clock(data.nextRead)}{/if}{#if data.nextRun}{' · '}titles tried next at {clock(data.nextRun)}{/if}
     {/if}

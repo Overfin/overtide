@@ -25,7 +25,7 @@ curl -fsSL -o .env https://raw.githubusercontent.com/overfin/overtide/main/deplo
 docker compose up -d
 ```
 
-Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked (and, for adding, **What came and went**, **Wishes to fetch**, and **Categories and episode orders**). Prowlarr is optional: with it, searches are paced by your trackers' limits. Adding is off until you switch it on in **Settings**: off, dry run (reads only, changes nothing), on. [`deploy/README.md`](deploy/README.md) has the details.
+Open the machine's address on port 8088 and create the admin account. Then, under **Services**, add Radarr, Sonarr, qBittorrent, and Overfin: its control panel address, and a key made there under **Apps** with **Values** ticked (and, for adding, **What came and went**, **Wishes to fetch**, and **Categories and episode orders**). Prowlarr is optional: with it, searches are paced by your trackers' limits. Adding is off until you switch it on in **Settings**: off (nothing searched for; downloads still imported, wrong imports put right), dry run (reads only, changes nothing), on. [`deploy/README.md`](deploy/README.md) has the details.
 
 Images are published for amd64 and arm64 at `ghcr.io/overfin/overtide`, with a signed attestation of how they were built.
 
@@ -62,8 +62,9 @@ Sonarr gives every file of a release one of its own episode numbers, whatever
 order the release is in, and reports the season complete. Turn off **Completed
 Download Handling** in Sonarr (Settings, Download Clients, then **Show
 Advanced** at the top: it's the **Enable** box in that section) and Overtide
-does the importing instead, for everything Sonarr downloads, however it started.
-Leave it on and nothing changes. Radarr isn't concerned.
+does the importing instead, for everything Sonarr downloads, however it started,
+with adding on or off (off, nothing is searched for). Leave it on and nothing
+changes. Radarr isn't concerned.
 
 Which files are a download's, only the torrent client says: Sonarr lists the
 whole folder a torrent is in, and torrents whose folder has the same name
@@ -101,8 +102,9 @@ Jellyfin reads as both; the Services page says so otherwise.
 
 A season imported one episode a file whose files hold two (a cartoon's
 segments, imported before these rules) is put right: each file's torrent
-twin is imported again with its episodes, as a hardlink. A pack that lacked
-its season's end, or a special, has those episodes searched one by one.
+twin is imported again with its episodes, as a hardlink, adding on or off.
+A pack that lacked its season's end, or a special, has those episodes
+searched one by one (with adding on).
 
 Nothing is asked of you: Overtide keeps trying, other releases too, and a
 later release completing the season ends the wait. The Adding page lists what

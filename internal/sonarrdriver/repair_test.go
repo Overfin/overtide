@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/overfin/overtide/internal/arrfake"
@@ -105,5 +106,64 @@ func TestRepairSeason(t *testing.T) {
 	fake.Imported = nil
 	if repaired, several := driver.repairSeason(context.Background(), client, series, 1, episodes, false); repaired || !several || len(fake.Imported) != 0 {
 		t.Errorf("without a twin: %v %v %v", repaired, several, fake.Imported)
+	}
+}
+
+// With Adding off, a season imported one segment a file, from a whole
+// pack, is still put right: each file's torrent twin imported again with
+// its two segments. Nothing is searched or grabbed.
+func TestRepairWithAddingOff(t *testing.T) {
+	now := *arrfake.Day("2026-11-15")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	library := t.TempDir()
+	fake.AddSeries(1, nil, arrfake.Season(1, 2, 4))
+	fake.Series[1]["path"], fake.Series[1]["tmdbId"] = library, 77
+	var tmdb []overfin.OrderEpisode
+	for n := 1; n <= 4; n++ {
+		id := 100 + n
+		fake.AddEpisode(id, 1, 1, old, n <= 2)
+		title := fmt.Sprintf("Segment %c", 'A'+n-1)
+		fake.Eps[id]["episodeNumber"], fake.Eps[id]["title"] = n, title
+		tmdb = append(tmdb, overfin.OrderEpisode{Episode: n, Name: title, AirDate: old.Format("2006-01-02"), Runtime: 11})
+	}
+	for n := 1; n <= 2; n++ {
+		relative := fmt.Sprintf("Season 1/Show - S01E%02d.mkv", n)
+		mkvLasting(t, filepath.Join(library, relative), 22)
+		fake.Files[n] = map[string]any{"id": n, "seriesId": 1, "seasonNumber": 1, "relativePath": relative, "size": 1, "dateAdded": arrfake.ISO(old)}
+		fake.Eps[100+n]["episodeFileId"] = n
+	}
+	// The whole season came as one pack, after its last episode aired.
+	packAt := arrfake.ISO(old.AddDate(0, 0, 7))
+	fake.History = map[string][]map[string]any{"1": {
+		{"eventType": "grabbed", "date": packAt, "downloadId": "h", "episodeId": 101, "data": map[string]any{"releaseType": "SeasonPack"}},
+		{"eventType": "downloadFolderImported", "date": packAt, "downloadId": "h", "episodeId": 101, "data": map[string]any{}},
+		{"eventType": "downloadFolderImported", "date": packAt, "downloadId": "h", "episodeId": 102, "data": map[string]any{}},
+	}}
+	quality := map[string]any{"quality": map[string]any{"id": 3}}
+	fake.ImportAt = []map[string]any{
+		{"path": "/dl/Show S01/Show.S01E01.mkv", "seasonNumber": 1, "episodes": []map[string]any{{"id": 101}}, "quality": quality, "languages": []any{}},
+		{"path": "/dl/Show S01/Show.S01E02.mkv", "seasonNumber": 1, "episodes": []map[string]any{{"id": 102}}, "quality": quality, "languages": []any{}},
+	}
+	driver, cfg := testDriver(t, fake, config.ManageAll)
+	cfg.Adding.Mode = config.AddingOff
+	driver.knowOrders(77, &overfin.EpisodeOrders{Seasons: []overfin.OrderSeason{{Season: 1, Episodes: tmdb}}})
+	driver.twinsOf = func([]string) map[string]torrentTwin {
+		return map[string]torrentTwin{
+			filepath.Join(library, "Season 1/Show - S01E01.mkv"): {Path: "/dl/Show S01/Show.S01E01.mkv", Hash: "h"},
+			filepath.Join(library, "Season 1/Show - S01E02.mkv"): {Path: "/dl/Show S01/Show.S01E02.mkv", Hash: "h"},
+		}
+	}
+	driver.Repair(context.Background(), cfg)
+	if got := fake.ImportedTo["/dl/Show S01/Show.S01E01.mkv"]; !slices.Equal(got, []int{101, 102}) {
+		t.Errorf("first file: %v (imported %v)", got, fake.Imported)
+	}
+	if got := fake.ImportedTo["/dl/Show S01/Show.S01E02.mkv"]; !slices.Equal(got, []int{103, 104}) {
+		t.Errorf("second file: %v", got)
+	}
+	for _, change := range fake.Changes {
+		if strings.Contains(change, "search") || strings.Contains(change, "grab") {
+			t.Errorf("with Adding off: %s", change)
+		}
 	}
 }

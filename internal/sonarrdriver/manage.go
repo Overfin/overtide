@@ -229,13 +229,9 @@ func (driver *Driver) Tend(ctx context.Context, cfg config.Config, active map[st
 // the series Overtide manages (all of them with manageAll). It returns how
 // many episodes are monitored.
 func (driver *Driver) tendSeries(ctx context.Context, client *sonarr.Client, state *State, titles []sonarr.Title, labels map[int]string, active map[string]bool, serviceID string, manageAll, dryRun bool, full func(seriesID int) bool) (int, error) {
-	var managed []sonarr.Title
+	managed := managedTitles(titles, labels, manageAll)
 	holds := map[string]bool{}
-	for _, t := range titles {
-		if model.HasLabel(t.Tags, labels, model.TagIgnore) || (!manageAll && !model.HasOwnLabel(t.Tags, labels)) {
-			continue
-		}
-		managed = append(managed, t)
+	for _, t := range managed {
 		for _, season := range t.Seasons {
 			if season.SeasonNumber > 0 && season.Statistics.EpisodeFileCount > 0 {
 				holds[seasonKey(t.ID, season.SeasonNumber)] = true
@@ -247,6 +243,52 @@ func (driver *Driver) tendSeries(ctx context.Context, client *sonarr.Client, sta
 		return 0, err
 	}
 	return monitored, driver.findIncomplete(ctx, client, state, managed, dryRun)
+}
+
+// managedTitles are the series Overtide manages: its own, or all with
+// "Manage all", never those the operator ignored.
+func managedTitles(titles []sonarr.Title, labels map[int]string, manageAll bool) []sonarr.Title {
+	var managed []sonarr.Title
+	for _, t := range titles {
+		if model.HasLabel(t.Tags, labels, model.TagIgnore) || (!manageAll && !model.HasOwnLabel(t.Tags, labels)) {
+			continue
+		}
+		managed = append(managed, t)
+	}
+	return managed
+}
+
+// Repair puts right, with Adding off, what's already downloaded: Sonarr's
+// finished downloads imported when its own import is off, and the seasons
+// whose files hold several episodes each imported again with them
+// (findIncomplete, every LookEvery). Nothing is searched or grabbed.
+func (driver *Driver) Repair(ctx context.Context, cfg config.Config) {
+	driver.ImportDownloads(ctx, cfg, false)
+	states, err := driver.States()
+	if err != nil {
+		log.Printf("[adding] the repairs: %v", err)
+		return
+	}
+	for _, svc := range cfg.ServicesOfType("sonarr") {
+		client, err := driver.inv.SonarrClient(svc.ID)
+		if err == nil {
+			client = client.WithContext(ctx)
+			var labels map[int]string
+			var titles []sonarr.Title
+			if labels, err = client.TagLabels(); err == nil {
+				titles, err = client.Titles()
+			}
+			if err == nil {
+				err = driver.findIncomplete(ctx, client, stateFor(states, svc.ID), managedTitles(titles, labels, cfg.Adding.ManagesAll()), false)
+			}
+		}
+		if err != nil {
+			log.Printf("[adding] Sonarr %s's repairs: %v", svc.Name, err)
+		}
+	}
+	if err := driver.SaveStates(states); err != nil {
+		log.Printf("[adding] the repairs: %v", err)
+	}
 }
 
 // findIncomplete puts in the wanted episodes, every LookEvery, those of the

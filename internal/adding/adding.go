@@ -389,6 +389,9 @@ func (service *Service) Run(ctx context.Context) error {
 	// only reads Sonarr.
 	service.sonarr.SettleLooks(ctx, cfg)
 	if mode != config.AddingDryRun && mode != config.AddingOn {
+		// Off, nothing's searched or grabbed, but what's downloaded is
+		// still imported, and seasons imported wrong are put right.
+		service.sonarr.Repair(ctx, cfg)
 		return nil
 	}
 	dryRun := mode == config.AddingDryRun

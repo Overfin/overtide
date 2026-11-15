@@ -59,7 +59,7 @@
   <Loading />
 {:else}
 <Card title="Adding">
-  <Setting label="Adding titles" hint="Dry run only reads: nothing is added, searched for, tagged or unmonitored.">
+  <Setting label="Adding titles" hint="Off: nothing is added or searched for; what's downloaded is still imported, and seasons imported wrong are put right. Dry run only reads: nothing is added, searched for, tagged or unmonitored.">
     {#snippet children(ids)}
       <select bind:value={mode} aria-labelledby={ids.label} aria-describedby={ids.hint}>
         <option value="off">Off</option>
