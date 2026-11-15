@@ -63,6 +63,9 @@ type page struct {
 		TVDB   string   `json:"tvdbId"`
 		Season *int     `json:"season"`
 		Score  *float64 `json:"score"`
+		// Place is a season's among its series' seasons by their own
+		// value, 1 the most valuable: its score is its series'.
+		Place *int `json:"place"`
 		// Categories are the operator's it fits (list=suggestions).
 		Categories []string `json:"categories"`
 	} `json:"titles"`
@@ -74,6 +77,7 @@ type Scores struct {
 	movies        map[int]float64 // by TMDB ID
 	seasonsByTMDB map[int]map[int]float64
 	seasonsByTVDB map[int]map[int]float64
+	placesByTVDB  map[int]map[int]int
 }
 
 // scopeOf is the scope of Overfin's Apps a path needs, as Overfin's panel
@@ -115,7 +119,7 @@ func (client *Client) get(path string, query url.Values, out any) error {
 
 // Fetch reads every score of what the libraries have.
 func (client *Client) Fetch() (*Scores, error) {
-	scores := &Scores{movies: map[int]float64{}, seasonsByTMDB: map[int]map[int]float64{}, seasonsByTVDB: map[int]map[int]float64{}}
+	scores := &Scores{movies: map[int]float64{}, seasonsByTMDB: map[int]map[int]float64{}, seasonsByTVDB: map[int]map[int]float64{}, placesByTVDB: map[int]map[int]int{}}
 	cursor := ""
 	for range maxPages {
 		q := url.Values{"inLibrary": {"true"}, "fields": {"score"}, "sort": {"name"}, "limit": {strconv.Itoa(pageSize)}}
@@ -141,6 +145,12 @@ func (client *Client) Fetch() (*Scores, error) {
 				}
 				if tvdb > 0 {
 					addSeason(scores.seasonsByTVDB, tvdb, *t.Season, *t.Score)
+					if t.Place != nil {
+						if scores.placesByTVDB[tvdb] == nil {
+							scores.placesByTVDB[tvdb] = map[int]int{}
+						}
+						scores.placesByTVDB[tvdb][*t.Season] = *t.Place
+					}
 				}
 			}
 		}
@@ -227,10 +237,12 @@ type Missing struct {
 }
 
 // Values are the library's films by TMDB ID and seasons by TheTVDB ID, with
-// their scores.
+// their scores: a season's is its series' (Overfin values a series whole),
+// and Places orders a series' seasons, 1 the most valued.
 type Values struct {
 	Films   map[int]float64
 	Seasons map[int]map[int]float64
+	Places  map[int]map[int]int
 }
 
 // LibraryValues reads the scores of what the libraries have, films by
@@ -243,7 +255,7 @@ func (client *Client) LibraryValues() (Values, error) {
 	if err != nil {
 		return Values{Films: map[int]float64{}, Seasons: map[int]map[int]float64{}}, err
 	}
-	return Values{Films: scores.movies, Seasons: scores.seasonsByTVDB}, nil
+	return Values{Films: scores.movies, Seasons: scores.seasonsByTVDB, Places: scores.placesByTVDB}, nil
 }
 
 // Suggestions are at most max of the titles the libraries lack, in the

@@ -123,6 +123,19 @@ func Open(path string) (*Store, error) {
 			return nil, err
 		}
 	}
+	// Removals' values from before Overfin valued series whole (a season
+	// on its own) are on another scale: the upgrade line forgets them,
+	// once.
+	if done, err := s.Meta("history.series-values"); err != nil || done == "" {
+		if err := s.exec(`UPDATE history_events SET plan_value=0`); err != nil {
+			s.Close()
+			return nil, err
+		}
+		if err := s.SetMeta("history.series-values", "1"); err != nil {
+			s.Close()
+			return nil, err
+		}
+	}
 	return s, nil
 }
 

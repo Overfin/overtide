@@ -43,19 +43,35 @@ func (service *Service) libraryValues(ctx context.Context, cfg config.Config) ov
 	return values
 }
 
-// seasonValue is a season's score, 0 when unknown.
+// seasonValue is a season's score, its series', 0 when unknown.
 func (service *Service) seasonValue(ctx context.Context, cfg config.Config, serviceID string, seriesID, season int) float64 {
+	value, _ := service.seasonValueAndPlace(ctx, cfg, serviceID, seriesID, season)
+	return value
+}
+
+// seasonValueAndPlace is a season's score (its series') and its place
+// among its series' seasons, 1 the most valued; 0 and 0 when unknown.
+func (service *Service) seasonValueAndPlace(ctx context.Context, cfg config.Config, serviceID string, seriesID, season int) (float64, int) {
 	values := service.libraryValues(ctx, cfg)
 	items, _, err := service.inv.Snapshot()
 	if err != nil {
-		return 0
+		return 0, 0
 	}
 	for _, m := range items {
 		if m.ServiceID == serviceID && m.Type == model.Series && m.SourceID == seriesID {
-			return values.Seasons[m.TVDBID][season]
+			return values.Seasons[m.TVDBID][season], values.Places[m.TVDBID][season]
 		}
 	}
-	return 0
+	return 0, 0
+}
+
+// byValue orders what's most valued first: by score, then a series'
+// seasons by their place in it (a film, without one, before).
+func byValue(valueI float64, placeI int, valueJ float64, placeJ int) bool {
+	if valueI != valueJ {
+		return valueI > valueJ
+	}
+	return placeI < placeJ
 }
 
 // upgradeCandidate is a film or a season below its quality cutoff.
@@ -67,6 +83,7 @@ type upgradeCandidate struct {
 	title     string
 	path      string
 	value     float64
+	place     int // a season's place in its series, 1 the most valued
 }
 
 func (c upgradeCandidate) key() string {
@@ -104,11 +121,12 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 		for _, s := range cutoff.Seasons[svc.ID] {
 			m, ok := known[fmt.Sprintf("%s|%s|%d", svc.ID, model.Series, s.SeriesID)]
 			if ok && s.Season > 0 {
-				out = append(out, upgradeCandidate{serviceID: svc.ID, kind: model.Series, arrID: s.SeriesID, season: s.Season, title: m.Title, path: m.Path, value: values.Seasons[m.TVDBID][s.Season]})
+				out = append(out, upgradeCandidate{serviceID: svc.ID, kind: model.Series, arrID: s.SeriesID, season: s.Season, title: m.Title, path: m.Path,
+					value: values.Seasons[m.TVDBID][s.Season], place: values.Places[m.TVDBID][s.Season]})
 			}
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].value > out[j].value })
+	sort.SliceStable(out, func(i, j int) bool { return byValue(out[i].value, out[i].place, out[j].value, out[j].place) })
 	return out, true, nil
 }
 
@@ -139,18 +157,20 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 	// One queue, by value: a pack goes before a lesser title, not before all.
 	type job struct {
 		value float64
+		place int
 		pack  *sonarrdriver.DuePack
 		c     upgradeCandidate
 	}
 	var queue []job
 	for i := range packs {
 		p := &packs[i]
-		queue = append(queue, job{value: service.seasonValue(ctx, cfg, p.ServiceID, p.SeriesID, p.Season), pack: p})
+		value, place := service.seasonValueAndPlace(ctx, cfg, p.ServiceID, p.SeriesID, p.Season)
+		queue = append(queue, job{value: value, place: place, pack: p})
 	}
 	for _, c := range candidates {
-		queue = append(queue, job{value: c.value, c: c})
+		queue = append(queue, job{value: c.value, place: c.place, c: c})
 	}
-	sort.SliceStable(queue, func(i, j int) bool { return queue[i].value > queue[j].value })
+	sort.SliceStable(queue, func(i, j int) bool { return byValue(queue[i].value, queue[i].place, queue[j].value, queue[j].place) })
 	// What removal takes isn't upgraded: sorted, the queue ends there.
 	if line, ok := service.removalLine(); ok {
 		queue = slices.DeleteFunc(queue, func(j job) bool { return j.value <= line })
@@ -288,6 +308,7 @@ type UpgradeRow struct {
 	// last upgrade search; Next, when it may be searched again (zero:
 	// at the next run with room for it).
 	Value        float64
+	place        int // a season's in its series, for the order
 	LastSearched time.Time
 	Next         time.Time
 }
@@ -303,8 +324,9 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		return nil, err
 	}
 	for _, p := range packs {
+		value, place := service.seasonValueAndPlace(ctx, cfg, p.ServiceID, p.SeriesID, p.Season)
 		row := UpgradeRow{Ref: sonarrdriver.PackRef(p.ServiceID, p.SeriesID, p.Season), Title: p.Title, Kind: model.Series, Why: "Whole-season pack",
-			Value: service.seasonValue(ctx, cfg, p.ServiceID, p.SeriesID, p.Season)}
+			Value: value, place: place}
 		if p.NextTry.After(service.now()) {
 			row.Next = p.NextTry
 		}
@@ -327,7 +349,7 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		if c.kind == model.Series {
 			title = fmt.Sprintf("%s S%d", c.title, c.season)
 		}
-		row := UpgradeRow{Ref: c.key(), Title: title, Kind: c.kind, Why: "Below its quality cutoff", Value: c.value}
+		row := UpgradeRow{Ref: c.key(), Title: title, Kind: c.kind, Why: "Below its quality cutoff", Value: c.value, place: c.place}
 		if at, ok := searched[c.key()]; ok {
 			row.LastSearched, row.Next = at, at.Add(UpgradeAgain)
 		}
@@ -335,7 +357,7 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 	}
 	// One order, by value, as searchUpgrades goes, without what removal
 	// takes.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
+	sort.SliceStable(out, func(i, j int) bool { return byValue(out[i].Value, out[i].place, out[j].Value, out[j].place) })
 	if line, ok := service.removalLine(); ok {
 		out = slices.DeleteFunc(out, func(row UpgradeRow) bool { return row.Value <= line })
 	}

@@ -59,15 +59,19 @@ func TestApply(t *testing.T) {
 }
 
 // LibraryValues reads the same scores: films by TMDB ID, seasons by
-// TheTVDB ID; without an Overfin, none and no error.
+// TheTVDB ID, with their places in their series; without an Overfin, none
+// and no error.
 func TestLibraryValues(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"titles":[{"kind":"movie","tmdbId":"10","score":61.5},{"kind":"season","tmdbId":"20","tvdbId":"200","season":2,"score":75},{"kind":"season","tmdbId":"30","season":1,"score":9}]}`))
+		w.Write([]byte(`{"titles":[{"kind":"movie","tmdbId":"10","score":61.5},{"kind":"season","tmdbId":"20","tvdbId":"200","season":2,"score":75,"place":1},{"kind":"season","tmdbId":"20","tvdbId":"200","season":1,"score":75,"place":2},{"kind":"season","tmdbId":"30","season":1,"score":9}]}`))
 	}))
 	defer srv.Close()
 	values, err := New(srv.URL, "ofapp_k").LibraryValues()
 	if err != nil || values.Films[10] != 61.5 || values.Seasons[200][2] != 75 || len(values.Seasons) != 1 {
 		t.Fatalf("%v %v", values, err)
+	}
+	if values.Places[200][2] != 1 || values.Places[200][1] != 2 {
+		t.Errorf("places in the series: %v", values.Places)
 	}
 	if values, err := New("", "").LibraryValues(); err != nil || values.Films == nil || len(values.Films) != 0 {
 		t.Fatalf("without Overfin: %v %v", values, err)

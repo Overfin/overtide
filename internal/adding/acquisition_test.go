@@ -3,6 +3,7 @@ package adding
 import (
 	"context"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -378,5 +379,24 @@ func TestBelowCutoffKept(t *testing.T) {
 	service.cutoff.done.Wait()
 	if got := titles(); !slices.Equal(got, []string{"Two", "One"}) {
 		t.Errorf("fresh list: %v", got)
+	}
+}
+
+// The most valued first; a series' seasons, which share its score, by
+// their place in it; a film (no place) before them at the same score.
+func TestByValue(t *testing.T) {
+	type row struct {
+		name  string
+		value float64
+		place int
+	}
+	rows := []row{{"s1 (place 3)", 50, 3}, {"low film", 10, 0}, {"s4 (place 1)", 50, 1}, {"film", 50, 0}, {"s2 (place 2)", 50, 2}}
+	sort.SliceStable(rows, func(i, j int) bool { return byValue(rows[i].value, rows[i].place, rows[j].value, rows[j].place) })
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.name)
+	}
+	if want := []string{"film", "s4 (place 1)", "s2 (place 2)", "s1 (place 3)", "low film"}; !slices.Equal(got, want) {
+		t.Errorf("order: %v", got)
 	}
 }
