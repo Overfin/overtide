@@ -39,7 +39,8 @@
     get<DeviceSettings>(`/api/storage/device?path=${encodeURIComponent(path)}`).then(
       (s) => {
         settings = s;
-        name = s.name;
+        // No label of its own: the field stays empty, the default shown in it.
+        name = s.name === s.defaultName ? '' : s.name;
         enabled = s.automaticRemovalEnabled;
         target = Math.round(s.targetUsagePercent);
         critical = Math.round(s.criticalUsagePercent);
@@ -74,7 +75,7 @@
     <Loading />
   {:else}
     <p class="muted">These thresholds apply to the whole physical device identified above, including every root path grouped under it — not to one path specifically.</p>
-    <Field label="Name"><input bind:value={name} placeholder={settings.rootLabels.length ? settings.rootLabels.join(', ') : settings.path} /></Field>
+    <Field label="Label" hint="What the pages call this disk. Empty, it's {settings.defaultName || 'its default name'}."><input bind:value={name} placeholder={settings.defaultName || settings.path} /></Field>
     <label class="inline"><input type="checkbox" bind:checked={enabled} /> Enable on this device</label>
     {#if enabled}
       <Field label="Target %"><input type="number" min="1" max="99" step="1" bind:value={target} /></Field>
