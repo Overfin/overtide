@@ -146,7 +146,6 @@ export interface ActivityPage {
   total: number;
   page: number;
   pages: number;
-  runs: CleanupRun[];
 }
 
 export interface ImportedFile {
@@ -155,16 +154,6 @@ export interface ImportedFile {
   path: string;
   size: string;
   release?: string;
-}
-
-export interface CleanupRun {
-  completedAt?: string;
-  status: string;
-  usageBefore: number;
-  usageAfter: number;
-  mediaRemoved: number;
-  torrentsRemoved: number;
-  reclaimed: string;
 }
 
 export interface Task {

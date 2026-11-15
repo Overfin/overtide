@@ -54,7 +54,7 @@ Overfin values a title the same way whether it's on the server or not, and a tit
 - **Releases.** A title not out yet waits, and two days before its release it's monitored without a search, so Radarr's or Sonarr's RSS catches it.
 - **What Overtide manages.** "Only what it adds" (the default), or "Everything in Radarr and Sonarr": every title is tagged, and Radarr and Sonarr no longer fetch or upgrade anything on their own; Overtide fetches what they would have, at its own pace. The two modes only differ in which titles are Overtide's.
 - **Radarr's and Sonarr's events.** With "Everything in Radarr and Sonarr" and adding on, Overtide gives each Radarr and Sonarr a webhook named "Overtide" (in their Connect settings) for the titles they add, so the next run starts at once. It signs in with the user `overtide` and a random secret Overtide keeps in its database. The secret only guards that: an event can start a run sooner, or confirm the webhook's address, nothing more; the run asks Radarr and Sonarr what they hold, within its usual limits. Overtide finds the address they reach it at, or takes the one set in its Adding settings.
-- **Tags.** Each title Overtide manages says where it came from: `overtide-added`, `overtide-requested` (a wish), `overtide-found` (there before Overtide took it), `overtide-new` (added from outside with "Everything"). Tag a title `overtide-ignore` in Radarr or Sonarr and Overtide never takes, tags, unmonitors or searches for it. The names Overswell used (`overswell-added` and so on) and Overtide's oldest tag, `overtide`, are replaced once with these, and read as these until then.
+- **Tags.** Each title Overtide manages says where it came from: `overtide-added`, `overtide-requested` (a wish), `overtide-found` (taken by "Everything": there before, or added from outside since). Tag a title `overtide-ignore` in Radarr or Sonarr and Overtide never takes, tags, unmonitors or searches for it.
 
 ### Importing, with Sonarr's auto-import off
 
@@ -160,20 +160,6 @@ A torrent has no value of its own: it never adds to a title's value or takes fro
 
 Overtide finds files where Radarr, Sonarr and qBittorrent say they are, so **every container that touches your media must mount it at the same path**. For example, all of them mount `/mnt/media` (on the host) at `/data` (inside). If your downloads live apart from your library, add the second folder in `compose.yaml` the same way. When a path a service reports can't be seen, the **Storage** page says so.
 
-## Coming from Overswell
-
-Adding was a separate app, Overswell, from 2026-10-30 until it came back into Overtide. To bring its settings and its state along, once: stop both apps, back up both config folders, then run Overtide's image with Overswell's config folder mounted (writable: SQLite needs it, though nothing is written there):
-
-```sh
-docker compose run --rm -v /path/to/overswell/config:/overswell overtide -config /config/config.json -import-overswell /overswell
-```
-
-Radarr and Sonarr must be in Overtide's Services already (the same IDs, or the same addresses). Overswell's Prowlarr is added, Overfin takes Overswell's key (it may also read wishes and history), and the adding settings, destinations, waiting list, followed series and counts come along. Then start Overtide, and leave Overswell stopped for good: two apps adding to the same Radarr and Sonarr would each search and monitor.
-
-## Coming from Stewarr
-
-Overtide reads the same config folder layout as [Stewarr](https://github.com/C0PT3R/stewarr), so a *copy* of Stewarr's `/config` brings its settings along. Never point both at the same folder. Titles and torrents carrying its keep tags (`stewarr_keep`…) are put on the Kept list after the first inventory, and the tags aren't read after that. To run both on one host, give Overtide another port (`OVERTIDE_PORT=8089` in its `.env`) and keep it in dry run: two tools removing from the same disks would remove more than either alone.
-
 ## Development
 
 Plain Go, standard library first, like Overfin. SQLite through `database/sql` with a pure-Go driver, so the build needs no C compiler.
@@ -199,7 +185,7 @@ CI runs formatting, vet, staticcheck, govulncheck, the tests with the race detec
 ## Further reading
 
 - [`SECURITY.md`](SECURITY.md): what Overtide protects, and how, as the code stands.
-- [`ROADMAP.md`](ROADMAP.md): Overtide's design and what's next, then Stewarr's history.
+- [`ROADMAP.md`](ROADMAP.md): Overtide's design and what's next.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): the model and the technical architecture.
 - [`Scheduler-Spec.md`](Scheduler-Spec.md): the background task scheduler.
 - [`CHANGELOG.md`](CHANGELOG.md): what changed, release by release.

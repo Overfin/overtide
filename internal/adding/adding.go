@@ -64,11 +64,6 @@ const (
 const (
 	storeKey   = "adding.waiting"
 	historyKey = "adding.history"
-	// tagsKey records that the former tags (Overswell's, and Overtide's
-	// own "overtide" from before the split) were replaced, once.
-	// tagsKey: the former tags replaced (the 2026-11-10 run: overtide-new
-	// merged into overtide-found).
-	tagsKey = "adding.tags_found"
 )
 
 // Source is where a title in the waiting list comes from: what the
@@ -403,11 +398,6 @@ func (service *Service) Run(ctx context.Context) error {
 	entries, err := service.load()
 	if err != nil {
 		return err
-	}
-	if !dryRun {
-		if err := service.retag(ctx, cfg, entries); err != nil {
-			return err
-		}
 	}
 	// What the operator ignored, or no longer lets Overtide manage, goes
 	// back as it was.

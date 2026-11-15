@@ -243,26 +243,6 @@
     <p class="muted">Nothing in this period.</p>
   {/if}
 
-  {#if data.runs.length && !show && !params().get('q')}
-    <h2>Legacy cleanup history</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Completed</th><th>Status</th><th>Storage</th><th>Media</th><th>Torrents</th><th>Reclaimed</th></tr></thead>
-        <tbody>
-          {#each data.runs as r, i (i)}
-            <tr>
-              <td class="nowrap">{stamp(r.completedAt)}</td>
-              <td>{r.status}</td>
-              <td>{r.usageBefore.toFixed(2)}% → {r.usageAfter.toFixed(2)}%</td>
-              <td class="num">{r.mediaRemoved}</td>
-              <td class="num">{r.torrentsRemoved}</td>
-              <td class="num">{r.reclaimed}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
 {/if}
 {/if}
 

@@ -38,17 +38,16 @@ type activityJSON struct {
 }
 
 type activityPageJSON struct {
-	Rows  []activityJSON   `json:"rows"`
-	Total int              `json:"total"`
-	Page  int              `json:"page"`
-	Pages int              `json:"pages"`
-	Runs  []cleanupRunJSON `json:"runs"`
+	Rows  []activityJSON `json:"rows"`
+	Total int            `json:"total"`
+	Page  int            `json:"page"`
+	Pages int            `json:"pages"`
 }
 
 // historyList answers GET /api/history: what was added (a title's files
 // on one day) and removed, the newest first, a page of historyPageSize.
 // days (7 when not given, 0 for all), show (added, removed, failed) and q
-// (in the titles) choose the rows; the legacy cleanup runs come along.
+// (in the titles) choose the rows.
 func (server *Server) historyList(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	days := 7
@@ -67,7 +66,7 @@ func (server *Server) historyList(w http.ResponseWriter, r *http.Request) {
 	}
 	page, _ := strconv.Atoi(query.Get("page"))
 	page = max(page, 1)
-	out := activityPageJSON{Rows: []activityJSON{}, Page: page, Pages: 1, Runs: []cleanupRunJSON{}}
+	out := activityPageJSON{Rows: []activityJSON{}, Page: page, Pages: 1}
 	db := server.inv.Store()
 	if db == nil {
 		writeJSON(w, http.StatusOK, out)
@@ -91,11 +90,6 @@ func (server *Server) historyList(w http.ResponseWriter, r *http.Request) {
 			row.ServiceID, row.SourceID, row.Day = a.ServiceID, a.SourceID, a.Day
 		}
 		out.Rows = append(out.Rows, row)
-	}
-	runs, _ := db.CleanupRuns(100)
-	for _, run := range runs {
-		out.Runs = append(out.Runs, cleanupRunJSON{CompletedAt: run.CompletedAt, Status: run.Status, UsageBefore: run.UsageBefore, UsageAfter: run.UsageAfter,
-			MediaRemoved: run.MediaRemoved, TorrentsRemoved: run.TorrentsRemoved, Reclaimed: humanSize(run.ReclaimedBytes)})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

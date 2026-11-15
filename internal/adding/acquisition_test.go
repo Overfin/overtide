@@ -80,7 +80,6 @@ func TestRunSearchesAiringEpisodesBeforeWishes(t *testing.T) {
 	if err := service.inv.SetAdding(config.AddingOn, config.ManageAll, 1, 10, 0); err != nil {
 		t.Fatal(err)
 	}
-	service.inv.Store().SetMeta(tagsKey, "done")
 	entries := []Entry{{Key: movieKey(9), Kind: "movie", ServiceID: "r", ExternalID: 9, Title: "Wish", Source: FromRequest, State: Waiting, AddedAt: now}}
 	if err := service.save(entries); err != nil {
 		t.Fatal(err)
@@ -191,7 +190,6 @@ func TestRunKeepsSearchesForWishes(t *testing.T) {
 		if err := service.inv.Refresh(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		service.inv.Store().SetMeta(tagsKey, "done")
 		if wish {
 			entries := []Entry{{Key: movieKey(90), Kind: "movie", ServiceID: "r", ExternalID: 90, ArrID: 9, Title: "Wish", Source: FromRequest, State: Waiting, AddedAt: now}}
 			if err := service.save(entries); err != nil {

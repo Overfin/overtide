@@ -272,16 +272,6 @@ type historyEventJSON struct {
 	Errors      []string          `json:"errors"`
 }
 
-type cleanupRunJSON struct {
-	CompletedAt     time.Time `json:"completedAt,omitzero"`
-	Status          string    `json:"status"`
-	UsageBefore     float64   `json:"usageBefore"`
-	UsageAfter      float64   `json:"usageAfter"`
-	MediaRemoved    int64     `json:"mediaRemoved"`
-	TorrentsRemoved int64     `json:"torrentsRemoved"`
-	Reclaimed       string    `json:"reclaimed"`
-}
-
 // historyEventOut is one removal as History's details show it.
 func historyEventOut(view historyEventView) historyEventJSON {
 	event := historyEventJSON{ID: view.ID, CreatedAt: view.CreatedAt, Label: view.RequestedLabel, Kind: view.RequestedKind, ServiceName: view.ServiceName,

@@ -54,7 +54,6 @@ func TestRunHoldsEveryTitleAtTheDailyLimit(t *testing.T) {
 	if err := service.recordStarted("", 1); err != nil {
 		t.Fatal(err)
 	}
-	service.inv.Store().SetMeta(tagsKey, "done") // no Overtide tags to replace
 	entries := []Entry{
 		{Key: movieKey(1), Kind: "movie", ServiceID: "r", ExternalID: 1, Title: "Suggested", Source: FromOverfin, State: Waiting, AddedAt: now},
 		{Key: movieKey(2), Kind: "movie", ServiceID: "r", ExternalID: 2, Title: "Asked for", Source: FromRequest, State: Waiting, AddedAt: now},

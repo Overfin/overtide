@@ -13,50 +13,15 @@ const (
 	// by the operator, an import list or another app. Overtide manages it
 	// only while "Manage all" is on.
 	TagFound = "overtide-found"
-	// TagNew is TagFound's former name for what was added from outside
-	// while "Manage all" was on: read as TagFound, and replaced by it once.
-	TagNew = "overtide-new"
 )
 
 // TagIgnore is set by the operator, in Radarr or Sonarr: a title
 // Overtide never takes, tags, unmonitors or searches for.
 const TagIgnore = "overtide-ignore"
 
-// The tags' names when adding was a separate app, Overswell (2026-10-30 to
-// 11-05): adding replaces them once (see LegacyTags), and reads them as the
-// new ones until then (see sameTag).
-var formerNames = map[string]string{
-	TagAdded:     "overswell-added",
-	TagRequested: "overswell-requested",
-	TagFound:     "overswell-found",
-	TagNew:       "overswell-new",
-	TagIgnore:    "overswell-ignore",
-}
-
-// legacyTag is Overtide's own tag from before the split, when it also
-// added titles: it's replaced by where the title came from.
-const legacyTag = "overtide"
-
-// LegacyTags are the former tags and what replaces each; "overtide" is
-// replaced by where the title came from ("").
-var LegacyTags = []struct{ Old, New string }{
-	{legacyTag, ""},
-	{formerNames[TagAdded], TagAdded},
-	{formerNames[TagRequested], TagRequested},
-	{formerNames[TagFound], TagFound},
-	{formerNames[TagNew], TagNew},
-	{formerNames[TagIgnore], TagIgnore},
-	{TagNew, TagFound},
-	{formerNames[TagNew], TagFound},
-}
-
-// sameTag reports whether label is tag, or the name tag had under
-// Overswell.
+// sameTag reports whether label is tag, case aside.
 func sameTag(label, tag string) bool {
-	if tag == TagFound && (strings.EqualFold(label, TagNew) || strings.EqualFold(label, formerNames[TagNew])) {
-		return true // TagFound's former name, until replaced
-	}
-	return strings.EqualFold(label, tag) || (formerNames[tag] != "" && strings.EqualFold(label, formerNames[tag]))
+	return strings.EqualFold(label, tag)
 }
 
 // ManagedTags are adding's tags: what Overtide added (OwnTags), and what
