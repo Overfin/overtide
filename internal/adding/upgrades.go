@@ -122,9 +122,10 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 	return out, nil
 }
 
-// searchUpgrades searches for better copies of what's below its quality
-// cutoff, most valued first, within the upgrades a day and budget, each
-// title at most once in UpgradeAgain: monitored for its search, unmonitored
+// searchUpgrades searches for better copies, most valued first, within the
+// upgrades a day and budget: the seasons that came complete without their
+// whole-season pack (a pack sought), and what's below its quality cutoff,
+// each at most once in UpgradeAgain: monitored for its search, unmonitored
 // right after, so Radarr and Sonarr don't go on upgrading it on their own.
 // Seasons still airing, or lacking episodes, wait. In dry run, nothing goes.
 // It returns the searches it asked for.
@@ -132,20 +133,34 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 	if budget <= 0 || dryRun || !service.anyUpgradeRoom(cfg) {
 		return 0, nil
 	}
-	room := budget
-	// Seasons complete without their pack first: those are holes filled.
-	used, err := service.sonarr.PackUpgrades(ctx, cfg, room)
+	room, used := budget, 0
+	packs, err := service.sonarr.DuePacks()
 	if err != nil {
-		return used, err
+		return 0, err
 	}
 	searched, err := service.upgradesSearched()
 	if err != nil {
-		return used, err
+		return 0, err
 	}
 	candidates, err := service.upgradeCandidates(ctx, cfg)
 	if err != nil {
-		return used, err
+		return 0, err
 	}
+	// One queue, by value: a pack goes before a lesser title, not before all.
+	type job struct {
+		value float64
+		pack  *sonarrdriver.DuePack
+		c     upgradeCandidate
+	}
+	var queue []job
+	for i := range packs {
+		p := &packs[i]
+		queue = append(queue, job{value: service.seasonValue(ctx, cfg, p.ServiceID, p.SeriesID, p.Season), pack: p})
+	}
+	for _, c := range candidates {
+		queue = append(queue, job{value: c.value, c: c})
+	}
+	sort.SliceStable(queue, func(i, j int) bool { return queue[i].value > queue[j].value })
 	moving := map[string]bool{}
 	for _, entry := range entries {
 		if entry.ArrID != 0 && !entry.waiting() && entry.State != Imported {
@@ -161,10 +176,21 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 		disk = service.disk
 	}
 	removed := service.sonarr.Removed()
-	for _, c := range candidates {
+	for _, j := range queue {
 		if used >= room || ctx.Err() != nil || service.trackersDown != "" {
 			break
 		}
+		if j.pack != nil {
+			went, err := service.sonarr.PackUpgrade(ctx, cfg, *j.pack)
+			if went {
+				used++
+			}
+			if err != nil {
+				return used, err
+			}
+			continue
+		}
+		c := j.c
 		if _, out := removed.Upgrades[c.key()]; out {
 			continue // removed by the operator
 		}
@@ -262,7 +288,7 @@ type UpgradeRow struct {
 	Title string
 	Kind  model.MediaType
 	// Why: "Below its quality cutoff", or "Whole-season pack" for a
-	// season that came complete without one (searched first).
+	// season that came complete without one.
 	Why string
 	// Value is Overfin's score of it, 0 when unknown; LastSearched, its
 	// last upgrade search; Next, when it may be searched again (zero:
@@ -290,7 +316,6 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		}
 		out = append(out, row)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
 	candidates, err := service.upgradeCandidates(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -313,6 +338,8 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		}
 		out = append(out, row)
 	}
+	// One order, by value, as searchUpgrades goes.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Value > out[j].Value })
 	return out, nil
 }
 

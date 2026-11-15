@@ -79,7 +79,7 @@
   const columns: [string, string, string][] = [['title', 'Title', ''], ['value', 'Value', 'hide-narrow'], ['last', 'Last search', ''], ['next', 'Next search', '']];
 </script>
 
-<PageHead title="Upgrades" description="Films and seasons searched for a better copy, in the order they're searched: seasons that came without their whole-season pack first, then what's below its quality cutoff, the most valued first. Each one at most once in 30 days." />
+<PageHead title="Upgrades" description="Films and seasons searched for a better copy, the most valued first: what's below its quality cutoff, and seasons that came episode by episode, searched for their whole-season pack. Each one at most once in 30 days." />
 
 {#if failure}<Notice warn>{failure}</Notice>{/if}
 

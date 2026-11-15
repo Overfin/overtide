@@ -254,3 +254,54 @@ func TestDownloadsFromTheQueues(t *testing.T) {
 		t.Errorf("left the queue: %+v", g)
 	}
 }
+
+// Packs and what's below its cutoff are one queue, by value: a pack goes
+// before a lesser film, not before all.
+func TestUpgradesOneOrder(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "High", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.AddSeries(5, nil, arrfake.Season(1, 2, 2))
+	fake.AddEpisode(51, 5, 1, old, true)
+	fake.AddEpisode(52, 5, 1, old, true)
+	fake.Cutoff["radarr"] = []map[string]any{{"id": 2}}
+	service, cfg := manageTestService(t, fake, config.ManageAll)
+	if err := service.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	sonarrID := cfg.ServicesOfType("sonarr")[0].ID
+	pack := &sonarrdriver.SeasonPack{SeriesID: 5, Season: 1, Upgrade: true}
+	if err := service.sonarr.SaveStates(map[string]*sonarrdriver.State{sonarrID: {Seasons: map[string]*sonarrdriver.SeasonPack{"5/1": pack}}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Adding.UpgradesPerDay = 5
+	service.values = &overfin.Values{Films: map[int]float64{12: 9}, Seasons: map[int]map[int]float64{1005: {1: 5}}}
+
+	rows, err := service.Upgrades(context.Background())
+	if err != nil || len(rows) != 2 || rows[0].Title != "High" || rows[1].Why != "Whole-season pack" {
+		t.Fatalf("page order: %+v, %v", rows, err)
+	}
+	if used, err := service.searchUpgrades(context.Background(), cfg, nil, 1, false); err != nil || used != 1 {
+		t.Fatalf("%d searches, %v", used, err)
+	}
+	states, _ := service.sonarr.States()
+	if got := fake.Searches(); !slices.Equal(got, []string{"search film [2]"}) || !states[sonarrID].Seasons["5/1"].LastTry.IsZero() {
+		t.Errorf("the film first: %v, pack %+v", got, states[sonarrID].Seasons["5/1"])
+	}
+
+	// Valued more than the film, the pack goes first.
+	service.values = &overfin.Values{Films: map[int]float64{12: 9}, Seasons: map[int]map[int]float64{1005: {1: 50}}}
+	service.now = func() time.Time { return now.Add(25 * time.Hour) }
+	rows, _ = service.Upgrades(context.Background())
+	if len(rows) != 2 || rows[0].Why != "Whole-season pack" {
+		t.Errorf("page order: %+v", rows)
+	}
+	if used, _ := service.searchUpgrades(context.Background(), cfg, nil, 1, false); used != 1 {
+		t.Errorf("pack search: %d", used)
+	}
+	states, _ = service.sonarr.States()
+	if p := states[sonarrID].Seasons["5/1"]; p.LastTry.IsZero() && p.Tries == 0 && p.GrabbedAt.IsZero() {
+		t.Errorf("the pack wasn't searched: %+v, %v", p, fake.Searches())
+	}
+}
