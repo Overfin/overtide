@@ -28,7 +28,10 @@ const episodesKey = "adding.episodes"
 // comes through its fields, set by the adding side.
 type Driver struct {
 	inv *inventory.Service
-	now func() time.Time
+	// torrentFiles lists a torrent's files by name (tests set it; else the
+	// inventory asks qBittorrent).
+	torrentFiles func(ctx context.Context, hash string) (names []string, found bool, err error)
+	now          func() time.Time
 	// Room says why nothing may be added to a folder now, or "".
 	Room func(cfg config.Config, folder string) string
 	// Managed reports whether a series is Overtide's.

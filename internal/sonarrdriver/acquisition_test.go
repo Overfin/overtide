@@ -394,8 +394,17 @@ func TestRefusedFiles(t *testing.T) {
 		// Another season's, and the series' own file: never imported.
 		{"path": "/d/Show.S01E01.mkv", "seasonNumber": 1, "episodes": []map[string]any{{"id": 1}}, "quality": map[string]any{}, "languages": []any{}, "downloadId": "worse"},
 		{"path": "/data/Series/1/Show - S02E02.mkv", "seasonNumber": two, "episodes": []map[string]any{{"id": 4}}, "quality": map[string]any{}, "languages": []any{}},
+		// Another torrent's, in the folder they share: Sonarr, given the
+		// series, pins it on this one's episode by its number.
+		{"path": "/d/Malcolm.S02E02.mkv", "seasonNumber": two, "episodes": []map[string]any{{"id": 4}}, "quality": map[string]any{}, "languages": []any{}, "downloadId": "worse"},
 	}
 	driver, cfg := testDriver(t, fake, config.ManageAll)
+	driver.torrentFiles = func(_ context.Context, hash string) ([]string, bool, error) {
+		if hash != "worse" {
+			return nil, false, nil
+		}
+		return []string{"d/Show.S02E01.mkv", "d/Show.S02E02.mkv"}, true, nil
+	}
 	if err := driver.inv.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -510,6 +510,12 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 	if err != nil {
 		return 0, err
 	}
+	// Given the series, Sonarr lists the whole folder the torrent is in and
+	// pins every file to that series by its number: a folder torrents share
+	// ("Saison 1") would put another series' episodes in this one's place.
+	if items, err = driver.torrentOwn(ctx, downloadID, items); err != nil {
+		return 0, err
+	}
 	list, err := episodes(seriesID)
 	if err != nil {
 		return 0, err

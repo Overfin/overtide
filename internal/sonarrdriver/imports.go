@@ -177,10 +177,24 @@ func (driver *Driver) importFrom(ctx context.Context, cfg config.Config, client 
 // torrent client doesn't have (gone, or not a torrent) keeps Sonarr's list.
 func (driver *Driver) downloadFiles(ctx context.Context, client *sonarr.Client, downloadID string) ([]sonarr.ImportItem, error) {
 	files, err := client.DownloadFiles(downloadID)
-	if err != nil || driver.inv == nil {
+	if err != nil {
 		return files, err
 	}
-	names, found, err := driver.inv.TorrentFileNames(ctx, downloadID)
+	return driver.torrentOwn(ctx, downloadID, files)
+}
+
+// torrentOwn keeps, of a download's files as Sonarr lists them, those of
+// the torrent itself (ownFiles). A download the torrent client doesn't
+// have (gone, or not a torrent) keeps Sonarr's list.
+func (driver *Driver) torrentOwn(ctx context.Context, downloadID string, files []sonarr.ImportItem) ([]sonarr.ImportItem, error) {
+	list := driver.torrentFiles
+	if list == nil {
+		if driver.inv == nil {
+			return files, nil
+		}
+		list = driver.inv.TorrentFileNames
+	}
+	names, found, err := list(ctx, downloadID)
 	if err != nil {
 		return nil, fmt.Errorf("the torrent's files: %w", err)
 	}
