@@ -383,12 +383,15 @@ func titleKey(m model.Media) string {
 func (service *Service) Run(ctx context.Context) error {
 	cfg := service.inv.Config()
 	mode := cfg.Adding.Mode
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	// Seasons that came complete leave "Needs a look", adding on or not: it
+	// only reads Sonarr.
+	service.sonarr.SettleLooks(ctx, cfg)
 	if mode != config.AddingDryRun && mode != config.AddingOn {
 		return nil
 	}
 	dryRun := mode == config.AddingDryRun
-	service.mu.Lock()
-	defer service.mu.Unlock()
 	budget := cfg.Adding.SearchesPerRun()
 	service.setLive(func(l *Live) { *l = Live{Running: true, DryRun: dryRun, Budget: budget} })
 	defer service.setLive(func(l *Live) {
