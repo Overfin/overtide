@@ -336,3 +336,49 @@ func TestUpgradesAboveTheRemovalLine(t *testing.T) {
 		t.Errorf("searched: %v", got)
 	}
 }
+
+// What's below cutoff is read once and kept: the page answers from the
+// kept list, and when it's old, reads a fresh one behind the page.
+func TestBelowCutoffKept(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.Films[1] = map[string]any{"id": 1, "tmdbId": 11, "title": "One", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "Two", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.Cutoff["radarr"] = []map[string]any{{"id": 1}}
+	service, _ := manageTestService(t, fake, config.ManageAll)
+	if err := service.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	service.values = &overfin.Values{Films: map[int]float64{11: 5, 12: 6}}
+	titles := func() []string {
+		t.Helper()
+		rows, err := service.Upgrades(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range rows {
+			out = append(out, r.Title)
+		}
+		return out
+	}
+	if got := titles(); !slices.Equal(got, []string{"One"}) {
+		t.Fatalf("first read: %v", got)
+	}
+	fake.Mu.Lock()
+	fake.Cutoff["radarr"] = []map[string]any{{"id": 1}, {"id": 2}}
+	fake.Mu.Unlock()
+	if got := titles(); !slices.Equal(got, []string{"One"}) {
+		t.Errorf("kept list: %v", got)
+	}
+	// Old: answered from the kept list, a fresh one read behind it.
+	service.now = func() time.Time { return now.Add(cutoffFresh + time.Minute) }
+	if got := titles(); !slices.Equal(got, []string{"One"}) {
+		t.Errorf("old list, at once: %v", got)
+	}
+	service.cutoff.done.Wait()
+	if got := titles(); !slices.Equal(got, []string{"Two", "One"}) {
+		t.Errorf("fresh list: %v", got)
+	}
+}

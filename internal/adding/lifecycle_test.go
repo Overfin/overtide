@@ -26,6 +26,8 @@ func newTestService(t *testing.T, cfg config.Config, now time.Time) *Service {
 	t.Cleanup(func() { database.Close() })
 	service := New(inventory.New(cfg, database))
 	service.now = func() time.Time { return now }
+	// A read behind the Upgrades page ends before the database closes.
+	t.Cleanup(service.cutoff.done.Wait)
 	return service
 }
 

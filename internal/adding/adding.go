@@ -234,6 +234,8 @@ type Service struct {
 	// values are the library's scores, read once a run when asked (see
 	// libraryValues).
 	values *overfin.Values
+	// cutoff keeps what's below cutoff between reads (belowCutoff).
+	cutoff cutoffState
 	sonarr *sonarrdriver.Driver
 	// Room, when set, says why nothing may be added to a root folder now,
 	// or "": past its disk's critical threshold, say. In dry run, which

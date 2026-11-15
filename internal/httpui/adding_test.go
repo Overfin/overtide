@@ -3,6 +3,7 @@ package httpui
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,8 +26,14 @@ func TestAddingRoutes(t *testing.T) {
 		t.Fatalf("adding: %d %+v", code, list)
 	}
 	now, code := libraryGet[nowData](t, handler, "/api/adding/now")
-	if code != http.StatusOK || len(now.Holding) == 0 || now.Holding[0] != "Adding is off." {
+	// Off: said once, and no time promised for anything.
+	if code != http.StatusOK || now.Doing != "Adding is off" || slices.Contains(now.Holding, "Adding is off.") {
 		t.Fatalf("now: %d %+v", code, now)
+	}
+	for _, row := range now.Next {
+		if row.When != "" {
+			t.Errorf("a time while off: %+v", row)
+		}
 	}
 	settings, code := libraryGet[addingSettingsData](t, handler, "/api/settings/adding")
 	if code != http.StatusOK || settings.Searches != config.DefaultSearches || settings.Destinations == nil {

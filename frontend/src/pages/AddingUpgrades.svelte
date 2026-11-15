@@ -28,6 +28,8 @@
     q: string;
     paging: Paging;
     removalLine?: number;
+    cutoffAt?: string;
+    cutoffReading?: boolean;
   }
 
   let data = $state<Upgrades | null>(null);
@@ -95,6 +97,9 @@
         {folder.root}: {folder.perDay === 0 ? 'no upgrades' : `${folder.today} of ${folder.perDay} upgrade searches used in the last 24 hours`}.
       </p>
     {/each}
+  {/if}
+  {#if data.cutoffAt}
+    <p class="muted">What's below its quality cutoff, as Radarr and Sonarr said at {short(data.cutoffAt)}{data.cutoffReading ? ', being asked again now' : ''}. They're asked again once that's over 30 minutes old.</p>
   {/if}
   {#if data.removalLine}
     <p class="muted">Titles valued {data.removalLine.toFixed(1)} or less aren't upgraded: removal took titles up to that value in the last 30 days, and a bigger copy would only cost the titles below it their room.</p>

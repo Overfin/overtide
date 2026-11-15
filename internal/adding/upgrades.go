@@ -74,11 +74,16 @@ func (c upgradeCandidate) key() string {
 }
 
 // upgradeCandidates lists what's below its cutoff among the titles Overtide
-// manages, most valued first.
-func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config) ([]upgradeCandidate, error) {
+// manages, most valued first, from the kept list (belowCutoff; wait: as
+// there). ok is false while none is kept yet.
+func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config, wait bool) ([]upgradeCandidate, bool, error) {
+	cutoff, ok, err := service.belowCutoff(ctx, cfg, wait)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
 	items, _, err := service.inv.Snapshot()
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	known := map[string]model.Media{}
 	for _, m := range items {
@@ -89,30 +94,14 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 	values := service.libraryValues(ctx, cfg)
 	var out []upgradeCandidate
 	for _, svc := range cfg.ServicesOfType("radarr") {
-		client, err := service.inv.RadarrClient(svc.ID)
-		if err != nil {
-			return nil, err
-		}
-		ids, err := client.WithContext(ctx).BelowCutoff()
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range ids {
+		for _, id := range cutoff.Films[svc.ID] {
 			if m, ok := known[fmt.Sprintf("%s|%s|%d", svc.ID, model.Movie, id)]; ok {
 				out = append(out, upgradeCandidate{serviceID: svc.ID, kind: model.Movie, arrID: id, title: m.Title, path: m.Path, value: values.Films[m.TMDBID]})
 			}
 		}
 	}
 	for _, svc := range cfg.ServicesOfType("sonarr") {
-		client, err := service.inv.SonarrClient(svc.ID)
-		if err != nil {
-			return nil, err
-		}
-		seasons, err := client.WithContext(ctx).BelowCutoff()
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range seasons {
+		for _, s := range cutoff.Seasons[svc.ID] {
 			m, ok := known[fmt.Sprintf("%s|%s|%d", svc.ID, model.Series, s.SeriesID)]
 			if ok && s.Season > 0 {
 				out = append(out, upgradeCandidate{serviceID: svc.ID, kind: model.Series, arrID: s.SeriesID, season: s.Season, title: m.Title, path: m.Path, value: values.Seasons[m.TVDBID][s.Season]})
@@ -120,7 +109,7 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].value > out[j].value })
-	return out, nil
+	return out, true, nil
 }
 
 // searchUpgrades searches for better copies, most valued first, within the
@@ -143,7 +132,7 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 	if err != nil {
 		return 0, err
 	}
-	candidates, err := service.upgradeCandidates(ctx, cfg)
+	candidates, _, err := service.upgradeCandidates(ctx, cfg, true)
 	if err != nil {
 		return 0, err
 	}
@@ -321,7 +310,8 @@ func (service *Service) Upgrades(ctx context.Context) ([]UpgradeRow, error) {
 		}
 		out = append(out, row)
 	}
-	candidates, err := service.upgradeCandidates(ctx, cfg)
+	// The kept list, read again behind the page when old (CutoffAt).
+	candidates, _, err := service.upgradeCandidates(ctx, cfg, false)
 	if err != nil {
 		return nil, err
 	}

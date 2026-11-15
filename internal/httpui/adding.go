@@ -264,6 +264,10 @@ type upgradesData struct {
 	// RemovalLine: titles valued this or less aren't upgraded, removal
 	// having taken titles up to it lately (absent: it took none).
 	RemovalLine float64 `json:"removalLine,omitempty"`
+	// CutoffAt is when Radarr and Sonarr were last asked what's below
+	// cutoff; CutoffReading, that they're being asked again now.
+	CutoffAt      time.Time `json:"cutoffAt,omitzero"`
+	CutoffReading bool      `json:"cutoffReading,omitempty"`
 }
 
 type upgradesFolder struct {
@@ -289,6 +293,7 @@ func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
 	if line, ok := server.adder.RemovalLine(); ok {
 		data.RemovalLine = line
 	}
+	data.CutoffAt, data.CutoffReading = server.adder.CutoffAt()
 	all := make([]upgradeRow, 0, len(rows))
 	q := strings.ToLower(strings.TrimSpace(data.Q))
 	for _, row := range rows {

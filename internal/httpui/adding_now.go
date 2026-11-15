@@ -68,6 +68,8 @@ func (server *Server) nowData(ctx context.Context) nowData {
 			}
 		}
 	}
+	// Off, the task still runs but tries nothing: no time is promised.
+	off := cfg.Adding.Mode != config.AddingOn && cfg.Adding.Mode != config.AddingDryRun
 	if !data.Running {
 		data.Doing = "Waiting"
 		for _, status := range server.addingTasks() {
@@ -75,14 +77,12 @@ func (server *Server) nowData(ctx context.Context) nowData {
 				data.Doing = "Waiting: titles tried next at " + status.NextRun.Local().Format("15:04")
 			}
 		}
+		if off {
+			data.Doing = "Adding is off"
+		}
 	}
-
-	switch cfg.Adding.Mode {
-	case config.AddingOn:
-	case config.AddingDryRun:
+	if cfg.Adding.Mode == config.AddingDryRun {
 		data.Holding = append(data.Holding, "Dry run: nothing is added, searched for, tagged or unmonitored.")
-	default:
-		data.Holding = append(data.Holding, "Adding is off.")
 	}
 	if live.Stopped != "" && !live.Running {
 		data.Holding = append(data.Holding, "The last run's searches stopped: "+live.Stopped+".")
@@ -119,6 +119,9 @@ func (server *Server) nowData(ctx context.Context) nowData {
 			}
 			if !d.Queued {
 				row.Status = "Left the queue: imported or stopped, the next run says which"
+				if off {
+					row.Status = "Left the queue: imported or stopped"
+				}
 			} else if !d.Done.IsZero() && d.Done.After(now) && d.Progress < 1 {
 				row.Done = "about " + since(d.Done.Sub(now)) + " left"
 			}
@@ -144,7 +147,10 @@ func (server *Server) nowData(ctx context.Context) nowData {
 				at = entry.NextTry
 			}
 			row := nextRow{Title: entry.Title, Kind: kindName(entry.Kind), When: "tried " + whenWords(at, now)}
-			if data.Running && !at.After(now) {
+			switch {
+			case off:
+				row.When = "" // in line, but nothing is tried while adding is off
+			case data.Running && !at.After(now):
 				row.When = "tried in this run, in turn"
 			}
 			data.Next = append(data.Next, row)

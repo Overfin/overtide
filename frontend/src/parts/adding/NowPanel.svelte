@@ -43,9 +43,9 @@
         <ul class="holding">{#each now.holding as h, i (i)}<li>{h}</li>{/each}</ul>
       {/if}
     </div>
-    <h3>Tried next</h3>
+    <h3>Next in line</h3>
     {#each now.next as n, i (i)}
-      <div class="next"><b>{n.title}</b> <span class="muted">· {n.kind === 'series' ? 'Series' : 'Film'} · {n.when}</span></div>
+      <div class="next"><b>{n.title}</b> <span class="muted">· {n.kind === 'series' ? 'Series' : 'Film'}{#if n.when} · {n.when}{/if}</span></div>
     {:else}
       <p class="muted">Nothing waits.</p>
     {/each}
