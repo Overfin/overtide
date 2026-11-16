@@ -446,3 +446,15 @@ func (client *Client) Health(apiVersion string) (string, []Problem, error) {
 
 // maxAnswer bounds a successful answer read whole.
 const maxAnswer = 512 << 20
+
+// RecycleBin is the folder Radarr or Sonarr moves the files it deletes to
+// (Media Management, Recycling Bin); "" when a delete is final.
+func (client *Client) RecycleBin() (string, error) {
+	var cfg struct {
+		RecycleBin string `json:"recycleBin"`
+	}
+	if err := client.Get("/api/v3/config/mediamanagement", &cfg); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(cfg.RecycleBin), nil
+}

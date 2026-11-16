@@ -764,6 +764,32 @@ func (service *Service) AddSeriesImportListExclusion(ctx context.Context, mediaI
 	return client.WithContext(ctx).AddImportListExclusion(mediaItem.Title, mediaItem.TVDBID)
 }
 
+// RecycleBins names the Radarr and Sonarr services that move deleted files
+// to a recycle bin, with its folder: removing a title there frees no space
+// until the bin is emptied.
+func (service *Service) RecycleBins(ctx context.Context) (map[string]string, error) {
+	service.mu.RLock()
+	var clients []*arr.Client
+	for _, c := range service.rad {
+		clients = append(clients, c.Client)
+	}
+	for _, c := range service.son {
+		clients = append(clients, c.Client)
+	}
+	service.mu.RUnlock()
+	out := map[string]string{}
+	for _, c := range clients {
+		bin, err := c.WithContext(ctx).RecycleBin()
+		if err != nil {
+			return nil, err
+		}
+		if bin != "" {
+			out[c.App()] = bin
+		}
+	}
+	return out, nil
+}
+
 // RadarrClient and SonarrClient give the client of one service, for adding
 // titles.
 func (service *Service) RadarrClient(svcID string) (*radarr.Client, error) {

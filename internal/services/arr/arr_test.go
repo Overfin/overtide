@@ -113,3 +113,25 @@ func TestPatientWaitsLonger(t *testing.T) {
 		t.Fatal("not patient, or the client changed")
 	}
 }
+
+// RecycleBin reads Media Management's recycle bin folder; empty when a
+// delete is final.
+func TestRecycleBin(t *testing.T) {
+	bin := "/data/.recycle"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/config/mediamanagement" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"recycleBin":%q,"recycleBinCleanupDays":7}`, bin)
+	}))
+	defer srv.Close()
+	c := New("radarr", srv.URL, "key")
+	if got, err := c.RecycleBin(); err != nil || got != "/data/.recycle" {
+		t.Errorf("a bin: %q %v", got, err)
+	}
+	bin = ""
+	if got, err := c.RecycleBin(); err != nil || got != "" {
+		t.Errorf("no bin: %q %v", got, err)
+	}
+}
