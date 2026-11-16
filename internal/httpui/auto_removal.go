@@ -244,6 +244,13 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 		case m.Protected:
 			return fmt.Errorf("%s: %s", m.Title, m.ProtectionReason)
 		}
+		if n, err := strconv.Atoi(form.Get("season")); err == nil {
+			for _, season := range m.Seasons {
+				if season.Number == n && season.Protected {
+					return fmt.Errorf("%s season %d: %s", m.Title, n, season.ProtectionReason)
+				}
+			}
+		}
 		for _, hash := range form["torrent"] {
 			if err := checkTorrent(hash, false); err != nil {
 				return err
@@ -338,6 +345,11 @@ func (server *Server) formForAction(action cleanup.Action) (url.Values, error) {
 		form.Set("media_type", string(action.Media.Type))
 		form.Set("media_id", strconv.Itoa(action.Media.SourceID))
 		form.Set("service_id", action.Media.ServiceID)
+		if action.Season != nil {
+			// Its season, for the check just before it goes: a season can
+			// be protected since (an episode just added to it).
+			form.Set("season", strconv.Itoa(action.Season.Number))
+		}
 		for _, ref := range refs {
 			form.Add("managed_file", managedFileKey(ref))
 		}
