@@ -145,6 +145,8 @@ export interface CleanupPlan {
   dryRun: boolean;
   message: string;
   oldScores?: boolean;
+  /** Changes when the plan may have: asked again on live updates. */
+  stamp: string;
   selectedBytes: number;
   excluded: string[];
   torrents: CleanupRow[];

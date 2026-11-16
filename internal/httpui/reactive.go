@@ -22,10 +22,14 @@ type uiRevision struct {
 }
 
 type revisionHub struct {
-	mu          sync.Mutex
-	revision    atomic.Uint64
-	latest      uiRevision
-	subscribers map[chan uiRevision]struct{}
+	mu       sync.Mutex
+	revision atomic.Uint64
+	// planRevision is the last revision a cleanup plan may follow from:
+	// not the disks' bytes ticking, nor tasks merely starting or ending
+	// (see planStamp).
+	planRevision atomic.Uint64
+	latest       uiRevision
+	subscribers  map[chan uiRevision]struct{}
 }
 
 func newRevisionHub() *revisionHub {
@@ -46,6 +50,9 @@ func (hub *revisionHub) publish(kind string) uiRevision {
 		kind = "background"
 	}
 	revision := uiRevision{Revision: hub.revision.Add(1), Kind: kind}
+	if kind != "storage" && kind != "tasks" {
+		hub.planRevision.Store(revision.Revision)
+	}
 	hub.mu.Lock()
 	hub.latest = revision
 	for subscriber := range hub.subscribers {

@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,6 +23,7 @@ func (server *Server) storageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/storage/device", server.apiDeviceSettings)
 	mux.HandleFunc("PUT /api/storage/device", server.apiSetDeviceSettings)
 	mux.HandleFunc("GET /api/storage/plan", server.apiCleanupPlan)
+	mux.HandleFunc("GET /api/storage/plan/stamp", server.apiCleanupPlanStamp)
 	mux.HandleFunc("POST /api/storage/plan/clean", server.apiCleanupPlanClean)
 	mux.HandleFunc("POST /api/storage/plan/protect", server.apiCleanupPlanProtect)
 	mux.HandleFunc("POST /api/storage/keep", server.apiKeep)
@@ -290,7 +292,10 @@ type cleanupPlanJSON struct {
 	Message    string     `json:"message"`
 	// OldScores: Overfin couldn't be asked just now, so the plan is made on
 	// the scores last read.
-	OldScores     bool             `json:"oldScores,omitempty"`
+	OldScores bool `json:"oldScores,omitempty"`
+	// Stamp is planStamp's as the plan was built: the page asks for it
+	// again on live updates, and the plan only when it changed.
+	Stamp         string           `json:"stamp"`
 	SelectedBytes uint64           `json:"selectedBytes"`
 	Excluded      []string         `json:"excluded"`
 	Torrents      []cleanupRowJSON `json:"torrents"`
@@ -387,17 +392,61 @@ func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
 // empty plan.
 func (server *Server) apiCleanupPlan(w http.ResponseWriter, r *http.Request) {
 	excluded := excludedSetFrom(r.URL.Query()["excluded"])
+	path := r.URL.Query().Get("path")
+	// Taken before the plan: a change while it's built shows at the next
+	// check.
+	stamp := server.planStamp(path)
 	oldScores := false
-	if excluded == nil && server.tasks != nil {
+	// A live update (live=1) uses the scores as they are: only opening the
+	// plan asks Overfin.
+	if excluded == nil && server.tasks != nil && r.URL.Query().Get("live") != "1" {
 		if err := server.refreshScores(r.Context(), "A cleanup plan was opened"); err != nil {
 			log.Printf("[cleanup-plan] Overfin's scores: %v", err)
 			oldScores = true
 		}
 	}
-	data, _ := server.planForDevice(r.URL.Query().Get("path"), excluded)
+	data, _ := server.planForDevice(path, excluded)
 	out := cleanupPlanJSONFrom(data)
 	out.OldScores = oldScores
+	out.Stamp = stamp
 	writeJSON(w, http.StatusOK, out)
+}
+
+// planStamp changes when a device's cleanup plan may have: something
+// changed besides the disks' bytes ticking (planRevision: the inventory,
+// the scores, a removal, the settings), what Overfin holds for a last
+// watch, or the disk going over or back under its target. It's cheap, so
+// the plan page asks it on every live update, and builds the plan again
+// only when it changed.
+func (server *Server) planStamp(path string) string {
+	var revision uint64
+	if server.revisions != nil {
+		revision = server.revisions.planRevision.Load()
+	}
+	held := server.heldOn(path)
+	titles := make([]string, 0, len(held))
+	for _, h := range held {
+		titles = append(titles, h.Title+"@"+h.Until.UTC().Format(time.RFC3339))
+	}
+	sort.Strings(titles)
+	over := false
+	cfg := server.inv.Config()
+	for _, device := range server.inv.StorageDevices() {
+		if device.RepresentativePath == path {
+			target, _ := cfg.ThresholdsFor(path)
+			if usable := device.UsableBytes(); usable > 0 {
+				over = float64(device.OvertideUsedBytes())/float64(usable)*100 > target
+			}
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.Join(titles, "\n")))
+	return fmt.Sprintf("%d-%x-%t", revision, sum[:6], over)
+}
+
+// apiCleanupPlanStamp answers a device's planStamp (GET
+// /api/storage/plan/stamp?path=…).
+func (server *Server) apiCleanupPlanStamp(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"stamp": server.planStamp(r.URL.Query().Get("path"))})
 }
 
 type cleanupPlanRequest struct {

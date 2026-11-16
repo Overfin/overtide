@@ -6,6 +6,7 @@
   import { untrack } from 'svelte';
   import { Card, Modal, Loading, Notice, Status, ask } from '@overfin/ui';
   import { get, post } from '../../lib/api';
+  import { follow } from '../../lib/live.svelte';
   import '../../styles/adding.css';
   import { short } from '../../lib/words-adding';
   import { human, identity, type CleanupPlan, type CleanupRow } from '../../lib/types-storage';
@@ -29,9 +30,11 @@
 
   const rows = $derived(plan ? [...plan.torrents, ...plan.media] : []);
 
-  async function load() {
+  async function load(live = false) {
     const query = new URLSearchParams({ path });
     for (const key of excluded) query.append('excluded', key);
+    // A live update uses the scores as they are: only opening asks Overfin.
+    if (live) query.set('live', '1');
     try {
       plan = await get<CleanupPlan>(`/api/storage/plan?${query}`);
       excluded = plan.excluded;
@@ -95,8 +98,25 @@
   // would otherwise load it again, and again (each time reading Overfin's
   // scores).
   $effect(() => {
-    untrack(load);
+    untrack(() => load());
   });
+
+  // Live: on each update, the plan's stamp is asked (cheap), and the plan
+  // built again only when it changed, never while a row is being acted on.
+  let checking = false;
+  async function check() {
+    if (!plan || busy || checking) return;
+    checking = true;
+    try {
+      const now = await get<{ stamp: string }>(`/api/storage/plan/stamp?${new URLSearchParams({ path })}`);
+      if (plan && now.stamp !== plan.stamp && !busy) await load(true);
+    } catch {
+      // The next update asks again.
+    } finally {
+      checking = false;
+    }
+  }
+  $effect(() => follow('immediate', check, check));
 </script>
 
 {#snippet heldList()}
