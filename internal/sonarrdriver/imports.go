@@ -331,10 +331,14 @@ func (driver *Driver) importDownload(ctx context.Context, cfg config.Config, cli
 		return nil
 	}
 	driver.Step(download.Title, fmt.Sprintf("Importing %d files", len(rest)))
-	if _, err := tries.SearchAndCheck(ctx,
+	// The files are held while Sonarr imports them, a removal waiting.
+	release := driver.inv.ShareFiles()
+	_, err = tries.SearchAndCheck(ctx,
 		func() (int, error) { return client.Import(download.SeriesID, rest) },
 		client.CommandStatus,
-		func() (bool, error) { return true, nil }); err != nil {
+		func() (bool, error) { return true, nil })
+	release()
+	if err != nil {
 		return err
 	}
 	log.Printf("[adding] imported %d files of %s, %d waiting", len(rest), download.Title, len(waited))

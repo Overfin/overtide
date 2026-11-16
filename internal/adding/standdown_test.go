@@ -116,3 +116,46 @@ func TestClearDoesntWaitForRepairs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The pass holds the files only for a step that moves or deletes them: a
+// removal clicked while it waits on Sonarr for anything else goes at once.
+func TestRemovalDoesntWaitForThePass(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	reached := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/sonarr") {
+			once.Do(func() { close(reached) })
+			<-release
+		}
+		fake.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	var released sync.Once
+	free := func() { released.Do(func() { close(release) }) }
+	defer free() // before the server closes, whatever happens
+	cfg := config.Config{Services: []config.Service{{ID: "s", Type: "sonarr", URL: srv.URL + "/sonarr", APIKey: "k"}}}
+	cfg.Adding.Mode = config.AddingOff
+	service := newTestService(t, cfg, now)
+	ran := make(chan error, 1)
+	go func() { ran <- service.Run(context.Background()) }()
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run never asked Sonarr")
+	}
+	locked := make(chan func(), 1)
+	go func() { locked <- service.inv.LockFiles() }()
+	select {
+	case unlock := <-locked:
+		unlock()
+	case <-time.After(2 * time.Second):
+		t.Fatal("a removal waited for the pass")
+	}
+	free()
+	if err := <-ran; err != nil {
+		t.Fatal(err)
+	}
+}

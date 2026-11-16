@@ -44,6 +44,9 @@ type Reliability struct {
 type Service struct {
 	cfg config.Config
 	mu  sync.RWMutex
+	// changes keeps Overtide's own changes to the files apart (ShareFiles,
+	// LockFiles).
+	changes sync.RWMutex
 	// health is each service's own state, by ID (CheckHealth).
 	healthMu         sync.RWMutex
 	health           map[string]ServiceHealth

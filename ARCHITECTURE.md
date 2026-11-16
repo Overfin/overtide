@@ -112,6 +112,10 @@ they received without polling.
 Shared resource claims may overlap; an exclusive claim conflicts with every
 claim on the same named resource. Claims are acquired atomically and remain
 held until the runner exits, including during cooperative cancellation.
+Claims are held for a whole run, so a long run touching files now and then
+(adding's pass) doesn't claim them: it holds them in process for each step
+that moves or deletes files (inventory's ShareFiles), and a removal takes
+them alone (LockFiles), waiting for the step under way at most.
 Priority selects only among resource-safe work. Emergency and mutation work may
 request interruption from explicitly interruptible work, while
 non-interruptible work reaches its safe boundary. Bounded aging prevents routine

@@ -205,6 +205,10 @@ Words used below:
       pack's files is of a lower quality, in the series' profile, than the
       season's worst file. When those qualities can't be read, no pack is
       taken.
+    Adding and removals never change the files at the same time: each of
+    adding's imports and each download it gives up waits for a removal
+    under way, and a removal waits for the one under way. The rest of
+    adding's run doesn't hold a removal back.
 28. Overtide's titles are those adding brought in (tagged `overtide-added`),
     and with "Manage all" on, every title in Radarr and Sonarr not tagged
     `overtide-ignore`.

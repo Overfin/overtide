@@ -141,10 +141,13 @@ func (driver *Driver) repairSeason(ctx context.Context, client *sonarr.Client, s
 			again = append(again, item)
 		}
 	}
-	if _, err := tries.SearchAndCheck(ctx,
+	release := driver.inv.ShareFiles()
+	_, err = tries.SearchAndCheck(ctx,
 		func() (int, error) { return client.ImportAs(series.ID, again, "copy") },
 		client.CommandStatus,
-		func() (bool, error) { return true, nil }); err != nil {
+		func() (bool, error) { return true, nil })
+	release()
+	if err != nil {
 		log.Printf("[adding] %s season %d, imported again: %v", series.Title, season, err)
 		return false, true
 	}

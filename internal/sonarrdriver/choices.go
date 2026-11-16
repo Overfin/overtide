@@ -114,7 +114,10 @@ func (driver *Driver) importChosen(ctx context.Context, choice ImportChoice) (ma
 		items[i].DownloadID = choice.DownloadID
 		imported[items[i].Path] = true
 	}
-	if _, err := client.Import(download.SeriesID, items); err != nil {
+	release := driver.inv.ShareFiles()
+	_, err = client.Import(download.SeriesID, items)
+	release()
+	if err != nil {
 		return nil, err
 	}
 	log.Printf("[adding] imported %d files of %s, as the operator said", len(items), download.Title)

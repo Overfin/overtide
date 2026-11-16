@@ -620,10 +620,13 @@ func (driver *Driver) replaceOlder(ctx context.Context, client *sonarr.Client, d
 	if len(rest) == 0 {
 		return 0, nil
 	}
-	if _, err := tries.SearchAndCheck(ctx,
+	release := driver.inv.ShareFiles()
+	_, err = tries.SearchAndCheck(ctx,
 		func() (int, error) { return client.Import(seriesID, rest) },
 		client.CommandStatus,
-		func() (bool, error) { return true, nil }); err != nil {
+		func() (bool, error) { return true, nil })
+	release()
+	if err != nil {
 		return 0, err
 	}
 	return len(rest), nil

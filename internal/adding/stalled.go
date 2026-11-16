@@ -150,7 +150,11 @@ func (service *Service) judge(serviceID string, downloads map[string]*queued, ma
 		if now.Sub(mark.Since) < StallGiveUp || dryRun {
 			continue
 		}
-		if err := giveUp(d.itemID); err != nil {
+		// Given up with its data: the files are held for it.
+		release := service.inv.ShareFiles()
+		err := giveUp(d.itemID)
+		release()
+		if err != nil {
 			log.Printf("[adding] giving up %s, stalled since %s: %v", d.title, mark.Since.Format(time.RFC3339), err)
 			continue
 		}

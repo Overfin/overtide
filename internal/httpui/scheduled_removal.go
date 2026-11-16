@@ -166,7 +166,13 @@ func (server *Server) runScheduledRemoval(schedulerContext context.Context, payl
 	operationContext, cancel := context.WithTimeout(schedulerContext, 30*time.Minute)
 	defer cancel()
 	response := &capturedResponse{}
-	server.executeRemovalNowContext(response, request, operationContext)
+	// The files are the removal's alone while it runs: an import or a
+	// download given up by adding finishes first, the next waits.
+	func() {
+		release := server.inv.LockFiles()
+		defer release()
+		server.executeRemovalNowContext(response, request, operationContext)
+	}()
 	if response.status == http.StatusGone {
 		// What it was to remove is gone already: done, not failed.
 		database := server.inv.Store()

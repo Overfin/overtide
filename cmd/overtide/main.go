@@ -105,19 +105,22 @@ func main() {
 		log.Fatalf("[scheduler] initialization: %v", err)
 	}
 	// Adding: Overfin's suggestions and wishes read every hour, the titles
-	// tried every 15 minutes. One adding task at a time, and never while a
-	// removal changes the files (adding imports, which moves them).
+	// tried every 15 minutes. One adding task at a time. Reading Overfin
+	// never runs while a removal changes the files. The 15-minute pass holds
+	// the files only for each of its steps that moves or deletes them (an
+	// import, a download given up: inventory's ShareFiles), so a removal
+	// clicked meanwhile waits for that step, not for the whole pass.
 	pacer := pacing.New(inv.ProwlarrClient)
 	adder := adding.New(inv)
 	adder.Ready = pacer.Ready
 	adder.Trackers = pacer.Unavailable
 	adder.Room = adding.DiskRoom(inv.Room)
-	addingClaims := []tasks.ResourceClaim{{Resource: "adding", Mode: tasks.ClaimExclusive}, maintenanceClaim}
+	addingClaim := tasks.ResourceClaim{Resource: "adding", Mode: tasks.ClaimExclusive}
 	for _, definition := range []tasks.Definition{
-		{ID: "adding-overfin", Name: "Overfin's suggestions", Description: "Read what Overfin suggests adding and what people wished for, into the waiting list.", Interval: adding.ReadEvery, Runner: adder.ReadOverfin, Resources: addingClaims, Priority: tasks.PriorityPeriodic},
+		{ID: "adding-overfin", Name: "Overfin's suggestions", Description: "Read what Overfin suggests adding and what people wished for, into the waiting list.", Interval: adding.ReadEvery, Runner: adder.ReadOverfin, Resources: []tasks.ResourceClaim{addingClaim, maintenanceClaim}, Priority: tasks.PriorityPeriodic},
 		// A title Radarr or Sonarr just added (their events) waits for a
 		// run that starts after it, not one already past taking it.
-		{ID: "adding", Name: "Try the titles", Description: "Follow what's downloading, then search for the waiting titles, within the run's searches and the trackers' limits.", Interval: adding.RunEvery, Runner: adder.Run, Resources: addingClaims, Priority: tasks.PriorityPeriodic,
+		{ID: "adding", Name: "Try the titles", Description: "Follow what's downloading, then search for the waiting titles, within the run's searches and the trackers' limits.", Interval: adding.RunEvery, Runner: adder.Run, Resources: []tasks.ResourceClaim{addingClaim}, Priority: tasks.PriorityPeriodic,
 			AttachCompatible: func(_ []tasks.TriggerKind, requested tasks.TriggerKind) bool { return requested != tasks.TriggerEvent }},
 	} {
 		if err := taskManager.Register(definition); err != nil {
