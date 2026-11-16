@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -196,6 +197,15 @@ func applyTorrentMediaHardlinks(torrents []model.Torrent, media []model.Media, f
 		}
 		for _, mediaItem := range torrent.MediaItems {
 			hardlinked, known := index.TorrentMediaHardlink(torrent.Hash, mediaItem.Type, mediaItem.ServiceID, mediaItem.SourceID)
+			// A torrent seeding the library file itself (the same path, no
+			// second link: data reused in place) backs the title as much as
+			// a hardlink does: removing the title takes its data, so it goes
+			// with the title, and its seeding duties hold the removal back.
+			if !hardlinked {
+				if matched, sure := index.TorrentMediaPhysicalMatch(torrent.Hash, mediaItem.Type, mediaItem.ServiceID, mediaItem.SourceID); matched && sure {
+					hardlinked, known = true, true
+				}
+			}
 			if known {
 				torrent.HardlinkKnownMediaItems = append(torrent.HardlinkKnownMediaItems, mediaItem)
 			}
@@ -211,7 +221,7 @@ func applyTorrentMediaHardlinks(torrents []model.Torrent, media []model.Media, f
 				if key.seriesID != mediaItem.SourceID || key.svcID != mediaItem.ServiceID {
 					continue
 				}
-				if hl, _ := index.PathsHardlinked(paths, torrentPaths); hl {
+				if hl, _ := index.PathsHardlinked(paths, torrentPaths); hl || sharePath(paths, torrentPaths) {
 					torrent.HardlinkedSeasons = append(torrent.HardlinkedSeasons, key.season)
 				}
 			}
@@ -482,4 +492,19 @@ func (service *Service) TorrentStorage(hash string) (TorrentStorageView, time.Ti
 	x := filetopology.New(files, mr, tr)
 	paths := x.TorrentPaths(hash)
 	return TorrentStorageView{Files: buildFileViews(paths, x, mediaRefMap(items), torrentOwnerMap(torrents)), RemoveTorrent: x.Estimate(paths)}, updated, err
+}
+
+// sharePath says whether two sets of paths name the same file (a torrent
+// seeding a library file where it lies).
+func sharePath(a, b []string) bool {
+	set := make(map[string]bool, len(a))
+	for _, p := range a {
+		set[filepath.Clean(p)] = true
+	}
+	for _, p := range b {
+		if set[filepath.Clean(p)] {
+			return true
+		}
+	}
+	return false
 }

@@ -73,6 +73,24 @@ func TestCurrentCopiedTorrentRemainsCurrentWithoutHardlink(t *testing.T) {
 	}
 }
 
+// A torrent seeding the library file where it lies (the same path, one
+// link) backs the title like a hardlink: it goes with the title, and its
+// seeding duties hold the title's removal back.
+func TestSamePathTorrentBacksItsTitle(t *testing.T) {
+	media := []model.Media{{Type: model.Movie, SourceID: 7, Title: "Example"}}
+	ref := model.MediaRef{Type: model.Movie, SourceID: 7, Title: "Example"}
+	torrents := []model.Torrent{{Hash: "inplace"}}
+	files := []model.File{{Path: "/media/example.mkv", Exists: true, IdentityKnown: true, Device: 1, Inode: 9, Links: 1}}
+	applyTorrentMediaHardlinks(torrents, media, files,
+		[]model.MediaFileRef{{MediaType: model.Movie, MediaID: 7, Path: "/media/example.mkv"}},
+		[]model.TorrentFileRef{{Hash: "inplace", Path: "/media/example.mkv"}},
+	)
+	got := torrents[0]
+	if got.AssociationStatus != model.TorrentCurrent || !containsMediaRef(got.HardlinkKnownMediaItems, ref) || !containsMediaRef(got.HardlinkedMediaItems, ref) {
+		t.Fatalf("a torrent on the library file itself: %#v", got)
+	}
+}
+
 func TestApplyMediaBundleEstimatesCombinesHardlinkedTorrentBytes(t *testing.T) {
 	media := []model.Media{{Type: model.Movie, SourceID: 7, Title: "Example"}}
 	ref := model.MediaRef{Type: model.Movie, SourceID: 7, Title: "Example"}
