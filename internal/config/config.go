@@ -460,6 +460,41 @@ func (threshold DeviceThreshold) SharesOn() bool {
 	return false
 }
 
+// SharesAmong is each of a disk's root folders' share of its space, in
+// percent, as they are now (folders, by path): nil when the space isn't
+// shared. The shares saved are for the folders there were then. A folder
+// gone since gives its share to the others, in proportion to theirs; a
+// folder added since gets an equal part (100/n of n folders), the others
+// giving it room in proportion to theirs. So they always add up to 100.
+func (threshold DeviceThreshold) SharesAmong(folders []string) map[string]float64 {
+	if !threshold.SharesOn() || len(folders) == 0 {
+		return nil
+	}
+	shares := make(map[string]float64, len(folders))
+	kept, added := 0.0, 0
+	for _, folder := range folders {
+		if saved, ok := threshold.Folders[folder]; ok {
+			shares[folder] = saved.SharePercent
+			kept += saved.SharePercent
+		} else {
+			added++
+		}
+	}
+	room := 100 * float64(len(folders)-added) / float64(len(folders))
+	for _, folder := range folders {
+		if _, ok := threshold.Folders[folder]; !ok {
+			shares[folder] = 100 / float64(len(folders))
+		} else if kept > 0 {
+			shares[folder] = shares[folder] / kept * room
+		} else {
+			// Every share left was the gone folders': the rest share
+			// equally.
+			shares[folder] = 100 / float64(len(folders))
+		}
+	}
+	return shares
+}
+
 // folderSettings is a root folder's settings, from whichever disk has them.
 func (configuration Config) folderSettings(root string) FolderSettings {
 	root = filepath.Clean(root)

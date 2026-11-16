@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -860,5 +861,44 @@ func TestSyncDeviceRegistryMovesSettingsByTheirFolders(t *testing.T) {
 	}
 	if !slices.Equal(entry.Roots, []string{"/data/series", "/downloads"}) {
 		t.Fatalf("roots not recorded: %v", entry.Roots)
+	}
+}
+
+// Shares saved for the folders of then are read for the folders of now: a
+// folder added gets 1/n, the others giving it room in proportion; a
+// folder gone gives its share to the rest in proportion. They add up to 100.
+func TestSharesAmongFoldersAddedOrGone(t *testing.T) {
+	threshold := DeviceThreshold{Folders: map[string]FolderSettings{"/a": {SharePercent: 60}, "/b": {SharePercent: 40}}}
+	near := func(got map[string]float64, want map[string]float64) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for k, v := range want {
+			if math.Abs(got[k]-v) > 1e-9 {
+				return false
+			}
+		}
+		return true
+	}
+	for _, c := range []struct {
+		name    string
+		folders []string
+		want    map[string]float64
+	}{
+		{"as saved", []string{"/a", "/b"}, map[string]float64{"/a": 60, "/b": 40}},
+		{"one added", []string{"/a", "/b", "/c"}, map[string]float64{"/a": 40, "/b": 80.0 / 3, "/c": 100.0 / 3}},
+		{"one gone", []string{"/a"}, map[string]float64{"/a": 100}},
+		{"one gone, one added", []string{"/b", "/c"}, map[string]float64{"/b": 50, "/c": 50}},
+	} {
+		if got := threshold.SharesAmong(c.folders); !near(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+	zeroLeft := DeviceThreshold{Folders: map[string]FolderSettings{"/a": {SharePercent: 100}, "/b": {}}}
+	if got := zeroLeft.SharesAmong([]string{"/b", "/c"}); !near(got, map[string]float64{"/b": 50, "/c": 50}) {
+		t.Errorf("only a 0%% folder left: %v", got)
+	}
+	if got := (DeviceThreshold{}).SharesAmong([]string{"/a"}); got != nil {
+		t.Errorf("not shared: %v", got)
 	}
 }

@@ -227,10 +227,12 @@ func (server *Server) apiDeviceSettings(w http.ResponseWriter, r *http.Request) 
 			}
 			out.Filesystem = device.Filesystem
 			out.UsableBytes = device.UsableBytes()
-			saved := cfg.Storage.DeviceThresholds[path].Folders
+			// The shares as they are now, folders added or gone since
+			// counted in: saving them as shown adds up to 100%.
+			shares := device.Shares(cfg)
 			for _, folder := range device.Folders {
 				out.Folders = append(out.Folders, folderSettingsJSON{Path: folder.Path, Service: folder.Service, Bytes: folder.Bytes,
-					SharePercent: saved[folder.Path].SharePercent, TitlesPerDay: cfg.TitlesPerDayFor(folder.Path), UpgradesPerDay: cfg.UpgradesPerDayFor(folder.Path)})
+					SharePercent: shares[folder.Path], TitlesPerDay: cfg.TitlesPerDayFor(folder.Path), UpgradesPerDay: cfg.UpgradesPerDayFor(folder.Path)})
 			}
 			break
 		}

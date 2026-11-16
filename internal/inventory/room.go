@@ -62,13 +62,24 @@ func (d StorageDevice) Share(cfg config.Config, folder string) (bytes, limit uin
 		return 0, 0, false
 	}
 	target, _ := cfg.ThresholdsFor(d.RepresentativePath)
-	share := threshold.Folders[folder].SharePercent
+	share := d.Shares(cfg)[folder]
 	for _, f := range d.Folders {
 		if f.Path == folder {
 			bytes = f.Bytes
 		}
 	}
 	return bytes, uint64(float64(d.UsableBytes()) * target / 100 * share / 100), true
+}
+
+// Shares is each of the device's root folders' share of its space, in
+// percent, nil when it isn't shared (see config.DeviceThreshold.SharesAmong:
+// folders added or gone since the shares were saved are counted in).
+func (d StorageDevice) Shares(cfg config.Config) map[string]float64 {
+	paths := make([]string, 0, len(d.Folders))
+	for _, f := range d.Folders {
+		paths = append(paths, f.Path)
+	}
+	return cfg.Storage.DeviceThresholds[d.RepresentativePath].SharesAmong(paths)
 }
 
 // human writes a size in binary units, one decimal.
