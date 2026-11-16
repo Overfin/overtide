@@ -290,6 +290,10 @@ type Auth struct {
 	PasswordHash string `json:"password_hash"`
 }
 
+// PasswordCost is bcrypt's cost for the admin password. Tests lower it:
+// hashing at the real cost made the sign-in tests most of the suite's time.
+var PasswordCost = bcrypt.DefaultCost
+
 // SetCredentials replaces the admin account's username/password, hashing the
 // password with bcrypt. Used both for first-run setup and for changing the
 // password later — the caller is responsible for verifying any existing
@@ -302,7 +306,7 @@ func SetCredentials(configuration Config, username, password string) (Config, er
 	if len(password) < 8 {
 		return configuration, fmt.Errorf("password must be at least 8 characters")
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordCost)
 	if err != nil {
 		return configuration, fmt.Errorf("hash password: %w", err)
 	}
