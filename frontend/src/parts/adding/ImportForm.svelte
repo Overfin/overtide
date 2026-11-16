@@ -84,7 +84,7 @@
             <table>
               <thead><tr><th>Order</th><th>Number</th><th>Episode</th><th>Aired</th><th>Length</th></tr></thead>
               <tbody>
-                {#each facts.meanings as m (m.order)}
+                {#each facts.meanings as m, i (i)}
                   <tr>
                     <td>{m.order}</td>
                     <td>{number(m.season, m.episode)}</td>

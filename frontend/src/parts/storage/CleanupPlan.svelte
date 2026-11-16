@@ -94,7 +94,7 @@
       <summary>Held for a last watch <span class="badge plain">{plan.held.length}</span></summary>
       <p class="muted">Someone keeps these for later or is partway through them: Overfin tells them when each leaves, and the plan skips it until then.</p>
       <ul class="held">
-        {#each plan.held as h (h.title)}<li><span class="name">{h.title}</span> <span class="muted">· until {short(h.until)}</span></li>{/each}
+        {#each plan.held as h, i (i)}<li><span class="name">{h.title}</span> <span class="muted">· until {short(h.until)}</span></li>{/each}
       </ul>
     </details>
   {/if}

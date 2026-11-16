@@ -45,8 +45,17 @@
     }
   }
   $effect(() => {
-    void route.search;
+    // Back or forward: the box shows the address's search, not what was
+    // typed before (which would take the page back to it).
+    q = new URLSearchParams(route.search).get('q') ?? '';
     load();
+  });
+  // While Radarr and Sonarr are being asked again, the page follows, and
+  // the notice goes once they've answered.
+  $effect(() => {
+    if (!data?.cutoffReading) return;
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
   });
 
   const filters = (d: Upgrades, change: Record<string, string> = {}) => ({ q: d.q.trim().toLowerCase(), ...change });
