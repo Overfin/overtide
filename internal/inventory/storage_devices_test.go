@@ -88,13 +88,34 @@ func TestStorageDevicesCollapsesRootsAndAttributesHardlinkedClaims(t *testing.T)
 		if service.RootFolderOf(filepath.Join(radarrRoot, "Film (2020)")) != radarrRoot || service.RootFolderOf(shared) != "" {
 			t.Fatal("RootFolderOf")
 		}
-		// Over its share (0% of the disk), nothing more goes in it.
+		// The other folder saved (all the disk's share) is gone: its share
+		// goes to the one left, which isn't over it then.
 		service.mu.Lock()
 		service.cfg.Storage.DeviceThresholds = map[string]config.DeviceThreshold{devices[0].RepresentativePath: {Folders: map[string]config.FolderSettings{radarrRoot: {}, "/other": {SharePercent: 100}}}}
 		service.mu.Unlock()
-		if state, why := service.Room(radarrRoot); state != RoomOverShare {
+		if state, why := service.Room(radarrRoot); state == RoomOverShare {
 			t.Fatalf("room %s: %s", state, why)
 		}
+		// Over its share (next to nothing, the rest the other folder's,
+		// which is still there), nothing more goes in it.
+		service.mu.Lock()
+		service.storageRoots = append(service.storageRoots, storageRoot{Path: qbRoot, Service: config.Service{ID: "sonarr", Name: "Series", Type: "sonarr"}})
+		service.mu.Unlock()
+		full, other := radarrRoot, qbRoot
+		for _, f := range service.StorageDevices()[0].Folders {
+			if f.Path == qbRoot && f.Bytes > 0 {
+				full, other = qbRoot, radarrRoot // the shared file counts there
+			}
+		}
+		service.mu.Lock()
+		service.cfg.Storage.DeviceThresholds = map[string]config.DeviceThreshold{devices[0].RepresentativePath: {Folders: map[string]config.FolderSettings{full: {SharePercent: 1e-9}, other: {SharePercent: 100}}}}
+		service.mu.Unlock()
+		if state, why := service.Room(full); state != RoomOverShare {
+			t.Fatalf("room %s: %s", state, why)
+		}
+		service.mu.Lock()
+		service.storageRoots = service.storageRoots[:2]
+		service.mu.Unlock()
 		service.mu.Lock()
 		service.cfg.Storage.DeviceThresholds = nil
 		service.mu.Unlock()
