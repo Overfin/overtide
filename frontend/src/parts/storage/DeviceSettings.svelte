@@ -104,7 +104,7 @@
           {/each}
         </tbody>
       </table>
-      <p class="muted">Titles a day: how many titles may start downloading there in 24 hours, a series counting once per season; past it, they wait. Upgrades a day: how many searches for a better copy may go for what's there in 24 hours; 0 is none.</p>
+      <p class="muted">Titles a day: how many titles may start downloading there in 24 hours, a series counting once per season; past it, they wait. Upgrades a day: how many searches for a better copy may go for what's there in 24 hours; 0 is none. Folders left at the number they came with share one count; one given a number of its own counts apart.</p>
     {/if}
   {/if}
 </FormModal>

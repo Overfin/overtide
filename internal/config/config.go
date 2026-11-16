@@ -443,9 +443,10 @@ type FolderSettings struct {
 	// A folder over its share gets nothing added and no upgrades, and
 	// when the disk needs room, removal takes from folders over theirs.
 	SharePercent float64 `json:"share_percent,omitempty"`
-	// TitlesPerDay and UpgradesPerDay are the folder's own daily limits;
-	// unset, what the server-wide settings said before folders had their
-	// own (AddingConfig.TitlesPerDay, UpgradesPerDay), else 10 and 0.
+	// TitlesPerDay and UpgradesPerDay are the folder's own daily limits,
+	// counted apart; unset, the folder shares one count with the others
+	// without one, under the server-wide limits (AddingConfig.TitlesPerDay,
+	// UpgradesPerDay: 10 and 0 by default).
 	TitlesPerDay   *int `json:"titles_per_day,omitempty"`
 	UpgradesPerDay *int `json:"upgrades_per_day,omitempty"`
 }
@@ -515,6 +516,32 @@ func (configuration Config) TitlesPerDayFor(root string) int {
 		return min(max(*n, 0), MaxTitlesPerDay)
 	}
 	return configuration.Adding.PerDay()
+}
+
+// OwnTitlesPerDay and OwnUpgradesPerDay report whether a root folder has
+// its own daily limit, counted apart. The folders without one share one
+// count under the server-wide limit.
+func (configuration Config) OwnTitlesPerDay(root string) bool {
+	return root != "" && configuration.folderSettings(root).TitlesPerDay != nil
+}
+
+func (configuration Config) OwnUpgradesPerDay(root string) bool {
+	return root != "" && configuration.folderSettings(root).UpgradesPerDay != nil
+}
+
+// FolderLimits are a root folder's daily limits as its disk's form sends
+// them, to save: a folder without a limit of its own, left at the
+// server-wide one, keeps none (nil), so it keeps sharing its count with
+// the others.
+func (configuration Config) FolderLimits(root string, titles, upgrades int) (*int, *int) {
+	ownTitles, ownUpgrades := &titles, &upgrades
+	if !configuration.OwnTitlesPerDay(root) && titles == configuration.TitlesPerDayFor("") {
+		ownTitles = nil
+	}
+	if !configuration.OwnUpgradesPerDay(root) && upgrades == configuration.UpgradesPerDayFor("") {
+		ownUpgrades = nil
+	}
+	return ownTitles, ownUpgrades
 }
 
 // UpgradesPerDayFor is how many upgrade searches may go in 24 hours for

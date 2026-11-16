@@ -115,15 +115,29 @@ func TestDownloadsCounted(t *testing.T) {
 	}
 }
 
-// Each root folder counts its own titles a day.
+// A root folder with its own titles a day counts them apart; those
+// without one share one count under the server-wide limit, not each its
+// own.
 func TestDailyLimitByFolder(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Adding.TitlesPerDay = 1
+	own := 1
+	cfg.Storage.DeviceThresholds = map[string]config.DeviceThreshold{"/data": {Folders: map[string]config.FolderSettings{
+		"/data/Films": {TitlesPerDay: &own}, "/data/Series": {}, "/data/Anime": {}}}}
 	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
-	if err := service.recordNow(folderKey(startedKey, "/data/Films"), 1); err != nil {
+	if err := service.recordNow(countKey(cfg, startedKey, "/data/Films"), 1); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := service.DailyLimit("", 1); !ok {
-		t.Fatal("another folder's day counted")
+	if times, _ := service.started("/data/Series"); len(times) != 0 {
+		t.Fatal("a folder with its own limit counted in the shared one")
+	}
+	if err := service.recordNow(countKey(cfg, startedKey, "/data/Series"), 1); err != nil {
+		t.Fatal(err)
+	}
+	if times, _ := service.started("/data/Anime"); len(times) != 1 {
+		t.Fatalf("folders without their own don't share a count: %d", len(times))
+	}
+	if times, _ := service.started("/data/Films"); len(times) != 1 {
+		t.Fatalf("the folder's own count: %d", len(times))
 	}
 }

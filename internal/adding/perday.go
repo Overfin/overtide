@@ -10,13 +10,21 @@ import (
 )
 
 // startedKey keeps when each title started downloading over the last 24
-// hours (a series, once per season), a list per root folder (folderKey):
-// the daily limit.
+// hours (a series, once per season), a list per count (countKey): the
+// daily limit.
 const startedKey = "adding.started"
 
-// folderKey is the key of a root folder's list under key: each root
-// folder has its own daily limits.
-func folderKey(key, root string) string {
+// countKey is the key of the list under key a root folder's titles or
+// upgrades are counted in: its own when it has its own limit, else the
+// one list of every folder without one, under the server-wide limit.
+func countKey(cfg config.Config, key, root string) string {
+	own := cfg.OwnTitlesPerDay(root)
+	if key == upgradesKey {
+		own = cfg.OwnUpgradesPerDay(root)
+	}
+	if !own {
+		root = ""
+	}
 	return key + "|" + root
 }
 
@@ -29,7 +37,7 @@ func (service *Service) rootOf(path string) string {
 // started returns when titles started downloading in a root folder over
 // the last 24 hours, oldest first.
 func (service *Service) started(root string) ([]time.Time, error) {
-	return service.lastDay(folderKey(startedKey, root))
+	return service.lastDay(countKey(service.inv.Config(), startedKey, root))
 }
 
 // lastDay returns the times kept under key, those of the last 24 hours,
@@ -56,7 +64,7 @@ func (service *Service) lastDay(key string) ([]time.Time, error) {
 // recordStarted counts n downloads started now in the root folder
 // holding path.
 func (service *Service) recordStarted(path string, n int) error {
-	return service.recordNow(folderKey(startedKey, service.rootOf(path)), n)
+	return service.recordNow(countKey(service.inv.Config(), startedKey, service.rootOf(path)), n)
 }
 
 // recordNow adds n times to those kept under key.
@@ -101,6 +109,9 @@ type FolderDay struct {
 	Root                     string
 	Titles, TitlesPerDay     int
 	Upgrades, UpgradesPerDay int
+	// SharedTitles and SharedUpgrades: the folder has no limit of its own,
+	// and these are the count it shares with the others without one.
+	SharedTitles, SharedUpgrades bool
 	// TitlesUntil, when the day's titles are all used, is when the next
 	// may start.
 	TitlesUntil time.Time
@@ -112,8 +123,8 @@ func (service *Service) Days() []FolderDay {
 	var out []FolderDay
 	for _, root := range service.inv.RootFolders() {
 		titles, _ := service.started(root)
-		upgrades, _ := service.lastDay(folderKey(upgradesKey, root))
-		day := FolderDay{Root: root, Titles: len(titles), TitlesPerDay: cfg.TitlesPerDayFor(root), Upgrades: len(upgrades), UpgradesPerDay: cfg.UpgradesPerDayFor(root)}
+		upgrades, _ := service.lastDay(countKey(cfg, upgradesKey, root))
+		day := FolderDay{Root: root, SharedTitles: !cfg.OwnTitlesPerDay(root), SharedUpgrades: !cfg.OwnUpgradesPerDay(root), Titles: len(titles), TitlesPerDay: cfg.TitlesPerDayFor(root), Upgrades: len(upgrades), UpgradesPerDay: cfg.UpgradesPerDayFor(root)}
 		if ok, until := service.DailyLimit(root, 1); !ok {
 			day.TitlesUntil = until
 		}

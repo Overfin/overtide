@@ -17,7 +17,7 @@ import (
 
 const (
 	// upgradesKey keeps when upgrade searches went over the last 24 hours,
-	// a list per root folder (folderKey);
+	// a list per count (countKey);
 	// upgradedKey, when each title was last searched for one.
 	upgradesKey = "adding.upgrades"
 	upgradedKey = "adding.upgraded"
@@ -257,7 +257,7 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 			continue
 		}
 		searched[c.key()] = service.now()
-		if err := service.recordNow(folderKey(upgradesKey, service.rootOf(c.path)), 1); err != nil {
+		if err := service.recordNow(countKey(cfg, upgradesKey, service.rootOf(c.path)), 1); err != nil {
 			return used, err
 		}
 		if err := service.saveUpgradesSearched(searched); err != nil {
@@ -386,7 +386,7 @@ func (service *Service) RemoveUpgrade(ctx context.Context, ref string) error {
 // path, under its root folder's upgrades a day.
 func (service *Service) upgradeRoom(cfg config.Config, path string) bool {
 	root := service.rootOf(path)
-	times, err := service.lastDay(folderKey(upgradesKey, root))
+	times, err := service.lastDay(countKey(cfg, upgradesKey, root))
 	return err == nil && len(times) < cfg.UpgradesPerDayFor(root)
 }
 

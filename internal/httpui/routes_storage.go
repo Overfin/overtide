@@ -250,10 +250,11 @@ func (server *Server) apiSetDeviceSettings(w http.ResponseWriter, r *http.Reques
 	}
 	var folders map[string]config.FolderSettings
 	if in.Folders != nil {
+		cfg := server.inv.Config()
 		folders = make(map[string]config.FolderSettings, len(in.Folders))
 		for _, folder := range in.Folders {
-			titles, upgrades := folder.TitlesPerDay, folder.UpgradesPerDay
-			folders[folder.Path] = config.FolderSettings{SharePercent: folder.SharePercent, TitlesPerDay: &titles, UpgradesPerDay: &upgrades}
+			titles, upgrades := cfg.FolderLimits(folder.Path, folder.TitlesPerDay, folder.UpgradesPerDay)
+			folders[folder.Path] = config.FolderSettings{SharePercent: folder.SharePercent, TitlesPerDay: titles, UpgradesPerDay: upgrades}
 		}
 	}
 	if err := server.inv.SetDeviceThreshold(in.Path, in.Name, in.TargetUsagePercent, in.CriticalUsagePercent, in.AutomaticRemovalEnabled, folders); err != nil {

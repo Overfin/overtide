@@ -87,9 +87,17 @@ func (server *Server) nowData(ctx context.Context) nowData {
 	if live.Stopped != "" && !live.Running {
 		data.Holding = append(data.Holding, "The last run's searches stopped: "+live.Stopped+".")
 	}
+	sharedSaid := false
 	for _, day := range server.adder.Days() {
-		if !day.TitlesUntil.IsZero() {
-			data.Holding = append(data.Holding, fmt.Sprintf("The day's limit of %d titles in %s is reached: new titles start there again at %s.", day.TitlesPerDay, day.Root, day.TitlesUntil.Local().Format("Jan 2 15:04")))
+		if day.TitlesUntil.IsZero() {
+			continue
+		}
+		at := day.TitlesUntil.Local().Format("Jan 2 15:04")
+		if !day.SharedTitles {
+			data.Holding = append(data.Holding, fmt.Sprintf("The day's limit of %d titles in %s is reached: new titles start there again at %s.", day.TitlesPerDay, day.Root, at))
+		} else if !sharedSaid {
+			sharedSaid = true
+			data.Holding = append(data.Holding, fmt.Sprintf("The day's limit of %d titles shared by the root folders without their own is reached: new titles start there again at %s.", day.TitlesPerDay, at))
 		}
 	}
 	if ok, why := server.pacer.Ready(); !ok {

@@ -902,3 +902,21 @@ func TestSharesAmongFoldersAddedOrGone(t *testing.T) {
 		t.Errorf("not shared: %v", got)
 	}
 }
+
+// A folder left at the server-wide limits keeps none of its own; one
+// changed, or one that had its own, keeps the number sent.
+func TestFolderLimits(t *testing.T) {
+	var c Config
+	c.Adding.TitlesPerDay = 10
+	own := 10
+	c.Storage.DeviceThresholds = map[string]DeviceThreshold{"/data": {Folders: map[string]FolderSettings{"/data/own": {TitlesPerDay: &own}}}}
+	if titles, upgrades := c.FolderLimits("/data/films", 10, 0); titles != nil || upgrades != nil {
+		t.Errorf("left as it came: %v %v", titles, upgrades)
+	}
+	if titles, upgrades := c.FolderLimits("/data/films", 4, 2); titles == nil || *titles != 4 || upgrades == nil || *upgrades != 2 {
+		t.Errorf("changed: %v %v", titles, upgrades)
+	}
+	if titles, _ := c.FolderLimits("/data/own", 10, 0); titles == nil || *titles != 10 {
+		t.Errorf("its own: %v", titles)
+	}
+}

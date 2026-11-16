@@ -316,7 +316,9 @@ func New(inv *inventory.Service) *Service {
 		return ok
 	}
 	driver.Started = service.recordStarted
-	driver.Upgraded = func(folder string) error { return service.recordNow(folderKey(upgradesKey, service.rootOf(folder)), 1) }
+	driver.Upgraded = func(folder string) error {
+		return service.recordNow(countKey(service.inv.Config(), upgradesKey, service.rootOf(folder)), 1)
+	}
 	driver.UpgradeRoom = service.upgradeRoom
 	driver.SeasonValue = service.seasonValue
 	driver.Step = service.step
