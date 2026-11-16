@@ -120,3 +120,23 @@ func TestSetRemovalSettingsRefusesAForm(t *testing.T) {
 		t.Fatalf("a form changed the settings: %#v", saved)
 	}
 }
+
+// Wrong current passwords count like wrong sign-ins: a few, then a wait,
+// whatever the address, so a stolen session can't guess it.
+func TestChangePasswordTriesLimited(t *testing.T) {
+	handler, _ := newAuthTestServer(t)
+	session := setUp(t, handler)
+	wrong := passwordForm{Current: "totally-wrong", New: "new-correct-horse", Confirm: "new-correct-horse"}
+	for i := range 5 {
+		if r := send(t, handler, http.MethodPut, "/api/settings/password", wrong, session); r.Code != http.StatusBadRequest {
+			t.Fatalf("try %d: %d %q", i+1, r.Code, r.Body.String())
+		}
+	}
+	if r := send(t, handler, http.MethodPut, "/api/settings/password", wrong, session); r.Code != http.StatusTooManyRequests {
+		t.Errorf("after five: %d %q", r.Code, r.Body.String())
+	}
+	right := passwordForm{Current: "correct-horse-battery", New: "new-correct-horse", Confirm: "new-correct-horse"}
+	if r := send(t, handler, http.MethodPut, "/api/settings/password", right, session); r.Code != http.StatusTooManyRequests {
+		t.Errorf("the right one during the wait: %d", r.Code)
+	}
+}

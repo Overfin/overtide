@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/overfin/overtide/internal/config"
@@ -46,6 +47,10 @@ type passwordForm struct {
 	Confirm string `json:"confirm"`
 }
 
+// passwordChangeKey is the limiter's key for password changes: not an
+// address, so it can't be one.
+const passwordChangeKey = "password change"
+
 // changePassword rotates the admin account's password and, since a
 // credential rotation should actually revoke access, signs out every other
 // session before re-establishing one for the browser that made the change
@@ -59,6 +64,13 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
 	if in.New != in.Confirm {
 		fail(w, http.StatusBadRequest, "New passwords do not match.")
+		return
+	}
+	// Wrong current passwords count like wrong sign-ins, for the one
+	// account whatever the address: a stolen session can't guess it at
+	// bcrypt's speed, then change it and lock the operator out.
+	if remaining, ok := server.loginLimiter.attempt(passwordChangeKey); !ok {
+		fail(w, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1))
 		return
 	}
 	// Checking the current password and hashing the new one are bcrypt's
@@ -76,6 +88,7 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "Current password is incorrect.")
 		return
 	}
+	server.loginLimiter.recordSuccess(passwordChangeKey)
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
