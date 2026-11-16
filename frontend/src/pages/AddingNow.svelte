@@ -25,11 +25,16 @@
     }
   }
 
+  // Its own warning: one read that worked takes it away (the page's
+  // other read clears only its own).
+  let waitingFailure = '';
   async function loadWaiting() {
     try {
       waiting = (await get<{ imports: WaitingImport[] }>('/api/adding/imports')).imports;
+      if (waitingFailure && failure === waitingFailure) failure = '';
+      waitingFailure = '';
     } catch (err) {
-      failure = (err as Error).message;
+      failure = waitingFailure = (err as Error).message;
     }
   }
 
