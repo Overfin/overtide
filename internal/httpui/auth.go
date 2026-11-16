@@ -2,9 +2,11 @@ package httpui
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/netip"
@@ -263,14 +265,17 @@ func (server *Server) signedIn(r *http.Request) bool {
 // sessionState is where the browser stands: the account to make first,
 // or signed in or not.
 type sessionState struct {
-	NeedsSetup bool   `json:"needsSetup"`
-	SignedIn   bool   `json:"signedIn"`
-	Username   string `json:"username,omitempty"`
+	NeedsSetup bool `json:"needsSetup"`
+	// SetupCode is whether setup asks for the code from the log.
+	SetupCode bool   `json:"setupCode,omitempty"`
+	SignedIn  bool   `json:"signedIn"`
+	Username  string `json:"username,omitempty"`
 }
 
 func (server *Server) session(w http.ResponseWriter, r *http.Request) {
 	cfg := server.inv.Config()
 	state := sessionState{NeedsSetup: cfg.Auth.Username == ""}
+	state.SetupCode = state.NeedsSetup && setupNeedsCode(r)
 	if !state.NeedsSetup && server.signedIn(r) {
 		state.SignedIn, state.Username = true, cfg.Auth.Username
 	}
@@ -282,6 +287,51 @@ type credentials struct {
 	Password string `json:"password"`
 	// Confirm is the password again, at setup.
 	Confirm string `json:"confirm"`
+	// Code is the setup code from the log, when setup asks for it.
+	Code string `json:"code"`
+}
+
+// setupNeedsCode reports whether setup must be given the code from the
+// log: when the panel is opened by a name, not an address or localhost.
+// A hostile page can point a name of its own at Overtide's address (DNS
+// rebinding) and, the browser taking it for that page's own site, make
+// the account before the operator does. It can't do that under an address,
+// nor under localhost, which browsers keep to this machine.
+func setupNeedsCode(r *http.Request) bool {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	_, err := netip.ParseAddr(host)
+	return err != nil
+}
+
+// setupCodeAlphabet leaves out letters and digits easily mixed up.
+const setupCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// currentSetupCode is the setup code, made and written to the log the
+// first time it's needed (at startup, while there is no account).
+func (server *Server) currentSetupCode() (string, error) {
+	server.setupMu.Lock()
+	defer server.setupMu.Unlock()
+	if server.setupCode != "" {
+		return server.setupCode, nil
+	}
+	random := make([]byte, 12)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	code := make([]byte, len(random))
+	for i, b := range random {
+		code[i] = setupCodeAlphabet[int(b)%len(setupCodeAlphabet)]
+	}
+	server.setupCode = string(code)
+	log.Printf("[auth] no admin account yet. Setup code, asked when the panel is opened by a name rather than an address: %s", server.setupCode)
+	return server.setupCode, nil
 }
 
 // setup makes Overtide's one admin account. It works only while no account
@@ -296,6 +346,26 @@ func (server *Server) setup(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r, &in); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if setupNeedsCode(r) {
+		code, err := server.currentSetupCode()
+		if err != nil {
+			fail(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// Tries are limited as passwords are: the code is short enough
+		// to type.
+		key := clientLoginKey(r, server.inv.Config().Proxies)
+		if remaining, ok := server.loginLimiter.attempt(key); !ok {
+			fail(w, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1))
+			return
+		}
+		given := strings.ToUpper(strings.TrimSpace(in.Code))
+		if subtle.ConstantTimeCompare([]byte(given), []byte(code)) != 1 {
+			fail(w, http.StatusForbidden, "Wrong setup code: Overtide writes it in its log at startup.")
+			return
+		}
+		server.loginLimiter.recordSuccess(key)
 	}
 	if in.Password != in.Confirm {
 		fail(w, http.StatusBadRequest, "Passwords do not match.")

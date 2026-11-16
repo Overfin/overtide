@@ -3,11 +3,12 @@
   import { Single, Card, Field, Status } from '@overfin/ui';
   import { post } from '../lib/api';
 
-  let { setup, done }: { setup: boolean; done: () => void } = $props();
+  let { setup, askCode, done }: { setup: boolean; askCode: boolean; done: () => void } = $props();
 
   let username = $state('');
   let password = $state('');
   let confirm = $state('');
+  let code = $state('');
   let busy = $state(false);
   let failure = $state('');
 
@@ -16,7 +17,7 @@
     busy = true;
     failure = '';
     try {
-      if (setup) await post('/api/setup', { username, password, confirm });
+      if (setup) await post('/api/setup', { username, password, confirm, code });
       else await post('/api/login', { username, password });
       done();
     } catch (err) {
@@ -30,6 +31,9 @@
 <Single name="Overtide" logo="/logo.svg">
   <Card title={setup ? 'Welcome to Overtide' : 'Sign in'} description={setup ? 'Create the admin account used to sign in. There is only ever one — no invitations, no roles.' : 'Sign in to continue.'}>
     <form id="sign-in" class="modal-form" onsubmit={submit}>
+      {#if setup && askCode}
+        <Field label="Setup code" hint="Overtide writes it in its log at startup: docker compose logs overtide."><input bind:value={code} autocomplete="off" spellcheck="false" required /></Field>
+      {/if}
       <Field label="Username"><input bind:value={username} autocomplete="username" required /></Field>
       <Field label="Password"><input type="password" bind:value={password} autocomplete={setup ? 'new-password' : 'current-password'} minlength={setup ? 8 : undefined} required /></Field>
       {#if setup}

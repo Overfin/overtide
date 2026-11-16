@@ -22,6 +22,13 @@ import (
 // to), so it exercises authGate the same way a real deployment would.
 func newAuthTestServer(t *testing.T) (http.Handler, *store.Store) {
 	t.Helper()
+	database, server := newAuthTestServerWith(t)
+	return server.Handler(), database
+}
+
+// newAuthTestServerWith is newAuthTestServer's Server itself.
+func newAuthTestServerWith(t *testing.T) (*store.Store, *Server) {
+	t.Helper()
 	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +48,7 @@ func newAuthTestServer(t *testing.T) (http.Handler, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return server.Handler(), database
+	return database, server
 }
 
 func postForm(t *testing.T, handler http.Handler, path string, form url.Values, cookie *http.Cookie) *httptest.ResponseRecorder {
@@ -85,6 +92,11 @@ func send(t *testing.T, handler http.Handler, method, path string, body any, coo
 	}
 	request := httptest.NewRequest(method, path, bytes.NewReader(raw))
 	request.Header.Set("Content-Type", "application/json")
+	if path == "/api/setup" {
+		// Setup as opened by Overtide's address, which asks no code
+		// (TestSetupByNameNeedsTheCode tests the code).
+		request.Host = "192.0.2.1:8088"
+	}
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}

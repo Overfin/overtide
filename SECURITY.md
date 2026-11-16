@@ -32,7 +32,11 @@ Words used below:
    Every other `/api/` and `/ui/` route needs a valid session. Without a
    database, none of them answers.
 3. Until the admin account exists, whoever reaches Overtide first creates
-   it. Once it exists, setup is refused: there is no second account and no
+   it. Opened by a name rather than an IP address or `localhost`, setup also
+   needs a one-time code that Overtide writes in its log at startup, so a
+   hostile page pointing a name of its own at Overtide (DNS rebinding) can't
+   make the account; its wrong tries are limited like passwords (rule 6).
+   Once it exists, setup is refused: there is no second account and no
    reset from the web. Erasing `auth` from `config.json` and restarting puts
    Overtide back in first-run setup, and ends every session of the former
    account.

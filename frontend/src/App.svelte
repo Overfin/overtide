@@ -30,6 +30,7 @@
 
   interface Session {
     needsSetup: boolean;
+    setupCode?: boolean;
     signedIn: boolean;
     username?: string;
   }
@@ -143,7 +144,7 @@
 {:else if !session}
   <main class="single"><Loading /></main>
 {:else if !session.signedIn}
-  <SignIn setup={session.needsSetup} done={load} />
+  <SignIn setup={session.needsSetup} askCode={!!session.setupCode} done={load} />
 {:else}
   <Shell name="Overtide" subtitle="Storage" logo="/logo.svg" {nav} active={page.active} {signOut} wide>
     {#snippet extra()}

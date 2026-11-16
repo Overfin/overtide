@@ -21,7 +21,19 @@ docker compose up -d
 ```
 
 Open this machine's address on port 8088: the first screen creates the admin
-account. Then, under **Services**, add Radarr, Sonarr, your torrent client,
+account. Opened by a name instead (`overtide.example.org`, or through a
+reverse proxy), it also asks for a setup code, which Overtide writes in its
+log at startup while there is no account:
+
+```sh
+docker compose logs overtide | grep "Setup code"
+```
+
+The code keeps a hostile web page from making the account first: a page
+can point a name of its own at this machine (DNS rebinding), but it can't
+read the log. Opened by an address or `localhost`, no code is needed.
+
+Then, under **Services**, add Radarr, Sonarr, your torrent client,
 and Overfin (its control panel address, and a key made there under **Apps**
 with **Values** ticked; for adding, also **What came and went**, **Wishes to
 fetch**, and **Categories and episode orders**).

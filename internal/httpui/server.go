@@ -47,10 +47,19 @@ type Server struct {
 	problemsAt    time.Time
 	// holds are the titles Overfin holds for a last watch (departures.go).
 	holds departureHolds
+	// setupCode is asked at first setup when the panel is opened by a
+	// name (see setupNeedsCode); it's printed in the log.
+	setupMu   sync.Mutex
+	setupCode string
 }
 
 func New(inventoryService *inventory.Service, taskManager *tasks.Manager) (*Server, error) {
 	server := &Server{inv: inventoryService, tasks: taskManager, revisions: newRevisionHub(), sseMaxLifetime: 3 * time.Minute, sseHeartbeat: 15 * time.Second, loginLimiter: newLoginLimiter()}
+	if inventoryService != nil && inventoryService.Config().Auth.Username == "" {
+		if _, err := server.currentSetupCode(); err != nil {
+			return nil, err
+		}
+	}
 	if taskManager != nil {
 		if err := taskManager.Register(tasks.Definition{ID: removalTaskID, Name: "Removal operations", Description: "Execute durable owner and filesystem mutations.", PayloadRunner: server.runScheduledRemoval, Resources: []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}, Priority: tasks.PriorityMutation, Recovery: tasks.RecoveryAttention}); err != nil {
 			return nil, err
