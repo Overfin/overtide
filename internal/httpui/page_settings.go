@@ -1,6 +1,8 @@
 package httpui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 
@@ -47,9 +49,18 @@ type passwordForm struct {
 	Confirm string `json:"confirm"`
 }
 
-// passwordChangeKey is the limiter's key for password changes: not an
-// address, so it can't be one.
-const passwordChangeKey = "password change"
+// passwordChangeKey is the limiter's key for a session's password
+// changes (never an address's form): each session its own tries, so a
+// stolen one can't guess the password, nor keep the operator's own
+// session from changing it (which signs every other one out).
+func passwordChangeKey(r *http.Request) string {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return "password change"
+	}
+	sum := sha256.Sum256([]byte(c.Value))
+	return "password change " + hex.EncodeToString(sum[:8])
+}
 
 // changePassword rotates the admin account's password and, since a
 // credential rotation should actually revoke access, signs out every other
@@ -69,7 +80,7 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	// Wrong current passwords count like wrong sign-ins, for the one
 	// account whatever the address: a stolen session can't guess it at
 	// bcrypt's speed, then change it and lock the operator out.
-	if remaining, ok := server.loginLimiter.attempt(passwordChangeKey); !ok {
+	if remaining, ok := server.loginLimiter.attempt(passwordChangeKey(r)); !ok {
 		fail(w, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", int(remaining.Seconds())+1))
 		return
 	}
@@ -88,7 +99,7 @@ func (server *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "Current password is incorrect.")
 		return
 	}
-	server.loginLimiter.recordSuccess(passwordChangeKey)
+	server.loginLimiter.recordSuccess(passwordChangeKey(r))
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return

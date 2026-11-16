@@ -139,4 +139,9 @@ func TestChangePasswordTriesLimited(t *testing.T) {
 	if r := send(t, handler, http.MethodPut, "/api/settings/password", right, session); r.Code != http.StatusTooManyRequests {
 		t.Errorf("the right one during the wait: %d", r.Code)
 	}
+	// Another session (the operator's own) isn't held up by those tries.
+	other := sessionCookieFrom(login(t, handler, "admin", "correct-horse-battery"))
+	if r := send(t, handler, http.MethodPut, "/api/settings/password", right, other); r.Code != http.StatusOK {
+		t.Errorf("another session: %d %q", r.Code, r.Body.String())
+	}
 }
