@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,4 +176,33 @@ func TestTryMovieMonitors(t *testing.T) {
 func jsonString(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+// A full list still takes Overfin's new best title: in place of the
+// lowest-ranked one waiting, never behind it.
+func TestReadOverfinFullTakesTheBetter(t *testing.T) {
+	var titles []map[string]any
+	for i := 1; i <= WaitingMax; i++ {
+		titles = append(titles, map[string]any{"kind": "movie", "name": "Film", "tmdbId": itoa(i), "score": 50})
+	}
+	answer, _ := json.Marshal(map[string]any{"titles": titles})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(answer) }))
+	defer srv.Close()
+	cfg := config.Config{Services: []config.Service{{ID: "r", Type: "radarr"}}}
+	cfg.Overfin = config.Connection{URL: srv.URL, APIKey: "ofapp_k"}
+	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
+	entries := service.readOverfin(context.Background(), cfg, nil, map[string]historyEvent{})
+	if len(entries) != WaitingMax {
+		t.Fatalf("full: %d", len(entries))
+	}
+	// A new best title, ahead of all of them.
+	titles = append([]map[string]any{{"kind": "movie", "name": "Best", "tmdbId": "9999", "score": 90}}, titles...)
+	answer, _ = json.Marshal(map[string]any{"titles": titles})
+	entries = service.readOverfin(context.Background(), cfg, entries, map[string]historyEvent{})
+	has := func(key string) bool {
+		return slices.ContainsFunc(entries, func(e Entry) bool { return e.Key == key })
+	}
+	if len(entries) != WaitingMax || !has("movie:9999") || has("movie:"+itoa(WaitingMax)) {
+		t.Fatalf("%d entries, best in %v, last out %v", len(entries), has("movie:9999"), !has("movie:"+itoa(WaitingMax)))
+	}
 }

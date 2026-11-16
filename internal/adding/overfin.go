@@ -109,10 +109,29 @@ func (service *Service) readOverfin(ctx context.Context, cfg config.Config, entr
 			}
 			continue
 		}
-		if _, cooling := history[id]; cooling || waiting >= WaitingMax {
+		if _, cooling := history[id]; cooling {
 			continue
 		}
 		entry.State, entry.NextTry, entry.AddedAt, entry.UpdatedAt = Waiting, now, now, now
+		if waiting >= WaitingMax {
+			// Full: it takes the place of the lowest-ranked of Overfin's
+			// titles still waiting that this reading hasn't reached (so
+			// ranked below it now, or no longer suggested), rather than wait
+			// behind titles worth less (the list goes by value).
+			worst := -1
+			for j, e := range entries {
+				if e.Source == FromOverfin && e.waiting() && !seen[e.id()] && (worst < 0 || e.Position > entries[worst].Position) {
+					worst = j
+				}
+			}
+			if worst < 0 {
+				continue
+			}
+			delete(byID, entries[worst].id())
+			entries[worst] = entry
+			byID[id] = worst
+			continue
+		}
 		byID[id] = len(entries)
 		entries = append(entries, entry)
 		waiting++
