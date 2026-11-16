@@ -283,6 +283,16 @@ func TestJustTakenSurvivesAnOldInventory(t *testing.T) {
 	if len(got) != 1 || got[0].ArrID != 1 {
 		t.Errorf("kept: %+v", got)
 	}
+	// One of Overfin's, added by a try just now: its ID stays until the
+	// inventory has it; one tried long ago, not there, has none.
+	tried := []Entry{
+		{Key: movieKey(3), Kind: model.Movie, ServiceID: "r", Source: FromOverfin, State: Waiting, ArrID: 3, UpdatedAt: now},
+		{Key: movieKey(4), Kind: model.Movie, ServiceID: "r", Source: FromOverfin, State: Waiting, ArrID: 4, UpdatedAt: now.Add(-justTaken - time.Minute)},
+	}
+	got = service.match(tried)
+	if len(got) != 2 || got[0].ArrID != 3 || got[1].ArrID != 0 {
+		t.Errorf("added by a try: %+v", got)
+	}
 }
 
 // What "Manage all" took goes back exactly as it was: a title the

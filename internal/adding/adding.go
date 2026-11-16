@@ -666,7 +666,12 @@ func (service *Service) match(entries []Entry) []Entry {
 		case there && model.HasTag(m.Tags, model.TagIgnore):
 			continue // left alone by the operator
 		case !there:
-			entry.ArrID = 0
+			// Added by a try just now: the inventory hasn't read it yet
+			// (every 30 minutes); its ID stays, or the next run adds it
+			// again, is told it's there, and waits hours.
+			if entry.ArrID == 0 || service.now().Sub(entry.UpdatedAt) > justTaken {
+				entry.ArrID = 0
+			}
 		case !service.managed(m):
 			continue
 		case entry.Kind == model.Movie && m.SizeBytes > 0:
