@@ -124,33 +124,41 @@ func titleOf(action cleanup.Action) string {
 // holdDepartures builds a device's plan, asking Overfin first which of the
 // titles it would remove should wait for a last watch: those are skipped,
 // and the titles taking their places are asked about in turn, a few
-// rounds at most. Nothing is asked in dry run, nor without Overfin; when
-// Overfin can't answer, the holds known stay.
-func (server *Server) holdDepartures(ctx context.Context, cfg config.Config, device string, build func(excluded map[string]bool) (cleanup.Plan, error)) (cleanup.Plan, error) {
+// rounds at most. take says which of a plan's actions would really be
+// done (automatic removal leaves some out, and goes further down the list
+// for them): those are the ones asked about. Nothing is asked in dry run,
+// nor without Overfin; when Overfin can't answer, the holds known stay.
+// The second answer lists the actions asked about (or that need no asking,
+// torrents): the caller takes no other.
+func (server *Server) holdDepartures(ctx context.Context, cfg config.Config, device string, build func(excluded map[string]bool) (cleanup.Plan, error), take func(cleanup.Plan) []cleanup.Action) (cleanup.Plan, map[string]bool, error) {
 	client := server.inv.OverfinClient()
 	ask := !cfg.Removal.DryRun && client.Configured()
 	asked := map[string]overfin.Departure{}
 	names := map[string]string{}
+	cleared := map[string]bool{} // asked (or nothing to ask): may be taken
 	var order []string
 	for round := 0; ; round++ {
 		plan, err := build(server.heldKeys(nil))
-		if err != nil || !plan.Available || !ask || round == departureRounds {
-			return plan, err
+		if err != nil || !plan.Available {
+			return plan, cleared, err
 		}
 		fresh := false
-		for _, action := range plan.Actions {
+		for _, action := range take(plan) {
 			key := cleanup.ActionKey(action)
 			if _, seen := asked[key]; seen {
 				continue
 			}
-			if d, ok := departureOf(action); ok {
-				asked[key], names[key] = d, titleOf(action)
-				order = append(order, key)
-				fresh = true
+			d, ok := departureOf(action)
+			if !ok || !ask {
+				cleared[key] = true // a torrent, or no Overfin to ask
+				continue
 			}
+			asked[key], names[key] = d, titleOf(action)
+			order = append(order, key)
+			fresh = true
 		}
 		if !fresh {
-			return plan, nil
+			return plan, cleared, nil
 		}
 		titles := make([]overfin.Departure, 0, len(order))
 		for _, key := range order {
@@ -159,14 +167,21 @@ func (server *Server) holdDepartures(ctx context.Context, cfg config.Config, dev
 		answers, err := client.WithContext(ctx).Departures(titles)
 		if err != nil || len(answers) != len(order) {
 			log.Printf("[auto-removal] asking Overfin what should wait for a last watch: %v", err)
-			return plan, nil
+			return plan, cleared, nil
 		}
 		held := map[string]heldTitle{}
 		for i, key := range order {
 			if until := answers[i].HoldUntil; !until.IsZero() {
 				held[key] = heldTitle{Device: device, Title: names[key], Until: until}
+			} else {
+				cleared[key] = true
 			}
 		}
 		server.holds.set(held, order)
+		if round == departureRounds {
+			// No more rounds: what took the held ones' places this time
+			// wasn't asked about, and isn't cleared.
+			return plan, cleared, nil
+		}
 	}
 }

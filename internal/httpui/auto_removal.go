@@ -69,14 +69,21 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		}
 		target, critical := cfg.ThresholdsFor(device.RepresentativePath)
 		// Titles someone wants wait a last watch first (holdDepartures).
-		plan, err := server.holdDepartures(ctx, cfg, device.RepresentativePath, func(excluded map[string]bool) (cleanup.Plan, error) {
+		// What it may not touch doesn't count toward what it has to free:
+		// it goes further down the list, and those are asked about too.
+		take := func(p cleanup.Plan) []cleanup.Action { return p.Enough(autoActions(p.Ordered, cfg)) }
+		plan, cleared, err := server.holdDepartures(ctx, cfg, device.RepresentativePath, func(excluded map[string]bool) (cleanup.Plan, error) {
 			return cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, excluded, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
-		})
+		}, take)
 		if err != nil || !plan.Available {
 			continue
 		}
-		// What it may not touch doesn't count toward what it has to free.
-		for _, group := range plan.Enough(autoActions(plan.Ordered, cfg)) {
+		for _, group := range take(plan) {
+			// Never a title Overfin wasn't asked about, or said to keep a
+			// while: the next cycle goes on.
+			if !cleared[cleanup.ActionKey(group)] {
+				continue
+			}
 			if err := server.queueCleanup(group, cfg, automaticCause); err != nil {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
