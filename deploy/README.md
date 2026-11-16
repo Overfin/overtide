@@ -59,6 +59,12 @@ they heard from to `X-Forwarded-For` (most do by default). Keep the entries
 narrow: a machine inside a listed range that reaches Overtide directly can
 write any address in the header, and so get past the sign-in limit.
 
+The proxy must also pass on the address the browser asked for (the `Host`
+header): Overtide refuses every change whose origin isn't its own address,
+so with another host name there, even signing in fails ("cross-origin write
+rejected"). Caddy and Traefik keep it; with nginx, add
+`proxy_set_header Host $host;` next to `proxy_pass`.
+
 ## Paths
 
 Overtide finds files where Radarr, Sonarr and your torrent client say they
