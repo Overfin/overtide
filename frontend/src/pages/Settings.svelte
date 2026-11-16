@@ -12,7 +12,6 @@
   let autoMode = $state('disabled');
   let unassociated = $state(false);
   let incomplete = $state(false);
-  let copies = $state('first');
   let exclude = $state(false);
   let dryRun = $state(false);
   let seeding = $state<number | string>('');
@@ -24,7 +23,6 @@
     autoMode = s.autoMode;
     unassociated = s.autoRemoveUnassociatedTorrents;
     incomplete = s.autoRemoveIncompleteTorrents;
-    copies = s.copiesWithTitles ? 'with-titles' : 'first';
     exclude = s.autoExcludeFromImportLists;
     dryRun = s.dryRun;
     // 0 is off, shown empty.
@@ -55,7 +53,6 @@
         dryRun,
         autoExcludeFromImportLists: exclude,
         autoRemoveIncompleteTorrents: incomplete,
-        copiesWithTitles: copies === 'with-titles',
         privateMinSeedingDays: days,
       }));
       status = { text: 'Removal settings saved.', kind: 'ok' };
@@ -95,14 +92,6 @@
     </Setting>
     <Setting label="Allow automatic removal of incomplete torrents" hint="Off by default: whether automatic removal may pick an incomplete download. The cleanup plan still lists them, to remove by hand. A torrent added in the last 7 days is never picked on its own.">
       {#snippet children(ids)}<input type="checkbox" bind:checked={incomplete} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}
-    </Setting>
-    <Setting label="Torrents that are copies of a title" hint={'A torrent whose files were copied to the library, not hardlinked: removing it frees its whole size and the library loses nothing, so by default copies go before any title. "Ordered with their title" places each one by its title\'s Overfin score instead, so seeding goes with the titles that matter least. Torrents that back nothing at all always go first.'}>
-      {#snippet children(ids)}
-        <select bind:value={copies} aria-labelledby={ids.label} aria-describedby={ids.hint}>
-          <option value="first">Removed before titles</option>
-          <option value="with-titles">Ordered with their title</option>
-        </select>
-      {/snippet}
     </Setting>
     <Setting label="Add removed media to import list exclusions" hint={'Off by default: same effect as checking "Add to import list exclusions" on the manual removal overlay, but applied automatically. Prevents a configured import list from re-adding what was just removed.'}>
       {#snippet children(ids)}<input type="checkbox" bind:checked={exclude} aria-labelledby={ids.label} aria-describedby={ids.hint} />{/snippet}

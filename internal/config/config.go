@@ -64,11 +64,6 @@ type RemovalConfig struct {
 	// a human looking at the Torrents page can already decide for
 	// themselves. Same shape as AutoRemoveUnassociatedTorrents.
 	AutoRemoveIncompleteTorrents bool `json:"auto_remove_incomplete_torrents"`
-	// CopiesWithTitles orders a torrent that is a copy of a title (not
-	// hardlinked to it) with that title, by its Overfin score, instead of
-	// before every title. Off by default: copies go first, since the
-	// library loses nothing with them.
-	CopiesWithTitles bool `json:"copies_with_titles"`
 }
 
 type Service struct {

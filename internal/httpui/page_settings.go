@@ -18,7 +18,6 @@ type settingsData struct {
 	PrivateMinSeedingDays          int    `json:"privateMinSeedingDays"`
 	AutoExcludeFromImportLists     bool   `json:"autoExcludeFromImportLists"`
 	AutoRemoveIncompleteTorrents   bool   `json:"autoRemoveIncompleteTorrents"`
-	CopiesWithTitles               bool   `json:"copiesWithTitles"`
 }
 
 func (server *Server) settingsData() settingsData {
@@ -34,7 +33,6 @@ func (server *Server) settingsData() settingsData {
 		PrivateMinSeedingDays:          cfg.Protection.PrivateMinSeedingDays,
 		AutoExcludeFromImportLists:     cfg.Removal.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   cfg.Removal.AutoRemoveIncompleteTorrents,
-		CopiesWithTitles:               cfg.Removal.CopiesWithTitles,
 	}
 }
 
@@ -124,7 +122,6 @@ type removalForm struct {
 	DryRun                         bool   `json:"dryRun"`
 	AutoExcludeFromImportLists     bool   `json:"autoExcludeFromImportLists"`
 	AutoRemoveIncompleteTorrents   bool   `json:"autoRemoveIncompleteTorrents"`
-	CopiesWithTitles               bool   `json:"copiesWithTitles"`
 	// PrivateMinSeedingDays: 0 is off.
 	PrivateMinSeedingDays int `json:"privateMinSeedingDays"`
 }
@@ -147,7 +144,6 @@ func (server *Server) setRemovalSettings(w http.ResponseWriter, r *http.Request)
 		DryRun:                         in.DryRun,
 		AutoExcludeFromImportLists:     in.AutoExcludeFromImportLists,
 		AutoRemoveIncompleteTorrents:   in.AutoRemoveIncompleteTorrents,
-		CopiesWithTitles:               in.CopiesWithTitles,
 	}
 	if err := server.inv.SetRemovalSettings(removal, in.PrivateMinSeedingDays); err != nil {
 		fail(w, http.StatusBadRequest, err.Error())

@@ -48,11 +48,7 @@ type Action struct {
 	// HardlinkedBundle, and is nil for StandaloneMedia/StandaloneSeason.
 	Torrents []model.Torrent `json:"torrents,omitempty"`
 	// Value is a title's (or season's) Overfin score, which orders titles.
-	// A copy (see Copy) carries its title's.
 	Value float64 `json:"value"`
-	// Copy is true for a lone torrent whose title was copied from it, not
-	// hardlinked: the library keeps the title without it.
-	Copy bool `json:"copy,omitempty"`
 	// LastActivity is when a lone torrent (or the most recently active of
 	// a cross-seed group) last sent or received data, which orders lone
 	// torrents: the one inactive the longest goes first. Lone torrents
@@ -60,8 +56,8 @@ type Action struct {
 	LastActivity     int64          `json:"lastActivity,omitempty"`
 	ReclaimableBytes int64          `json:"reclaimableBytes"`
 	Reasons          []model.Reason `json:"reasons,omitempty"`
-	// Folder is the root folder of a title (or of a copy's title) when
-	// the disk's space is shared between its folders (see Folder).
+	// Folder is the root folder of a title when the disk's space is shared
+	// between its folders (see Folder).
 	Folder string `json:"folder,omitempty"`
 }
 
@@ -200,10 +196,6 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		mediaTier = append(mediaTier, Action{Kind: StandaloneMedia, Media: m, Value: m.RetentionValue, ReclaimableBytes: m.ReclaimableBytes, Reasons: m.RetentionValueReasons})
 	}
 
-	valueByTitle := map[string]float64{}
-	for _, m := range media {
-		valueByTitle[titleKey(m.Type, m.ServiceID, m.SourceID)] = m.RetentionValue
-	}
 	byHash := make(map[string]model.Torrent, len(torrents))
 	for _, t := range torrents {
 		byHash[strings.ToLower(t.Hash)] = t
@@ -214,22 +206,10 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 			continue
 		}
 		if model.NormalizeTorrentStatus(t.AssociationStatus) == model.TorrentCurrent {
-			if bundledHashes[strings.ToLower(t.Hash)] {
-				continue // already represented inside (or locked out by) a bundle above
-			}
-			if !t.MediaHardlinkKnown {
-				// Hardlink status unproven: never recommend removing it alone,
-				// since it might silently free ~0 bytes while destroying real
-				// swarm value, the same risk a proven hardlink carries.
-				continue
-			}
-			if t.MediaHardlinked {
-				continue // proven hardlink, but its media wasn't in this device's list; stay conservative
-			}
-			// Current, proven not hardlinked: an independent copy.
-			if len(t.SharesFilesWith) == 0 && t.ReclaimableKnown && t.ReclaimableBytes > 0 {
-				torrentTier = append(torrentTier, Action{Kind: StandaloneTorrent, Torrents: []model.Torrent{t}, LastActivity: t.LastActivity, ReclaimableBytes: t.ReclaimableBytes, Copy: true, Value: titleValue(t, valueByTitle)})
-			}
+			// It backs a title: it goes with the title's bundle above, or
+			// not at all. Removed alone it might free nothing while
+			// destroying real swarm value. Once its title is gone, it's a
+			// lone torrent like any other.
 			continue
 		}
 		if len(t.SharesFilesWith) > 0 {
@@ -249,26 +229,6 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 	}
 
 	return mediaTier, torrentTier
-}
-
-func titleKey(kind model.MediaType, serviceID string, sourceID int) string {
-	return fmt.Sprintf("%s:%s:%d", kind, serviceID, sourceID)
-}
-
-// titleValue is the highest Overfin score among the titles a copy belongs
-// to, or the highest possible if none of them is known here: then it's
-// ordered after every title.
-func titleValue(t model.Torrent, valueByTitle map[string]float64) float64 {
-	best, found := 0.0, false
-	for _, ref := range t.MediaItems {
-		if value, ok := valueByTitle[titleKey(ref.Type, ref.ServiceID, ref.SourceID)]; ok && (!found || value > best) {
-			best, found = value, true
-		}
-	}
-	if !found {
-		return 100
-	}
-	return best
 }
 
 // shareGroup returns t and every torrent it shares files with, ordered by
@@ -328,20 +288,11 @@ func filterExcluded(tier []Action, excluded map[string]bool) []Action {
 // order puts lone torrents first, since they back nothing in the library:
 // the one inactive the longest first, the larger first on a tie. Then
 // titles and seasons, lowest Overfin score first, the larger first on a
-// tie. With copiesWithTitles, a copy (see Action.Copy) goes among the
-// titles, by its title's score (before them on a tie), rather than among
-// the lone torrents.
+// tie.
 // Returns a new slice.
-func order(mediaTier, torrentTier []Action, copiesWithTitles bool) []Action {
-	var torrents, media []Action
-	for _, action := range torrentTier {
-		if action.Copy && copiesWithTitles {
-			media = append(media, action)
-		} else {
-			torrents = append(torrents, action)
-		}
-	}
-	media = append(media, mediaTier...)
+func order(mediaTier, torrentTier []Action) []Action {
+	torrents := append([]Action(nil), torrentTier...)
+	media := append([]Action(nil), mediaTier...)
 	sort.SliceStable(torrents, func(i, j int) bool {
 		if torrents[i].LastActivity != torrents[j].LastActivity {
 			return torrents[i].LastActivity < torrents[j].LastActivity
@@ -351,10 +302,6 @@ func order(mediaTier, torrentTier []Action, copiesWithTitles bool) []Action {
 	sort.SliceStable(media, func(i, j int) bool {
 		if media[i].Value != media[j].Value {
 			return media[i].Value < media[j].Value
-		}
-		// A copy goes before its title: the library keeps the title.
-		if media[i].Copy != media[j].Copy {
-			return media[i].Copy
 		}
 		return media[i].ReclaimableBytes > media[j].ReclaimableBytes
 	})
@@ -405,8 +352,7 @@ func (plan Plan) Enough(allowed []Action) []Action {
 // the order) as takeUntil does, then one title at a time from the folder
 // furthest over its share, in bytes, counting the folders again after each:
 // the first in order of that folder. It stops when the disk has what it
-// needs, or no folder is over its share. A copy taken frees no space in
-// its title's folder.
+// needs, or no folder is over its share.
 func byShares(ordered []Action, need uint64, folders []Folder) []Action {
 	var taken []Action
 	var freed int64
@@ -450,16 +396,13 @@ func byShares(ordered []Action, need uint64, folders []Folder) []Action {
 		used[next] = true
 		taken = append(taken, action)
 		freed += action.ReclaimableBytes
-		if !action.Copy {
-			held[furthest] -= action.ReclaimableBytes
-		}
+		held[furthest] -= action.ReclaimableBytes
 	}
 	return taken
 }
 
-// inFolders sets each action's root folder: its title's, a copy's being
-// its title's when copies go with their titles, among the folders.
-func inFolders(ordered []Action, media []model.Media, folders []Folder, copiesWithTitles bool) {
+// inFolders sets each title's action's root folder, among the folders.
+func inFolders(ordered []Action, folders []Folder) {
 	of := func(path string) string {
 		path = filepath.Clean(path)
 		best := ""
@@ -470,23 +413,9 @@ func inFolders(ordered []Action, media []model.Media, folders []Folder, copiesWi
 		}
 		return best
 	}
-	pathByTitle := map[string]string{}
-	for _, m := range media {
-		pathByTitle[titleKey(m.Type, m.ServiceID, m.SourceID)] = m.Path
-	}
 	for i := range ordered {
-		action := &ordered[i]
-		switch {
-		case action.Media.Path != "":
-			action.Folder = of(action.Media.Path)
-		case action.Copy && copiesWithTitles:
-			for _, t := range action.Torrents {
-				for _, ref := range t.MediaItems {
-					if path := pathByTitle[titleKey(ref.Type, ref.ServiceID, ref.SourceID)]; path != "" && action.Folder == "" {
-						action.Folder = of(path)
-					}
-				}
-			}
+		if path := ordered[i].Media.Path; path != "" {
+			ordered[i].Folder = of(path)
 		}
 	}
 }
@@ -527,7 +456,7 @@ func takeUntil(ordered []Action, need uint64) []Action {
 //
 // folders, when not nil, are the disk's root folders sharing its space:
 // see byShares.
-func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool, copiesWithTitles bool, folders []Folder) (Plan, error) {
+func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, media []model.Media, torrents []model.Torrent, reliable bool, excluded map[string]bool, folders []Folder) (Plan, error) {
 	plan := Plan{Path: path, TargetUsagePercent: targetUsage, CriticalUsagePercent: criticalUsage, Reliable: reliable}
 	var filesystemStats syscall.Statfs_t
 	if err := syscall.Statfs(path, &filesystemStats); err != nil {
@@ -590,12 +519,12 @@ func Build(path string, otherBytes uint64, targetUsage, criticalUsage float64, m
 		mediaTier = filterExcluded(mediaTier, excluded)
 		torrentTier = filterExcluded(torrentTier, excluded)
 	}
-	ordered := order(mediaTier, torrentTier, copiesWithTitles)
+	ordered := order(mediaTier, torrentTier)
 	enforceSeasonOrder(ordered)
 	final := takeUntil(ordered, plan.NeedBytes)
 	if folders != nil {
 		plan.Folders = folders
-		inFolders(ordered, media, folders, copiesWithTitles)
+		inFolders(ordered, folders)
 		final = byShares(ordered, plan.NeedBytes, folders)
 	}
 	plan.Actions = final

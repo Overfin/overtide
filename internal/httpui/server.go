@@ -186,7 +186,7 @@ func (server *Server) deviceViews(items []model.Media, torrents []model.Torrent,
 		if enabled {
 			// What Overfin holds for a last watch is skipped, as in
 			// automatic removal (holdDepartures).
-			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, server.heldKeys(excluded), cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
+			p, planErr = cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], planningReliable, server.heldKeys(excluded), shareFolders(cfg, device))
 		} else {
 			// No point building a plan nothing will ever act on — an explicit
 			// per-device opt-out, same reasoning as the global AutoMode

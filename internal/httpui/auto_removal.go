@@ -86,7 +86,7 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		// it goes further down the list, and those are asked about too.
 		take := func(p cleanup.Plan) []cleanup.Action { return p.Enough(autoActions(p.Ordered, cfg)) }
 		plan, cleared, err := server.holdDepartures(ctx, cfg, device.RepresentativePath, func(excluded map[string]bool) (cleanup.Plan, error) {
-			return cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, excluded, cfg.Removal.CopiesWithTitles, shareFolders(cfg, device))
+			return cleanup.Build(device.RepresentativePath, device.OtherBytes, target, critical, mediaByDevice[device.RepresentativePath], torrentsByDevice[device.RepresentativePath], reliable, excluded, shareFolders(cfg, device))
 		}, take)
 		if err != nil || !plan.Available {
 			continue

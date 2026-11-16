@@ -35,7 +35,7 @@ func TestByShares(t *testing.T) {
 		film("f2", "/data/Films/y", 10),
 		film("lost", "/elsewhere/z", 50), // in no folder: never taken
 	}
-	inFolders(ordered, nil, folders, false)
+	inFolders(ordered, folders)
 	// Films 40 over, Series 30 over: f1 (Films 15 over), then s1 (Series
 	// 20 over), s2 (Series 10 over), f2 (Films 5 over): 60 freed.
 	got := titles(byShares(ordered, 60, folders))

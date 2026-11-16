@@ -52,7 +52,6 @@ export interface Settings {
   privateMinSeedingDays: number;
   autoExcludeFromImportLists: boolean;
   autoRemoveIncompleteTorrents: boolean;
-  copiesWithTitles: boolean;
 }
 
 /** shortPath keeps a long path's start and end, as the old pages did. */
