@@ -9,6 +9,8 @@
 // failure: consecutive failures are counted, reset on each open, and only
 // after several in a row does the panel fall back to asking every 5 s.
 
+import { sessionEnded } from './api';
+
 export interface Revision {
   kind: string;
   revision?: number;
@@ -100,6 +102,9 @@ async function refreshStatus(invalidation: Revision) {
   try {
     const response = await fetch('/ui/status', { headers, cache: 'no-store' });
     if (response.status === 304) return;
+    // The session ended (signed out elsewhere, expired): the panel says so
+    // at once, rather than waiting for its next request.
+    if (response.status === 401) sessionEnded();
     if (!response.ok) throw new Error(`status ${response.status}`);
     etag = response.headers.get('ETag') || '';
     // Polling while the stream is down (the session ended, then signed in

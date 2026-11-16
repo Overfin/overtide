@@ -8,6 +8,12 @@ export function onSignedOut(callback: () => void) {
   signedOut = callback;
 }
 
+/** sessionEnded tells the panel, from a request made outside call (the
+ * live updates' status), that the session is over. */
+export function sessionEnded() {
+  signedOut();
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, headers: {} as Record<string, string>, cache: 'no-store' };
   if (body !== undefined) {
