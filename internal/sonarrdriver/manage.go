@@ -291,6 +291,51 @@ func (driver *Driver) Repair(ctx context.Context, cfg config.Config) {
 	}
 }
 
+// StandDown unmonitors, Adding switched off, the episodes airing of the
+// series Overtide manages that it may have monitored (airingWindow) and
+// that have no file yet: Sonarr's RSS would go on grabbing them. It
+// reports whether every Sonarr answered.
+func (driver *Driver) StandDown(ctx context.Context, cfg config.Config) bool {
+	ok := true
+	now := driver.now()
+	for _, svc := range cfg.ServicesOfType("sonarr") {
+		client, err := driver.inv.SonarrClient(svc.ID)
+		if err == nil {
+			client = client.WithContext(ctx)
+			var labels map[int]string
+			var titles []sonarr.Title
+			var episodes []sonarr.Episode
+			if labels, err = client.TagLabels(); err == nil {
+				titles, err = client.Titles()
+			}
+			if err == nil {
+				episodes, err = client.Calendar(now.Add(-tries.ReleaseGrace-2*24*time.Hour), now.Add(tries.ReleaseWindow))
+			}
+			if err == nil {
+				managed := map[int]bool{}
+				for _, t := range managedTitles(titles, labels, cfg.Adding.ManagesAll()) {
+					managed[t.ID] = true
+				}
+				var off []int
+				for _, e := range episodes {
+					if managed[e.SeriesID] && e.Monitored && !e.HasFile {
+						off = append(off, e.ID)
+					}
+				}
+				err = client.SetEpisodesMonitored(off, false)
+				if err == nil && len(off) > 0 {
+					log.Printf("[adding] adding is off: %d episodes airing unmonitored in %s", len(off), svc.Name)
+				}
+			}
+		}
+		if err != nil {
+			log.Printf("[adding] adding is off: Sonarr %s's episodes airing: %v", svc.Name, err)
+			ok = false
+		}
+	}
+	return ok
+}
+
 // findIncomplete puts in the wanted episodes, every LookEvery, those of the
 // seasons that have some of their files but lack episodes that aired. A
 // season with no file is one nobody wants, and one that lost a file within

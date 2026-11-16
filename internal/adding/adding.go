@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"sort"
 	"sync"
@@ -381,6 +382,62 @@ func titleKey(m model.Media) string {
 	return ""
 }
 
+// stoodDownKey is set once what Overtide monitored was unmonitored, Adding
+// switched off (standDown); emptied while it's on or in dry run.
+const stoodDownKey = "adding.stood_down"
+
+// standDown unmonitors, once Adding is switched off, what Overtide
+// monitored itself and has no file yet: films waiting for their release,
+// and the episodes airing of its series. Radarr's and Sonarr's RSS would
+// go on grabbing them otherwise. A film unmonitored so waits again, to be
+// monitored when Adding is back on. What can't be done now is tried again
+// at the next run.
+func (service *Service) standDown(ctx context.Context, cfg config.Config) {
+	database := service.inv.Store()
+	if done, err := database.Meta(stoodDownKey); err != nil || done != "" {
+		return
+	}
+	entries, err := service.load()
+	if err != nil {
+		log.Printf("[adding] adding is off: %v", err)
+		return
+	}
+	ok := true
+	for i := range entries {
+		entry := &entries[i]
+		if entry.State != NotReleased || entry.MonitoredAt.IsZero() || entry.ArrID == 0 {
+			continue
+		}
+		a, err := service.arrFor(ctx, entry)
+		if err != nil {
+			ok = false
+			continue
+		}
+		hasFiles, err := a.HasFiles(entry.ArrID)
+		if err != nil || hasFiles {
+			// It came already: followed when Adding is back on.
+			ok = ok && err == nil
+			continue
+		}
+		if err := a.Monitor(entry.ArrID, false); err != nil {
+			log.Printf("[adding] adding is off: unmonitor %s: %v", entry.Title, err)
+			ok = false
+			continue
+		}
+		entry.MonitoredAt, entry.Counted, entry.NextTry, entry.UpdatedAt = time.Time{}, false, service.now(), service.now()
+		entry.Result = "Unmonitored, adding is off: monitored for its release again when it's back on"
+	}
+	if err := service.save(entries); err != nil {
+		log.Printf("[adding] adding is off: %v", err)
+		return
+	}
+	if service.sonarr.StandDown(ctx, cfg) && ok {
+		if err := database.SetMeta(stoodDownKey, service.now().Format(time.RFC3339)); err != nil {
+			log.Printf("[adding] adding is off: %v", err)
+		}
+	}
+}
+
 // Run is the trying task: the first time it's on, it replaces the legacy
 // tag; with "Manage all", it takes every title (takeAll); then it follows
 // what's moving and applies the lifecycle. Searches then go in this order,
@@ -398,8 +455,12 @@ func (service *Service) Run(ctx context.Context) error {
 	if mode != config.AddingDryRun && mode != config.AddingOn {
 		// Off, nothing's searched or grabbed, but what's downloaded is
 		// still imported, and seasons imported wrong are put right.
+		service.standDown(ctx, cfg)
 		service.sonarr.Repair(ctx, cfg)
 		return nil
+	}
+	if err := service.inv.Store().SetMeta(stoodDownKey, ""); err != nil {
+		return err
 	}
 	dryRun := mode == config.AddingDryRun
 	budget := cfg.Adding.SearchesPerRun()
