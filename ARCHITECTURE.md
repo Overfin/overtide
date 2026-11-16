@@ -222,7 +222,7 @@ Possible reclamation sources include:
 - lower-cost media representations/quality changes (future);
 - low-Retention-Value Library media.
 
-Lone torrents (superseded, orphaned or unassociated) back nothing in the library, so they come first: the one inactive the longest first, the larger first on a tie; cross-seeds of one another are one candidate, removed together. Then titles and seasons, lowest Overfin score first, each with its hardlinked torrents. A hardlinked torrent doesn't change its title's value; it only holds the title back when it has an obligation: kept by the operator, a private tracker's seeding time (`private_min_seeding_days`, off by default), or the minimum ratio. Candidates are taken in that order until the device is back under its target.
+Lone torrents (superseded, orphaned or unassociated) back nothing in the library, so they come first: the one inactive the longest first, the larger first on a tie; cross-seeds of one another are one candidate, removed together. Then titles and seasons, lowest Overfin score first, each with its hardlinked torrents; titles or seasons a torrent backs together (a pack) go together, at the turn of the most valued, the pack with the first and its own files counted once, and none of them while another it backs isn't a candidate. A hardlinked torrent doesn't change its title's value; it only holds the title back when it has an obligation: kept by the operator, a private tracker's seeding time (`private_min_seeding_days`, off by default), or the minimum ratio. Candidates are taken in that order until the device is back under its target.
 
 The long-term optimization question is:
 

@@ -356,8 +356,26 @@ func cleanupPlanJSONFrom(data cleanupPlanData) cleanupPlanJSON {
 	for _, action := range torrentCleanupActions(data.Plan.Actions) {
 		out.Torrents = append(out.Torrents, cleanupRow(action))
 	}
+	titles := map[string]string{}
+	for _, action := range data.Plan.Actions {
+		titles[cleanup.ActionKey(action)] = titleOf(action)
+	}
 	for _, action := range mediaCleanupActions(data.Plan.Actions) {
-		out.Media = append(out.Media, cleanupRow(action))
+		row := cleanupRow(action)
+		if len(action.Together) > 0 {
+			// A pack bundled with several titles: they go together.
+			var with []string
+			for _, key := range action.Together {
+				with = append(with, titles[key])
+			}
+			together := "Goes together with " + strings.Join(with, ", ") + ": a torrent backs them all"
+			if row.With != "" {
+				row.With += ". " + together
+			} else {
+				row.With = together
+			}
+		}
+		out.Media = append(out.Media, row)
 	}
 	return out
 }

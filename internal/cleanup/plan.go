@@ -59,6 +59,16 @@ type Action struct {
 	// Folder is the root folder of a title when the disk's space is shared
 	// between its folders (see Folder).
 	Folder string `json:"folder,omitempty"`
+	// Together are the ActionKeys of the other titles or seasons a torrent
+	// of this one also backs (a pack bundled with several): they go all
+	// together or not at all, and the torrent with the first of them.
+	Together []string `json:"together,omitempty"`
+}
+
+// torrentKey identifies a torrent: its client and its hash, since the same
+// hash can be in two clients.
+func torrentKey(t model.Torrent) string {
+	return t.ServiceID + "|" + strings.ToLower(t.Hash)
 }
 
 // Folder is a root folder of a disk whose space is shared between its
@@ -149,7 +159,9 @@ func torrentsHoldBack(torrents []model.Torrent) bool {
 // tier per domain, applying every granular eligibility rule (protection,
 // hardlink safety, reclaimability) but not yet ordering either tier.
 func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrentTier []Action) {
-	bundledHashes := map[string]bool{}
+	// backers counts the titles and seasons each hardlinked torrent backs,
+	// candidates or not.
+	backers := map[string]int{}
 
 	for _, m := range media {
 		if m.Type == model.Series && len(m.Seasons) > 0 {
@@ -157,7 +169,7 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 				hardlinked := m.CurrentHardlinkedTorrentsForSeason(season.Number)
 				if len(hardlinked) > 0 {
 					for _, t := range hardlinked {
-						bundledHashes[strings.ToLower(t.Hash)] = true
+						backers[torrentKey(t)]++
 					}
 					if season.Protected || season.RemovalRestricted || torrentsHoldBack(hardlinked) || !season.BundleReclaimableKnown || season.BundleReclaimableBytes <= 0 {
 						continue
@@ -175,7 +187,7 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		hardlinked := m.CurrentHardlinkedTorrents()
 		if len(hardlinked) > 0 {
 			for _, t := range hardlinked {
-				bundledHashes[strings.ToLower(t.Hash)] = true
+				backers[torrentKey(t)]++
 			}
 			if m.Protected || m.RemovalRestricted || torrentsHoldBack(hardlinked) || !m.BundleReclaimableKnown || m.BundleReclaimableBytes <= 0 {
 				// Never offer the media or any of its hardlinked torrents
@@ -195,10 +207,11 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		}
 		mediaTier = append(mediaTier, Action{Kind: StandaloneMedia, Media: m, Value: m.RetentionValue, ReclaimableBytes: m.ReclaimableBytes, Reasons: m.RetentionValueReasons})
 	}
+	mediaTier = sharedPacks(mediaTier, backers)
 
 	byHash := make(map[string]model.Torrent, len(torrents))
 	for _, t := range torrents {
-		byHash[strings.ToLower(t.Hash)] = t
+		byHash[torrentKey(t)] = t
 	}
 	seenGroups := map[string]bool{}
 	for _, t := range torrents {
@@ -214,8 +227,8 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		}
 		if len(t.SharesFilesWith) > 0 {
 			// A cross-seed group: removed together, or not at all.
-			if group := shareGroup(t, byHash); group != nil && !seenGroups[strings.ToLower(group[0].Hash)] {
-				seenGroups[strings.ToLower(group[0].Hash)] = true
+			if group := shareGroup(t, byHash); group != nil && !seenGroups[torrentKey(group[0])] {
+				seenGroups[torrentKey(group[0])] = true
 				if action, ok := groupAction(group); ok {
 					torrentTier = append(torrentTier, action)
 				}
@@ -231,12 +244,12 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 	return mediaTier, torrentTier
 }
 
-// shareGroup returns t and every torrent it shares files with, ordered by
-// hash, or nil if one of them is unknown.
+// shareGroup returns t and every torrent of its client it shares files
+// with, ordered by hash, or nil if one of them is unknown.
 func shareGroup(t model.Torrent, byHash map[string]model.Torrent) []model.Torrent {
 	group := []model.Torrent{t}
 	for _, hash := range t.SharesFilesWith {
-		other, ok := byHash[strings.ToLower(hash)]
+		other, ok := byHash[t.ServiceID+"|"+strings.ToLower(hash)]
 		if !ok {
 			return nil
 		}
@@ -264,6 +277,129 @@ func groupAction(group []model.Torrent) (Action, bool) {
 		return Action{}, false
 	}
 	return action, true
+}
+
+// sharedPacks deals with torrents bundled with more than one title or
+// season (a pack): removing one of them with the pack would take the pack
+// the others still seed, and each one's bundle counts the pack's own files
+// again. A pack also backing a title or season that isn't a candidate (kept,
+// protected, held back) can't go: no bundle holding it is offered, nor any
+// linked to those through another pack. The others are linked (Together):
+// they go together, or not at all.
+func sharedPacks(tier []Action, backers map[string]int) []Action {
+	holders := map[string][]int{}
+	for i, action := range tier {
+		if action.Kind != HardlinkedBundle {
+			continue
+		}
+		for _, t := range action.Torrents {
+			holders[torrentKey(t)] = append(holders[torrentKey(t)], i)
+		}
+	}
+	dropped := map[int]bool{}
+	for changed := true; changed; {
+		changed = false
+		for key, indexes := range holders {
+			left := 0
+			for _, i := range indexes {
+				if !dropped[i] {
+					left++
+				}
+			}
+			if left == 0 || left == backers[key] {
+				continue
+			}
+			for _, i := range indexes {
+				if !dropped[i] {
+					dropped[i], changed = true, true
+				}
+			}
+		}
+	}
+	// Link the bundles sharing a pack, through every pack they share.
+	parent := make([]int, len(tier))
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		if parent[i] != i {
+			parent[i] = find(parent[i])
+		}
+		return parent[i]
+	}
+	for _, indexes := range holders {
+		for _, i := range indexes[1:] {
+			parent[find(i)] = find(indexes[0])
+		}
+	}
+	members := map[int][]int{}
+	for i := range tier {
+		if !dropped[i] {
+			members[find(i)] = append(members[find(i)], i)
+		}
+	}
+	out := make([]Action, 0, len(tier))
+	for i, action := range tier {
+		if dropped[i] {
+			continue
+		}
+		for _, other := range members[find(i)] {
+			if other != i {
+				action.Together = append(action.Together, ActionKey(tier[other]))
+			}
+		}
+		out = append(out, action)
+	}
+	return out
+}
+
+// together is ordered[i] and the actions it must go with (Together), in
+// order, ok false when one of them isn't in ordered or is already taken.
+// They go at the turn of the last of them in the order, the most valued:
+// none goes before its own turn. A torrent shared between them goes with
+// the first only, and the later ones don't count its own files again.
+func together(ordered []Action, i int, used []bool) ([]Action, []int, bool) {
+	if used[i] {
+		return nil, nil, false
+	}
+	if len(ordered[i].Together) == 0 {
+		return []Action{ordered[i]}, []int{i}, true
+	}
+	wanted := map[string]bool{ActionKey(ordered[i]): true}
+	for _, key := range ordered[i].Together {
+		wanted[key] = true
+	}
+	var group []Action
+	var indexes []int
+	for j, action := range ordered {
+		if wanted[ActionKey(action)] {
+			if used[j] {
+				return nil, nil, false
+			}
+			delete(wanted, ActionKey(action))
+			group, indexes = append(group, action), append(indexes, j)
+		}
+	}
+	if len(wanted) > 0 || indexes[len(indexes)-1] != i {
+		return nil, nil, false
+	}
+	seen := map[string]bool{}
+	for g := range group {
+		action := group[g]
+		var torrents []model.Torrent
+		for _, t := range action.Torrents {
+			if seen[torrentKey(t)] {
+				action.ReclaimableBytes = max(action.ReclaimableBytes-t.ReclaimableBytes, 0)
+				continue
+			}
+			seen[torrentKey(t)] = true
+			torrents = append(torrents, t)
+		}
+		action.Torrents = torrents
+		group[g] = action
+	}
+	return group, indexes, true
 }
 
 // filterExcluded drops any action whose ActionKey is in excluded, as if
@@ -370,6 +506,7 @@ func byShares(ordered []Action, need uint64, folders []Folder) []Action {
 			taken, freed, used[i] = append(taken, action), freed+action.ReclaimableBytes, true
 		}
 	}
+	tried := make([]bool, len(ordered))
 	emptied := map[string]bool{}
 	for freed < int64(need) {
 		furthest, over := "", int64(0)
@@ -383,7 +520,7 @@ func byShares(ordered []Action, need uint64, folders []Folder) []Action {
 		}
 		next := -1
 		for i, action := range ordered {
-			if !used[i] && action.Folder == furthest {
+			if !used[i] && !tried[i] && action.Folder == furthest {
 				next = i
 				break
 			}
@@ -392,11 +529,17 @@ func byShares(ordered []Action, need uint64, folders []Folder) []Action {
 			emptied[furthest] = true // nothing left to take there
 			continue
 		}
-		action := ordered[next]
-		used[next] = true
-		taken = append(taken, action)
-		freed += action.ReclaimableBytes
-		held[furthest] -= action.ReclaimableBytes
+		tried[next] = true
+		group, indexes, ok := together(ordered, next, used)
+		if !ok {
+			continue
+		}
+		for g, action := range group {
+			used[indexes[g]] = true
+			taken = append(taken, action)
+			freed += action.ReclaimableBytes
+			held[action.Folder] -= action.ReclaimableBytes
+		}
 	}
 	return taken
 }
@@ -420,16 +563,25 @@ func inFolders(ordered []Action, folders []Folder) {
 	}
 }
 
-// takeUntil takes actions in order until they reclaim need bytes.
+// takeUntil takes actions in order until they reclaim need bytes, an
+// action with the others it goes with (together).
 func takeUntil(ordered []Action, need uint64) []Action {
 	var taken []Action
 	var selectedBytes int64
-	for _, action := range ordered {
+	used := make([]bool, len(ordered))
+	for i := range ordered {
 		if selectedBytes >= int64(need) {
 			break
 		}
-		taken = append(taken, action)
-		selectedBytes += action.ReclaimableBytes
+		group, indexes, ok := together(ordered, i, used)
+		if !ok {
+			continue
+		}
+		for g, action := range group {
+			used[indexes[g]] = true
+			taken = append(taken, action)
+			selectedBytes += action.ReclaimableBytes
+		}
 	}
 	return taken
 }

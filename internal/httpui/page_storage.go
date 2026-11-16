@@ -183,21 +183,17 @@ func shownKey(action cleanup.Action) string {
 }
 
 // shownActions keeps, of a freshly built plan, only the actions shown when
-// Clean was clicked: what wasn't on screen is never removed. gone counts
-// the rows shown that the plan no longer has as they were.
+// Clean was clicked: what wasn't on screen is never removed, nor what goes
+// together with something not on screen (wholeGroups). gone counts the
+// rows shown that the plan no longer has as they were, or that can't go
+// without one of those.
 func shownActions(actions []cleanup.Action, shown []string) (kept []cleanup.Action, gone int) {
 	wanted := map[string]bool{}
 	for _, key := range shown {
 		wanted[key] = true
 	}
-	for _, action := range actions {
-		key := shownKey(action)
-		if wanted[key] {
-			kept = append(kept, action)
-			delete(wanted, key)
-		}
-	}
-	return kept, len(wanted)
+	kept = wholeGroups(actions, func(a cleanup.Action) bool { return wanted[shownKey(a)] })
+	return kept, len(wanted) - len(kept)
 }
 
 // cleanActions queues every given plan row (see queueCleanup) and returns

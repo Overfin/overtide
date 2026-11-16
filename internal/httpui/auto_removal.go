@@ -91,18 +91,51 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 		if err != nil || !plan.Available {
 			continue
 		}
-		for _, group := range take(plan) {
-			// Never a title Overfin wasn't asked about, or said to keep a
-			// while: the next cycle goes on.
-			if !cleared[cleanup.ActionKey(group)] {
-				continue
-			}
+		// Never a title Overfin wasn't asked about, or said to keep a
+		// while, nor one going together with such a title: the next cycle
+		// goes on.
+		for _, group := range wholeGroups(take(plan), func(a cleanup.Action) bool { return cleared[cleanup.ActionKey(a)] }) {
 			if err := server.queueCleanup(group, cfg, automaticCause); err != nil {
 				log.Printf("[auto-removal] skipped action kind=%s: %v", group.Kind, err)
 			}
 		}
 	}
 	return nil
+}
+
+// wholeGroups keeps the actions ok allows whose Together (the titles a pack
+// bundled with them also backs) are all kept too: they go all together or
+// not at all.
+func wholeGroups(actions []cleanup.Action, ok func(cleanup.Action) bool) []cleanup.Action {
+	kept := map[string]bool{}
+	for _, action := range actions {
+		if ok(action) {
+			kept[cleanup.ActionKey(action)] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, action := range actions {
+			key := cleanup.ActionKey(action)
+			if !kept[key] {
+				continue
+			}
+			for _, other := range action.Together {
+				if !kept[other] {
+					delete(kept, key)
+					changed = true
+					break
+				}
+			}
+		}
+	}
+	var out []cleanup.Action
+	for _, action := range actions {
+		if kept[cleanup.ActionKey(action)] {
+			out = append(out, action)
+		}
+	}
+	return out
 }
 
 // automaticCause is what automatic removal's work says in history and tasks.
