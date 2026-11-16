@@ -778,14 +778,21 @@ func (service *Service) RecycleBins(ctx context.Context) (map[string]string, err
 	}
 	service.mu.RUnlock()
 	out := map[string]string{}
+	var unread []string
 	for _, c := range clients {
 		bin, err := c.WithContext(ctx).RecycleBin()
 		if err != nil {
-			return nil, err
+			// One that can't answer now (down for a while) holds nothing
+			// up: the others' removals go on; it's said in the log.
+			unread = append(unread, fmt.Sprintf("%s: %v", c.App(), err))
+			continue
 		}
 		if bin != "" {
 			out[c.App()] = bin
 		}
+	}
+	if len(unread) > 0 {
+		return out, fmt.Errorf("recycle bins not read: %s", strings.Join(unread, "; "))
 	}
 	return out, nil
 }

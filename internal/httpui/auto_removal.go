@@ -53,10 +53,11 @@ func (server *Server) runAutoRemovalEvaluation(ctx context.Context) error {
 	// A recycle bin in Radarr or Sonarr keeps every file removed: the disk
 	// never gets below its target, and each cycle would remove more titles
 	// for nothing. Nothing is removed until it's off.
-	if bins, err := server.inv.RecycleBins(ctx); err != nil {
-		log.Printf("[auto-removal] skipped this cycle: reading Radarr's and Sonarr's recycle bins: %v", err)
-		return nil
-	} else if len(bins) > 0 {
+	bins, err := server.inv.RecycleBins(ctx)
+	if err != nil {
+		log.Printf("[auto-removal] %v", err)
+	}
+	if len(bins) > 0 {
 		for app, bin := range bins {
 			log.Printf("[auto-removal] skipped this cycle: %s moves removed files to its recycle bin (%s), so removing frees no space; turn it off in its Media Management settings", app, bin)
 		}
