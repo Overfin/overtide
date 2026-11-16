@@ -82,8 +82,15 @@ func (driver *Driver) repairSeason(ctx context.Context, client *sonarr.Client, s
 		}
 		current[p] = append(current[p], e.ID)
 	}
+	if len(paths) == 0 || !fromFirstWithoutGaps(paths, current, episodes) {
+		// The length rule lays the files from the season's first episode
+		// on, one after the other: with a file missing at the start or in
+		// between (E06 never came), every file after it would be placed
+		// on the wrong episodes.
+		return false, false
+	}
 	orders := driver.episodeOrders(ctx, driver.inv.Config(), series.TMDBID)
-	if orders == nil || len(paths) == 0 {
+	if orders == nil {
 		return false, false
 	}
 	places, ok := placeByLength(season, paths, fileLengths(paths), episodes, orders, driver.now())
@@ -143,4 +150,30 @@ func (driver *Driver) repairSeason(ctx context.Context, client *sonarr.Client, s
 	}
 	log.Printf("[adding] %s season %d: %d files imported again, each with its episodes", series.Title, season, len(again))
 	return true, true
+}
+
+// fromFirstWithoutGaps says whether the files, in order, hold the season's
+// episodes from its first on (as Sonarr numbers them now), each file
+// starting right after the one before.
+func fromFirstWithoutGaps(paths []string, current map[string][]int, episodes []sonarr.Episode) bool {
+	number := map[int]int{}
+	for _, e := range episodes {
+		number[e.ID] = e.EpisodeNumber
+	}
+	next := 1
+	for _, p := range paths {
+		var nums []int
+		for _, id := range current[p] {
+			nums = append(nums, number[id])
+		}
+		if len(nums) == 0 {
+			return false
+		}
+		slices.Sort(nums)
+		if nums[0] != next {
+			return false
+		}
+		next = nums[len(nums)-1] + 1
+	}
+	return true
 }
