@@ -405,11 +405,10 @@ func (server *Server) apiCleanupPlanClean(w http.ResponseWriter, r *http.Request
 	// Removals from an earlier Clean still under way haven't freed their
 	// space yet: the plan counts it as still needed, and would pick as
 	// much again.
-	if store := server.inv.Store(); store != nil {
-		if inFlight, err := store.InFlightRemovalHistoryEvents(); err == nil && len(inFlight) > 0 {
-			fail(w, http.StatusConflict, "Removals asked for earlier are still under way: once they're done, the plan counts the space they freed.")
-			return
-		}
+	// Only removals on this disk, and real ones (not a dry run's), count.
+	if server.removalsPendingOn(in.Path) {
+		fail(w, http.StatusConflict, "Removals asked for earlier on this disk are still under way: once they're done, the plan counts the space they freed.")
+		return
 	}
 	data, found := server.planForDevice(in.Path, excludedSetFrom(in.Excluded))
 	if !found {
@@ -508,4 +507,28 @@ func (server *Server) apiKeep(w http.ResponseWriter, r *http.Request) {
 type heldJSON struct {
 	Title string    `json:"title"`
 	Until time.Time `json:"until"`
+}
+
+// removalsPendingOn says whether a removal queued or under way (not in dry
+// run) takes a title or a torrent of the disk at path.
+func (server *Server) removalsPendingOn(path string) bool {
+	if server.inv == nil || server.inv.Store() == nil {
+		return false
+	}
+	projection := server.pendingProjection()
+	if len(projection.Media) == 0 && len(projection.Torrents) == 0 {
+		return false
+	}
+	items, _, _ := server.inv.Snapshot()
+	for _, m := range server.inv.MediaByDevice(items)[path] {
+		if _, pending := projection.Media[mediaOperationKey(m.Type, m.SourceID, m.ServiceID)]; pending {
+			return true
+		}
+	}
+	for _, t := range server.inv.TorrentsByDevice(server.inv.TorrentSnapshot())[path] {
+		if _, pending := projection.Torrents[strings.ToLower(t.Hash)]; pending {
+			return true
+		}
+	}
+	return false
 }
