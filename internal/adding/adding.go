@@ -397,12 +397,17 @@ func (service *Service) standDown(ctx context.Context, cfg config.Config) {
 	if done, err := database.Meta(stoodDownKey); err != nil || done != "" {
 		return
 	}
+	// The list is read, Radarr asked, then the list read again to note
+	// what was unmonitored: it's locked only to read and save it.
+	service.mu.Lock()
 	entries, err := service.load()
+	service.mu.Unlock()
 	if err != nil {
 		log.Printf("[adding] adding is off: %v", err)
 		return
 	}
 	ok := true
+	unmonitored := map[string]bool{}
 	for i := range entries {
 		entry := &entries[i]
 		if entry.State != NotReleased || entry.MonitoredAt.IsZero() || entry.ArrID == 0 {
@@ -424,12 +429,26 @@ func (service *Service) standDown(ctx context.Context, cfg config.Config) {
 			ok = false
 			continue
 		}
-		entry.MonitoredAt, entry.Counted, entry.NextTry, entry.UpdatedAt = time.Time{}, false, service.now(), service.now()
-		entry.Result = "Unmonitored, adding is off: monitored for its release again when it's back on"
+		unmonitored[entry.Key] = true
 	}
-	if err := service.save(entries); err != nil {
-		log.Printf("[adding] adding is off: %v", err)
-		return
+	if len(unmonitored) > 0 {
+		service.mu.Lock()
+		entries, err = service.load()
+		if err == nil {
+			for i := range entries {
+				entry := &entries[i]
+				if unmonitored[entry.Key] && entry.State == NotReleased {
+					entry.MonitoredAt, entry.Counted, entry.NextTry, entry.UpdatedAt = time.Time{}, false, service.now(), service.now()
+					entry.Result = "Unmonitored, adding is off: monitored for its release again when it's back on"
+				}
+			}
+			err = service.save(entries)
+		}
+		service.mu.Unlock()
+		if err != nil {
+			log.Printf("[adding] adding is off: %v", err)
+			return
+		}
 	}
 	if service.sonarr.StandDown(ctx, cfg) && ok {
 		if err := database.SetMeta(stoodDownKey, service.now().Format(time.RFC3339)); err != nil {
@@ -447,19 +466,22 @@ func (service *Service) standDown(ctx context.Context, cfg config.Config) {
 func (service *Service) Run(ctx context.Context) error {
 	cfg := service.inv.Config()
 	mode := cfg.Adding.Mode
+	if mode != config.AddingDryRun && mode != config.AddingOn {
+		// Off, nothing's searched or grabbed, but what's downloaded is
+		// still imported, and seasons imported wrong are put right. The
+		// waiting list is only touched by standDown, which locks it for
+		// itself: Clear doesn't wait for Sonarr's repairs.
+		service.standDown(ctx, cfg)
+		service.retryUnmonitors(ctx, false)
+		service.sonarr.SettleLooks(ctx, cfg)
+		service.sonarr.Repair(ctx, cfg)
+		return nil
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	// Seasons that came complete leave "Needs a look", adding on or not: it
 	// only reads Sonarr.
 	service.sonarr.SettleLooks(ctx, cfg)
-	if mode != config.AddingDryRun && mode != config.AddingOn {
-		// Off, nothing's searched or grabbed, but what's downloaded is
-		// still imported, and seasons imported wrong are put right.
-		service.standDown(ctx, cfg)
-		service.retryUnmonitors(ctx, false)
-		service.sonarr.Repair(ctx, cfg)
-		return nil
-	}
 	if err := service.inv.Store().SetMeta(stoodDownKey, ""); err != nil {
 		return err
 	}

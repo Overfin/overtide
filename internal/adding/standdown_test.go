@@ -2,6 +2,10 @@ package adding
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,5 +69,50 @@ func TestAddingOffUnmonitorsWhatOvertideMonitored(t *testing.T) {
 	}
 	if fake.Eps[1]["monitored"] != true {
 		t.Error("unmonitored again on the next run")
+	}
+}
+
+// With Adding off, a run's Sonarr repairs don't hold the waiting list:
+// Clear goes through while Sonarr is slow to answer.
+func TestClearDoesntWaitForRepairs(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	reached := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/sonarr") {
+			once.Do(func() { close(reached) })
+			<-release
+		}
+		fake.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	var released sync.Once
+	free := func() { released.Do(func() { close(release) }) }
+	defer free() // before the server closes, whatever happens
+	cfg := config.Config{Services: []config.Service{{ID: "s", Type: "sonarr", URL: srv.URL + "/sonarr", APIKey: "k"}}}
+	cfg.Adding.Mode = config.AddingOff
+	service := newTestService(t, cfg, now)
+	ran := make(chan error, 1)
+	go func() { ran <- service.Run(context.Background()) }()
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run never asked Sonarr")
+	}
+	cleared := make(chan error, 1)
+	go func() { _, err := service.Clear(); cleared <- err }()
+	select {
+	case err := <-cleared:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Clear waited for the run's repairs")
+	}
+	free()
+	if err := <-ran; err != nil {
+		t.Fatal(err)
 	}
 }
