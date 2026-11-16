@@ -28,9 +28,13 @@
     return get<TorrentList>(`/api/torrent-list${route.search}`);
   }
 
+  let asked = 0;
   async function load() {
+    const ask = ++asked;
     try {
-      data = await fetchList();
+      const fresh = await fetchList();
+      if (ask !== asked) return; // an earlier answer, after a later ask
+      data = fresh;
       failure = '';
     } catch (err) {
       failure = message(err);
@@ -54,7 +58,7 @@
   }
 
   $effect(() => {
-    void route.search;
+    q = new URLSearchParams(route.search).get('q') ?? ''; // Back: the address's search
     load();
   });
   $effect(() => {
@@ -92,7 +96,8 @@
   // Typing filters a moment after it stops.
   $effect(() => {
     const typed = q;
-    if (!data || typed.trim().toLowerCase() === data.q.trim().toLowerCase()) return;
+    const shown = (new URLSearchParams(route.search).get('q') ?? '').trim().toLowerCase();
+    if (!data || typed.trim().toLowerCase() === shown) return;
     const timer = setTimeout(() => filter({ q: typed.trim().toLowerCase() }), 300);
     return () => clearTimeout(timer);
   });

@@ -19,7 +19,7 @@
   let picked = $state<number[]>([]);
   const start = new URLSearchParams(route.search);
   let q = $state(start.get('q') ?? '');
-  let minSize = $state(start.get('min_size_mib') ?? '');
+  let minSize = $state<string | number | null>(start.get('min_size_mib') ?? '');
 
   const columns: [string, string][] = [['path', 'Path'], ['size', 'Size'], ['reclaimable', 'Physical potential'], ['links', 'Links'], ['modified', 'Modified']];
 
@@ -27,9 +27,15 @@
     return get<UnmanagedList>(`/api/unmanaged-files${route.search}`);
   }
 
+  // The answer of the last asked only: an earlier one coming after it
+  // (another filter, a reload) would show the old filter's rows.
+  let asked = 0;
   async function load() {
+    const ask = ++asked;
     try {
-      data = await fetchList();
+      const fresh = await fetchList();
+      if (ask !== asked) return;
+      data = fresh;
       picked = [];
       failure = '';
     } catch (err) {
@@ -57,7 +63,10 @@
   }
 
   $effect(() => {
-    void route.search;
+    // Back or forward: the fields show the address's filters.
+    const now = new URLSearchParams(route.search);
+    q = now.get('q') ?? '';
+    minSize = now.get('min_size_mib') ?? '';
     load();
   });
   $effect(() => {
@@ -92,9 +101,11 @@
 
   // Typing filters a moment after it stops.
   $effect(() => {
+    // A number field gives a number (or null): read as text.
     const typed = q.trim().toLowerCase();
-    const size = minSize.trim();
-    if (!data || (typed === data.q.trim().toLowerCase() && size === data.minSizeMib)) return;
+    const size = String(minSize ?? '').trim();
+    const shown = new URLSearchParams(route.search);
+    if (!data || (typed === (shown.get('q') ?? '').trim().toLowerCase() && size === (shown.get('min_size_mib') ?? ''))) return;
     const timer = setTimeout(() => filter({ q: typed, min_size_mib: size }), 300);
     return () => clearTimeout(timer);
   });

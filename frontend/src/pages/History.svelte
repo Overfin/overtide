@@ -85,15 +85,19 @@
     files = null;
     operation = null;
     detailProblem = '';
+    // Its answer only while it's still the row open (another clicked
+    // meanwhile has its own).
     try {
       if (r.action === 'added') {
         const query = new URLSearchParams({ service: r.serviceId!, kind: r.kind, id: String(r.sourceId), day: r.day! });
-        files = (await get<{ files: ImportedFile[] }>(`/api/history/added?${query}`)).files;
+        const got = (await get<{ files: ImportedFile[] }>(`/api/history/added?${query}`)).files;
+        if (open === key) files = got;
       } else {
-        operation = await get<HistoryEvent>(`/api/history/operations/${r.operation}`);
+        const got = await get<HistoryEvent>(`/api/history/operations/${r.operation}`);
+        if (open === key) operation = got;
       }
     } catch (err) {
-      detailProblem = (err as Error).message;
+      if (open === key) detailProblem = (err as Error).message;
     }
   }
 

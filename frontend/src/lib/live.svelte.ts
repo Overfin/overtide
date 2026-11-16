@@ -102,6 +102,13 @@ async function refreshStatus(invalidation: Revision) {
     if (response.status === 304) return;
     if (!response.ok) throw new Error(`status ${response.status}`);
     etag = response.headers.get('ETag') || '';
+    // Polling while the stream is down (the session ended, then signed in
+    // again; the server back): the server answers, so the stream is tried
+    // again, which stops the polling once it opens.
+    if (pollTimer && !events && 'EventSource' in window) {
+      reconnectAttempts = 0;
+      connect();
+    }
     const status = await response.json();
     live.pendingOperations = Number(status.pendingOperations) || 0;
     live.failed = Number(status.failedOperations) || 0;

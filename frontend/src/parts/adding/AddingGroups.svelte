@@ -21,13 +21,17 @@
   let source = $state('');
   let all = $state('');
 
+  let asked = 0;
   async function load() {
     const query = new URLSearchParams();
     if (q.trim()) query.set('q', q.trim());
     if (source) query.set('source', source);
     if (all) query.set('all', all);
+    const ask = ++asked;
     try {
-      data = await get<Adding>(`/api/adding?${query}`);
+      const fresh = await get<Adding>(`/api/adding?${query}`);
+      if (ask !== asked) return; // an earlier answer, after a later ask
+      data = fresh;
       failure = '';
     } catch (err) {
       failure = (err as Error).message;

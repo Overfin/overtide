@@ -13,9 +13,13 @@
   let problem = $state('');
   let q = $state('');
 
+  let asked = 0;
   async function load() {
+    const ask = ++asked;
     try {
-      data = await get<LibraryList>(`/api/library${route.search}`);
+      const fresh = await get<LibraryList>(`/api/library${route.search}`);
+      if (ask !== asked) return; // an earlier answer, after a later ask
+      data = fresh;
       problem = '';
       if (document.activeElement?.getAttribute('name') !== 'q') q = data.query;
     } catch (err) {

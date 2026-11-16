@@ -57,8 +57,11 @@
   // Skip for this run: the plan is built again without it, and another
   // candidate takes its place so the target is still met.
   const skip = (row: CleanupRow) => act(async () => {
+    const before = excluded;
     excluded = [...excluded, row.key];
+    failure = '';
     await load();
+    if (failure) excluded = before; // the plan shown is still the one before
   });
 
   // Keep: on the Kept list until taken off it; the plan is built again.
@@ -74,7 +77,15 @@
       { title: dry ? 'Simulate cleanup' : 'Clean up', yes: dry ? 'Simulate' : 'Clean', danger: !dry },
     );
     if (!sure) return;
-    await post('/api/storage/plan/clean', { path, excluded, shown: rows.map((r) => r.shown) });
+    try {
+      await post('/api/storage/plan/clean', { path, excluded, shown: rows.map((r) => r.shown) });
+    } catch (err) {
+      // Some may be queued all the same (those still as shown): what's
+      // left shows, rather than rows already on their way out.
+      cleaned();
+      await load();
+      throw err;
+    }
     cleaned();
     if (inline) await load();
     else close();
