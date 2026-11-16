@@ -402,6 +402,15 @@ func (server *Server) apiCleanupPlanClean(w http.ResponseWriter, r *http.Request
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Removals from an earlier Clean still under way haven't freed their
+	// space yet: the plan counts it as still needed, and would pick as
+	// much again.
+	if store := server.inv.Store(); store != nil {
+		if inFlight, err := store.InFlightRemovalHistoryEvents(); err == nil && len(inFlight) > 0 {
+			fail(w, http.StatusConflict, "Removals asked for earlier are still under way: once they're done, the plan counts the space they freed.")
+			return
+		}
+	}
 	data, found := server.planForDevice(in.Path, excludedSetFrom(in.Excluded))
 	if !found {
 		fail(w, http.StatusNotFound, "This device is no longer known.")
