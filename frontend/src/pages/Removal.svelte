@@ -4,6 +4,7 @@
   import '../styles/storage.css';
   import { Empty, Loading, Notice, PageHead } from '@overfin/ui';
   import { get } from '../lib/api';
+  import { follow } from '../lib/live.svelte';
   import type { Storage } from '../lib/types-storage';
   import CleanupPlan from '../parts/storage/CleanupPlan.svelte';
 
@@ -18,8 +19,25 @@
       failure = (err as Error).message;
     }
   }
+  // Live: on each update, the disks' stamp is asked (cheap), and the disks
+  // only when it changed; each plan follows on its own (CleanupPlan). The
+  // disks' bytes ticking changes neither.
+  let checking = false;
+  async function check() {
+    if (!data || checking) return;
+    checking = true;
+    try {
+      const now = await get<{ stamp: string }>('/api/storage/disks/stamp');
+      if (data && now.stamp !== data.disksStamp) await load();
+    } catch {
+      // The next update asks again.
+    } finally {
+      checking = false;
+    }
+  }
   $effect(() => {
     load();
+    return follow('immediate', check, () => {});
   });
 
   const devices = $derived(data ? data.devices.filter((d) => d.enabled) : []);

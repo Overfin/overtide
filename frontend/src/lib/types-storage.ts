@@ -62,6 +62,8 @@ export interface Storage {
   capabilities: Capability[];
   kept: Kept[];
   autoRemovalDisabled: boolean;
+  // Changes when the list of disks may have (the Plan page's live check).
+  disksStamp: string;
 }
 
 export interface Home {

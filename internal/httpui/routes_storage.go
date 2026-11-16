@@ -19,6 +19,7 @@ import (
 // cleaned), the Kept list, and the cheap byte totals live updates ask for.
 func (server *Server) storageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/storage", server.apiStorage)
+	mux.HandleFunc("GET /api/storage/disks/stamp", server.apiDisksStamp)
 	mux.HandleFunc("GET /api/storage/stats", server.storageStats)
 	mux.HandleFunc("GET /api/storage/device", server.apiDeviceSettings)
 	mux.HandleFunc("PUT /api/storage/device", server.apiSetDeviceSettings)
@@ -130,6 +131,9 @@ type storageJSON struct {
 	Kept         []keptJSON          `json:"kept"`
 	// AutoRemovalDisabled: no suggestion at all (removal.auto_mode off).
 	AutoRemovalDisabled bool `json:"autoRemovalDisabled"`
+	// DisksStamp is disksStamp's as the answer was made: the Plan page asks
+	// for it again on live updates, and for the disks only when it changed.
+	DisksStamp string `json:"disksStamp"`
 }
 
 // storageJSONFrom turns the Storage page's data into its answer.
@@ -180,7 +184,32 @@ func (server *Server) storageSnapshot() storageData {
 }
 
 func (server *Server) apiStorage(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, storageJSONFrom(server.storageSnapshot()))
+	// Taken before the snapshot: a change while it's made shows at the
+	// next check.
+	stamp := server.disksStamp()
+	out := storageJSONFrom(server.storageSnapshot())
+	out.DisksStamp = stamp
+	writeJSON(w, http.StatusOK, out)
+}
+
+// disksStamp changes when the Plan page's list of disks may have: a disk
+// seen or gone, its name, its automatic removal turned on or off, or
+// automatic removal itself. It reads no plan, so the page asks it on every
+// live update.
+func (server *Server) disksStamp() string {
+	cfg := server.inv.Config()
+	autoMode := cfg.Removal.AutoMode
+	lines := []string{fmt.Sprintf("off=%t", autoMode != config.RemovalAutoConfirm && autoMode != config.RemovalAutoAuto)}
+	for _, view := range server.storageViews() {
+		lines = append(lines, fmt.Sprintf("%s\x00%s\x00%t", view.Storage.RepresentativePath, view.Name, view.Enabled))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return fmt.Sprintf("%x", sum[:8])
+}
+
+// apiDisksStamp answers disksStamp (GET /api/storage/disks/stamp).
+func (server *Server) apiDisksStamp(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"stamp": server.disksStamp()})
 }
 
 type deviceSettingsJSON struct {
@@ -263,6 +292,8 @@ func (server *Server) apiSetDeviceSettings(w http.ResponseWriter, r *http.Reques
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Other pages open follow: the Plan page's disks, the plans.
+	server.publishUIChange("settings")
 	done(w)
 }
 
