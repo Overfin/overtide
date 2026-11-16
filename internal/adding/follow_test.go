@@ -11,6 +11,7 @@ import (
 
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
+	"github.com/overfin/overtide/internal/tries"
 )
 
 // fakeFilm is a Radarr with one film: whether it has its file, whether a
@@ -100,5 +101,44 @@ func TestFollowKeepsTitlesUnmonitored(t *testing.T) {
 	got = followOne(t, film, release, false)
 	if got.State != Downloading || !got.Unmonitored || len(film.monitored) != 1 || film.monitored[0] {
 		t.Errorf("grabbed on release: %+v, asked %v", got, film.monitored)
+	}
+}
+
+// A title monitored for its release counts in the titles a day at once
+// (Radarr's RSS may grab it any time), and its grab doesn't count again.
+func TestMonitoredForReleaseCountsOnce(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v3/movie/lookup/tmdb":
+			w.Write([]byte(`{"title":"Film","tmdbId":5,"digitalRelease":"2026-10-26T00:00:00Z"}`))
+		case r.URL.Path == "/api/v3/rootfolder":
+			w.Write([]byte(`[{"path":"/data/Films"}]`))
+		case r.URL.Path == "/api/v3/qualityprofile":
+			w.Write([]byte(`[{"id":7}]`))
+		case r.URL.Path == "/api/v3/tag":
+			w.Write([]byte(`[{"id":3,"label":"overtide-added"}]`))
+		case r.URL.Path == "/api/v3/movie/42" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"id":42,"tags":[3],"monitored":false}`))
+		case r.URL.Path == "/api/v3/movie/42":
+			w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	cfg := config.Config{Services: []config.Service{{ID: "r", Type: "radarr", URL: srv.URL, APIKey: "k"}}}
+	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
+	service.disk = func(config.Config, string, bool) string { return "" }
+	entry := Entry{Key: movieKey(5), Kind: "movie", ServiceID: "r", ExternalID: 5, Source: FromOverfin, State: Waiting, ArrID: 42}
+	service.try(context.Background(), cfg, &entry, false)
+	if entry.State != NotReleased || entry.MonitoredAt.IsZero() {
+		t.Fatalf("not monitored for its release: %+v", entry)
+	}
+	if times, _ := service.started(""); len(times) != 1 {
+		t.Fatalf("monitored for its release: %d counted, want 1", len(times))
+	}
+	service.downloading(&entry, tries.Title{Monitor: func(int, bool) error { return nil }}, false)
+	if times, _ := service.started(""); len(times) != 1 {
+		t.Fatalf("grabbed: %d counted, want still 1", len(times))
 	}
 }

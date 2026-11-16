@@ -142,7 +142,11 @@ type Entry struct {
 	// ReleaseAt and MonitoredAt: a title monitored for its release.
 	ReleaseAt   time.Time `json:"releaseAt,omitempty"`
 	MonitoredAt time.Time `json:"monitoredAt,omitempty"`
-	Result      string    `json:"result,omitempty"`
+	// Counted: counted in the titles a day already, when monitored for its
+	// release (Radarr's RSS may grab it any time then), so its grab isn't
+	// counted again.
+	Counted bool   `json:"counted,omitempty"`
+	Result  string `json:"result,omitempty"`
 	// WishTMDB is a wish's TMDB ID (a film's, or its series'), to tell
 	// Overfin what became of it; Reported, what was last told, so a state
 	// is told once.
@@ -763,7 +767,7 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 		grabbed, err := a.Grabbed(entry.ArrID, entry.MonitoredAt)
 		switch {
 		case a.Gone(err):
-			entry.State, entry.ArrID, entry.MonitoredAt, entry.NextTry = Waiting, 0, time.Time{}, service.now()
+			entry.State, entry.ArrID, entry.MonitoredAt, entry.NextTry, entry.Counted = Waiting, 0, time.Time{}, service.now(), false
 			entry.Result = "No longer in " + a.Name
 		case err == nil && grabbed:
 			service.downloading(entry, a, dryRun)
@@ -771,7 +775,7 @@ func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool
 			if a.Monitor(entry.ArrID, false) != nil {
 				continue
 			}
-			entry.MonitoredAt = time.Time{}
+			entry.MonitoredAt, entry.Counted = time.Time{}, false
 			service.failed(entry, "Nothing came within 14 days of its release")
 		default:
 			continue

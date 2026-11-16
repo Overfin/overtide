@@ -135,6 +135,13 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 		entry.State, entry.ReleaseAt, entry.MonitoredAt = NotReleased, at, now
 		entry.NextTry = at.Add(tries.ReleaseGrace)
 		entry.Result = "Monitored for its release on " + at.Format("2006-01-02")
+		// Monitored, it may be grabbed at any time from now on, by
+		// Radarr's or Sonarr's own RSS: it counts in the titles a day now.
+		if err := service.recordStarted(service.entryFolder(cfg, entry), entry.searches()); err != nil {
+			log.Printf("[adding] count %s, monitored for its release: %v", entry.Title, err)
+		} else {
+			entry.Counted = true
+		}
 		return 0
 	}
 	searches := entry.searches()
@@ -169,11 +176,12 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 // comes in. It's imported all the same (neither checks monitoring to
 // import). If unmonitoring fails, follow tries again.
 func (service *Service) downloading(entry *Entry, a tries.Title, dryRun bool) {
-	if !dryRun {
+	if !dryRun && !entry.Counted {
 		if err := service.recordStarted(service.entryFolder(service.inv.Config(), entry), entry.searches()); err != nil {
 			log.Printf("[adding] count the download of %s: %v", entry.Title, err)
 		}
 	}
+	entry.Counted = false
 	// A series that comes a season at a time, with seasons left: this one
 	// goes its way (Sonarr imports it), and the next is tried at once, the
 	// series first among the suggestions.
