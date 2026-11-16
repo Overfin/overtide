@@ -19,6 +19,12 @@ type MissingTorrentResult struct {
 	Reason  string
 }
 
+// MissingTorrentKey names a torrent whose files are missing: its client
+// and its hash.
+func MissingTorrentKey(t model.Torrent) string {
+	return t.ServiceID + "|" + strings.ToLower(t.Hash)
+}
+
 // ForgetMissingTorrents removes from qBittorrent the torrents whose files
 // are gone from disk, leaving any file in place: it only tidies the client.
 // Everything is checked again now, not taken from the last reconciliation:
@@ -26,15 +32,17 @@ type MissingTorrentResult struct {
 // it must have something in it (an empty root is more likely a share or a
 // disk that isn't mounted than files that are gone). A torrent kept by the
 // operator, with an obligation, or whose service doesn't allow removal is
-// left alone. In dry run, nothing is sent to qBittorrent.
-func (service *Service) ForgetMissingTorrents(ctx context.Context) []MissingTorrentResult {
+// left alone. In dry run, nothing is sent to qBittorrent. Only the
+// torrents named (MissingTorrentKey: those the operator was shown) are
+// removed: one gone missing since isn't.
+func (service *Service) ForgetMissingTorrents(ctx context.Context, named map[string]bool) []MissingTorrentResult {
 	service.mu.RLock()
 	dryRun := service.cfg.Removal.DryRun
 	roots := append([]storageRoot(nil), service.storageRoots...)
 	refs := append([]model.TorrentFileRef(nil), service.torrentFileRefs...)
 	var torrents []model.Torrent
 	for _, t := range service.torrents {
-		if t.FilesMissing {
+		if t.FilesMissing && named[MissingTorrentKey(t)] {
 			torrents = append(torrents, t)
 		}
 	}

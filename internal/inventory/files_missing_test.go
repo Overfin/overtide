@@ -51,6 +51,8 @@ func TestForgetMissingTorrents(t *testing.T) {
 		return model.Torrent{Hash: hash(c), Name: string(c), ServiceID: "qb", FilesMissing: true}
 	}
 	gone, onEmpty, isBack, outside, kept, restricted, noFiles := torrent('a'), torrent('b'), torrent('c'), torrent('d'), torrent('e'), torrent('f'), torrent('0')
+	// Gone missing after the window was opened: not named, so it stays.
+	since := torrent('g')
 	kept.Obligation = "Kept"
 	restricted.RemovalRestricted = true
 	ref := func(tt model.Torrent, path string) model.TorrentFileRef {
@@ -63,6 +65,7 @@ func TestForgetMissingTorrents(t *testing.T) {
 		ref(outside, "/elsewhere/gone.mkv"),
 		ref(kept, filepath.Join(full, "kept.mkv")),
 		ref(restricted, filepath.Join(full, "restricted.mkv")),
+		ref(since, filepath.Join(full, "since.mkv")),
 	}
 
 	for _, dryRun := range []bool{true, false} {
@@ -76,13 +79,17 @@ func TestForgetMissingTorrents(t *testing.T) {
 		cfg := config.Config{Removal: config.RemovalConfig{DryRun: dryRun}, Services: []config.Service{{ID: "qb", Type: "qbittorrent", Name: "Downloader", URL: fake.URL}}}
 		service := New(cfg, database)
 		service.mu.Lock()
-		service.torrents = []model.Torrent{gone, onEmpty, isBack, outside, kept, restricted, noFiles}
+		service.torrents = []model.Torrent{gone, onEmpty, isBack, outside, kept, restricted, noFiles, since}
 		service.torrentFileRefs = refs
 		service.storageRoots = []storageRoot{{Path: full}, {Path: empty}}
 		service.mu.Unlock()
 
 		removed := map[string]bool{}
-		for _, result := range service.ForgetMissingTorrents(context.Background()) {
+		named := map[string]bool{}
+		for _, tt := range []model.Torrent{gone, onEmpty, isBack, outside, kept, restricted} {
+			named[MissingTorrentKey(tt)] = true
+		}
+		for _, result := range service.ForgetMissingTorrents(context.Background(), named) {
 			if result.Removed {
 				removed[result.Torrent.Name] = true
 			} else if result.Reason == "" {

@@ -7,11 +7,11 @@
 
   let { close }: { close: () => void } = $props();
 
-  let data = $state<{ torrents: { name: string; status: string }[]; dryRun: boolean } | null>(null);
+  let data = $state<{ torrents: { key: string; name: string; status: string }[]; dryRun: boolean } | null>(null);
   let failure = $state('');
   let busy = $state(false);
 
-  get<{ torrents: { name: string; status: string }[]; dryRun: boolean }>('/api/torrents-missing').then(
+  get<{ torrents: { key: string; name: string; status: string }[]; dryRun: boolean }>('/api/torrents-missing').then(
     (d) => (data = d),
     (err) => (failure = message(err)),
   );
@@ -29,7 +29,8 @@
     busy = true;
     failure = '';
     try {
-      await post('/api/torrents-missing');
+      // Only those shown: one gone missing since stays.
+      await post('/api/torrents-missing', { torrents: d.torrents.map((t) => t.key) });
       toast(d.dryRun ? 'Simulated.' : 'Removed from qBittorrent.');
       close();
     } catch (err) {

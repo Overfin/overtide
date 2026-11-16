@@ -184,7 +184,8 @@ Words used below:
     recorded in History before anything is deleted.
     - Exception: "Forget missing torrents" takes torrents whose files are
       gone out of qBittorrent; it deletes no file and records nothing in
-      History.
+      History. It takes only the torrents its window listed, by client
+      and hash: one whose files went missing since stays.
 26. By hand, the operator may remove anything, even without Overfin: kept,
     unscored, just-added titles and torrents, or ones under their ratio. A
     private tracker's seeding time shows a warning.

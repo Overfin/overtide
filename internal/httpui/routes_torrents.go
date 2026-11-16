@@ -298,6 +298,8 @@ func newTorrentDetailView(t model.Torrent) *torrentDetailView {
 }
 
 type missingTorrent struct {
+	// Key is what Remove sends back: only those shown are removed.
+	Key    string `json:"key"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
@@ -310,17 +312,33 @@ func (server *Server) apiFilesMissing(w http.ResponseWriter, r *http.Request) {
 		DryRun   bool             `json:"dryRun"`
 	}{Torrents: []missingTorrent{}, DryRun: server.inv.Config().Removal.DryRun}
 	for _, t := range filesMissing(server.inv.TorrentSnapshot()) {
-		out.Torrents = append(out.Torrents, missingTorrent{Name: t.Name, Status: t.AssociationStatus})
+		out.Torrents = append(out.Torrents, missingTorrent{Key: inventory.MissingTorrentKey(t), Name: t.Name, Status: t.AssociationStatus})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-// apiForgetMissing (POST /api/torrents-missing) removes them from
-// qBittorrent, files kept (see inventory.ForgetMissingTorrents); those
-// left alone are said, with why.
+// apiForgetMissing (POST /api/torrents-missing, {"torrents": [keys]})
+// removes from qBittorrent the torrents the window named, files kept (see
+// inventory.ForgetMissingTorrents); those left alone are said, with why.
+// One whose files went missing since isn't touched.
 func (server *Server) apiForgetMissing(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Torrents []string `json:"torrents"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(in.Torrents) == 0 {
+		fail(w, http.StatusBadRequest, "No torrent named.")
+		return
+	}
+	named := make(map[string]bool, len(in.Torrents))
+	for _, key := range in.Torrents {
+		named[key] = true
+	}
 	var left []string
-	for _, result := range server.inv.ForgetMissingTorrents(r.Context()) {
+	for _, result := range server.inv.ForgetMissingTorrents(r.Context(), named) {
 		if result.Removed {
 			log.Printf("[torrents] removed from qBittorrent, files missing (dry run %t): %s", server.inv.Config().Removal.DryRun, result.Torrent.Name)
 			continue
