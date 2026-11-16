@@ -122,11 +122,17 @@ Words used below:
     database, and written into Radarr's and Sonarr's Connect settings. An
     event without the right secret (compared in constant time) is refused;
     its body is read up to 1 MB.
-18. An event can only start the adding run at once (a title was added) or
-    confirm that the webhook reaches Overtide (a test event). Nothing else
-    in it is read: the run asks Radarr and Sonarr what they hold, and keeps
-    every limit a scheduled run has. The arrs send the secret as their webhook is set up: in clear
-    when its address is `http://`.
+18. An event can only start the adding run at once (a title was added).
+    Nothing else in it is read: the run asks Radarr and Sonarr what they
+    hold, and keeps every limit a scheduled run has. The arrs send the
+    secret as their webhook is set up: in clear when its address is
+    `http://`.
+    - Finding its own address, Overtide has Radarr or Sonarr send a test
+      event to each address it may have, one at a time, each signed with a
+      random token of its own instead of the secret: an address tried may
+      be another server's. A token gets in only a test event, only while
+      its try lasts. The secret is then written only to the address whose
+      token came back.
 
 ### What removal deletes, and what holds it back
 

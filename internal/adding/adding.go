@@ -253,12 +253,13 @@ type Service struct {
 	// unavailable.
 	trackersDown string
 	// Radarr's and Sonarr's events (events.go): where the panel was opened,
-	// when the last test event came, what keeps them from coming, and the
-	// webhooks saved.
+	// the token of the address being tried and whether its test event
+	// came, what keeps them from coming, and the webhooks saved.
 	connectMu     sync.Mutex // one connect at a time
 	eventsMu      sync.Mutex
 	seenAt        string
-	heard         time.Time
+	probe         string
+	probeHeard    bool
 	eventsProblem string
 	connected     map[string]bool
 }

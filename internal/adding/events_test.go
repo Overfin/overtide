@@ -16,22 +16,28 @@ import (
 )
 
 // With "Manage all", Overtide finds the address Radarr and Sonarr reach it
-// at (the one a test event comes through, with the secret), keeps it, and
-// gives both a webhook for the titles they add, once. In dry run nothing
-// changes; when no address works, it says so and saves nothing.
+// at (the one a test event comes through, signed with that try's token),
+// keeps it, and gives both a webhook for the titles they add, once. The
+// secret goes to no address tried. In dry run nothing changes; when no
+// address works, it says so and saves nothing.
 func TestConnect(t *testing.T) {
 	now := *arrfake.Day("2026-11-06")
+	var secretSeen bool
 	setup := func(answer bool) (*arrfake.Arrs, *Service, config.Config) {
 		fake := arrfake.New(now)
 		cfg := arrfake.Config(t, fake, config.ManageAll)
 		var service *Service
 		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			secret, _ := service.EventsSecret()
-			if user, password, ok := r.BasicAuth(); !answer || !ok || user != EventsUser || password != secret || r.URL.Path != EventsPath {
+			user, password, ok := r.BasicAuth()
+			if password == secret {
+				secretSeen = true
+			}
+			if !answer || !ok || user != EventsUser || !service.IsProbe(password) || r.URL.Path != EventsPath {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			service.HeardTest()
+			service.HeardProbe(password)
 			w.WriteHeader(http.StatusNoContent)
 		}))
 		t.Cleanup(receiver.Close)
@@ -98,6 +104,12 @@ func TestConnect(t *testing.T) {
 	}
 	if service.EventsProblem() == "" || service.inv.Config().Adding.EventsURL != "" || len(fake.Notifications["radarr"]) != 0 {
 		t.Errorf("no address works: problem %q, address %q, %v", service.EventsProblem(), service.inv.Config().Adding.EventsURL, fake.Notifications)
+	}
+	if secretSeen {
+		t.Error("an address tried was sent the webhook's secret")
+	}
+	if service.IsProbe("") {
+		t.Error("an empty password passes for a token")
 	}
 }
 

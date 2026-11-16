@@ -3,6 +3,7 @@ package adding
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -60,17 +61,44 @@ func (service *Service) SeenAt(address string) {
 	service.eventsMu.Unlock()
 }
 
-// HeardTest notes that a test event came, the webhook's secret right.
-func (service *Service) HeardTest() {
-	service.eventsMu.Lock()
-	service.heard = time.Now()
-	service.eventsMu.Unlock()
-}
-
-func (service *Service) heardSince(t time.Time) bool {
+// IsProbe reports whether password is the token of the address being
+// tried (findAddress): a test event signed with it is the answer.
+func (service *Service) IsProbe(password string) bool {
 	service.eventsMu.Lock()
 	defer service.eventsMu.Unlock()
-	return service.heard.After(t)
+	return service.probe != "" && subtle.ConstantTimeCompare([]byte(password), []byte(service.probe)) == 1
+}
+
+// HeardProbe notes that the test event of the address being tried came,
+// signed with its token.
+func (service *Service) HeardProbe(password string) {
+	service.eventsMu.Lock()
+	defer service.eventsMu.Unlock()
+	if service.probe != "" && subtle.ConstantTimeCompare([]byte(password), []byte(service.probe)) == 1 {
+		service.probeHeard = true
+	}
+}
+
+// startProbe makes a new token for one address tried, the only one
+// answered from then on; "" (with stopProbe) when none is tried.
+func (service *Service) startProbe() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	service.eventsMu.Lock()
+	defer service.eventsMu.Unlock()
+	service.probe, service.probeHeard = hex.EncodeToString(b), false
+	return service.probe, nil
+}
+
+// stopProbe ends the try, reporting whether its test event came.
+func (service *Service) stopProbe() bool {
+	service.eventsMu.Lock()
+	defer service.eventsMu.Unlock()
+	heard := service.probeHeard
+	service.probe, service.probeHeard = "", false
+	return heard
 }
 
 // EventsProblem is what keeps Radarr or Sonarr from sending Overtide
@@ -129,7 +157,7 @@ func (service *Service) connect(ctx context.Context, cfg config.Config, dryRun b
 	}
 	address := cfg.Adding.EventsURL
 	if address == "" {
-		if address = service.findAddress(apps[0], cfg, secret); address == "" {
+		if address = service.findAddress(apps[0], cfg); address == "" {
 			service.setEventsProblem(fmt.Sprintf("%s couldn't reach Overtide at any address it could have: set the one it reaches Overtide at.", apps[0].svc.Name))
 			return nil
 		}
@@ -219,8 +247,10 @@ func (service *Service) saveWebhook(app eventsApp, address, secret string) error
 // one the panel was last opened at (SeenAt), then, on the port it listens
 // on, its host name and "overtide" (on the same Docker network) and the
 // app's own host (on the same machine). The first one a test event comes
-// through wins; "" when none does.
-func (service *Service) findAddress(app eventsApp, cfg config.Config, secret string) string {
+// through wins; "" when none does. Each try is signed with a token of its
+// own, never the webhook's secret: an address may be some other server's,
+// and the secret goes only to the one that answered (saveWebhook).
+func (service *Service) findAddress(app eventsApp, cfg config.Config) string {
 	var addresses []string
 	service.eventsMu.Lock()
 	if service.seenAt != "" {
@@ -250,10 +280,14 @@ func (service *Service) findAddress(app eventsApp, cfg config.Config, secret str
 			continue
 		}
 		tried[address] = true
+		token, err := service.startProbe()
+		if err != nil {
+			return ""
+		}
 		// The app sends the test event before it answers: heard by then,
-		// or not at all (the address may be some other server's).
-		start := time.Now()
-		if err := app.client.TestNotification(webhook(schema, app, address, secret)); err == nil && service.heardSince(start) {
+		// or not at all.
+		err = app.client.TestNotification(webhook(schema, app, address, token))
+		if heard := service.stopProbe(); err == nil && heard {
 			return address
 		}
 	}

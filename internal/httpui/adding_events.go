@@ -13,8 +13,9 @@ import (
 // arrEvents answers the events Radarr and Sonarr send (POST /events/arr,
 // see adding's events.go), outside the sign-in: they come with the
 // webhook's secret instead. A title added starts the adding run at once,
-// which takes it; a test event is noted, so Overtide knows the address it
-// tried reaches it.
+// which takes it. While Overtide tries an address for them, a test event
+// signed with that try's token is noted, so Overtide knows the address
+// reaches it; that token lets nothing else in.
 func (server *Server) arrEvents(w http.ResponseWriter, r *http.Request) {
 	// Without adding, no secret was given out: nothing gets in.
 	secret, err := "", error(nil)
@@ -22,7 +23,10 @@ func (server *Server) arrEvents(w http.ResponseWriter, r *http.Request) {
 		secret, err = server.adder.EventsSecret()
 	}
 	user, password, ok := r.BasicAuth()
-	if err != nil || secret == "" || !ok || user != adding.EventsUser || subtle.ConstantTimeCompare([]byte(password), []byte(secret)) != 1 {
+	signed := err == nil && secret != "" && ok && user == adding.EventsUser
+	withSecret := signed && subtle.ConstantTimeCompare([]byte(password), []byte(secret)) == 1
+	probe := signed && !withSecret && server.adder.IsProbe(password)
+	if !withSecret && !probe {
 		fail(w, http.StatusUnauthorized, "signed out")
 		return
 	}
@@ -33,9 +37,16 @@ func (server *Server) arrEvents(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "not an event")
 		return
 	}
+	if probe {
+		if event.EventType != "Test" {
+			fail(w, http.StatusUnauthorized, "signed out")
+			return
+		}
+		server.adder.HeardProbe(password)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	switch event.EventType {
-	case "Test":
-		server.adder.HeardTest()
 	case "MovieAdded", "SeriesAdd":
 		if server.tasks != nil && !server.adder.OwnAddRecent() {
 			if _, err := server.tasks.Submit(tasks.Request{TaskID: addingTaskID, Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: "A title was added in Radarr or Sonarr"}); err != nil {
