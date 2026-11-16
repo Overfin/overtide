@@ -35,7 +35,8 @@
 
   async function another(item: WaitingImport) {
     await post(`/api/adding/imports/${encodeURIComponent(item.serviceId)}/${encodeURIComponent(item.downloadId)}`, { action: 'another' });
-    toast('Left: another release is being looked for.');
+    // With Adding off, the season waits for its search until it's on again.
+    toast(data?.mode === 'off' ? 'Left: another release is looked for once Adding is on again.' : 'Left: another release is being looked for.');
     await loadWaiting();
   }
 
