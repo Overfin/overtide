@@ -152,3 +152,23 @@ func TestHoldDeparturesAskWhatIsTaken(t *testing.T) {
 		t.Errorf("taken: %v (3 is held, 1 not taken)", taken)
 	}
 }
+
+// When Overfin can't answer, removal still goes on: only the holds known
+// stay out (the plan was built without them).
+func TestHoldDeparturesOverfinDown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	cfg := config.Config{}
+	cfg.Overfin = config.Connection{URL: srv.URL, APIKey: "ofapp_k"}
+	server, _ := libraryServer(t, cfg)
+	film := cleanup.Action{Kind: cleanup.StandaloneMedia, Media: model.Media{Type: model.Movie, ServiceID: "r", SourceID: 7, TMDBID: 7, Title: "Film"}}
+	build := func(map[string]bool) (cleanup.Plan, error) {
+		return cleanup.Plan{Available: true, Actions: []cleanup.Action{film}, Ordered: []cleanup.Action{film}}, nil
+	}
+	_, cleared, err := server.holdDepartures(context.Background(), server.inv.Config(), "/disk", build, func(p cleanup.Plan) []cleanup.Action { return p.Actions })
+	if err != nil || !cleared[cleanup.ActionKey(film)] {
+		t.Errorf("Overfin down: cleared %v, %v", cleared, err)
+	}
+}

@@ -166,7 +166,13 @@ func (server *Server) holdDepartures(ctx context.Context, cfg config.Config, dev
 		}
 		answers, err := client.WithContext(ctx).Departures(titles)
 		if err != nil || len(answers) != len(order) {
+			// Overfin can't answer (down, an older one, a key without the
+			// right): the holds known stay, the rest may go, as before
+			// asking existed. A disk over its target isn't left to fill.
 			log.Printf("[auto-removal] asking Overfin what should wait for a last watch: %v", err)
+			for _, action := range take(plan) {
+				cleared[cleanup.ActionKey(action)] = true
+			}
 			return plan, cleared, nil
 		}
 		held := map[string]heldTitle{}

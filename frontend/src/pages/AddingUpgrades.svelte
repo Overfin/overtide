@@ -70,8 +70,11 @@
 
   // Typing filters a moment after it stops.
   $effect(() => {
+    // Against the address's search, not the list's last answer: after
+    // Back, the answer for the new address may still be on its way.
     const typed = q.trim().toLowerCase();
-    if (!data || typed === data.q.trim().toLowerCase()) return;
+    const shown = (new URLSearchParams(route.search).get('q') ?? '').trim().toLowerCase();
+    if (!data || typed === shown) return;
     const timer = setTimeout(() => go(listURL('/adding/upgrades', { q: typed }, 1, data!.paging.pageSize, data!.paging.sort, data!.paging.order), true), 300);
     return () => clearTimeout(timer);
   });
