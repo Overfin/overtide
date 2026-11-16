@@ -22,19 +22,19 @@ func TestLeftoversOf(t *testing.T) {
 			{"path": "/data/downloads/M/E02.mkv", "owner": "torrent", "ownerKey": "defef4", "selected": true, "sizeBytes": 50},
 			{"path": "/data/downloads/X/x.mkv", "owner": "torrent", "ownerKey": "kept", "selected": false, "sizeBytes": 10}
 		]}}`)}
-	torrents := map[string]model.Torrent{
-		"defef4": {Hash: "defef4", Name: "Mid.Century.Modern.S01", ServiceID: "qb-1"},
-		"kept":   {Hash: "kept", Name: "Kept"},
-	}
+	torrents := newTorrentKeys([]model.Torrent{
+		{Hash: "defef4", Name: "Mid.Century.Modern.S01", ServiceID: "qb-1"},
+		{Hash: "kept", Name: "Kept"},
+	})
 	left, known := leftoversOf(event, nil, nil, torrents)
 	if !known || len(left) != 1 || left[0].Kind != "torrent" || left[0].Hash != "defef4" || left[0].ServiceID != "qb-1" || left[0].Bytes != 150 {
 		t.Fatalf("%v %+v", known, left)
 	}
-	if left, known := leftoversOf(event, nil, nil, map[string]model.Torrent{}); !known || len(left) != 0 {
+	if left, known := leftoversOf(event, nil, nil, newTorrentKeys(nil)); !known || len(left) != 0 {
 		t.Fatalf("all gone: %v %+v", known, left)
 	}
 	mediaRefs := []model.MediaFileRef{{Source: "sonarr", SourceFileID: 21929, MediaType: model.Series, MediaID: 1658, ServiceID: "sonarr-1"}}
-	if left, _ := leftoversOf(event, nil, mediaRefs, nil); len(left) != 1 || left[0].Kind != "media" || left[0].MediaID != "1658" || left[0].ServiceID != "sonarr-1" {
+	if left, _ := leftoversOf(event, nil, mediaRefs, newTorrentKeys(nil)); len(left) != 1 || left[0].Kind != "media" || left[0].MediaID != "1658" || left[0].ServiceID != "sonarr-1" {
 		t.Fatalf("episodes still there: %+v", left)
 	}
 	// A torrent's removal that selected a title's files too: they're left
@@ -42,11 +42,35 @@ func TestLeftoversOf(t *testing.T) {
 	torrentRemoval := event
 	torrentRemoval.Payload = []byte(`{"command": {"form": {"kind": ["torrent"]}}, "plan": {"files": [
 		{"path": "/data/Series/M/S01E01.mkv", "owner": "media", "ownerKey": "sonarr:21929", "label": "Mid-Century Modern", "selected": true, "sizeBytes": 100}]}}`)
-	if left, _ := leftoversOf(torrentRemoval, nil, mediaRefs, nil); len(left) != 1 || left[0].Kind != "media" || left[0].Label != "Mid-Century Modern" {
+	if left, _ := leftoversOf(torrentRemoval, nil, mediaRefs, newTorrentKeys(nil)); len(left) != 1 || left[0].Kind != "media" || left[0].Label != "Mid-Century Modern" {
 		t.Fatalf("a torrent removal's title files: %+v", left)
 	}
-	if _, known := leftoversOf(store.HistoryEvent{Payload: []byte(`{}`)}, nil, nil, nil); known {
+	if _, known := leftoversOf(store.HistoryEvent{Payload: []byte(`{}`)}, nil, nil, newTorrentKeys(nil)); known {
 		t.Fatal("no plan, yet known")
+	}
+}
+
+// A plan names its torrents by client and hash: a torrent with the same
+// hash in another client is another torrent. An older plan's bare hash
+// stands for its torrent only while a single client has it.
+func TestLeftoversOfTellsClientsApart(t *testing.T) {
+	keyed := store.HistoryEvent{ID: 7, Payload: []byte(`{"plan": {"files": [
+		{"path": "/data/downloads/M/E01.mkv", "owner": "torrent", "ownerKey": "qb-2|defef4", "selected": true, "sizeBytes": 100}]}}`)}
+	bare := store.HistoryEvent{ID: 8, Payload: []byte(`{"plan": {"files": [
+		{"path": "/data/downloads/M/E01.mkv", "owner": "torrent", "ownerKey": "defef4", "selected": true, "sizeBytes": 100}]}}`)}
+	both := newTorrentKeys([]model.Torrent{{Hash: "defef4", Name: "Home", ServiceID: "qb-1"}, {Hash: "DEFEF4", Name: "Seedbox", ServiceID: "qb-2"}})
+	if left, _ := leftoversOf(keyed, nil, nil, both); len(left) != 1 || left[0].ServiceID != "qb-2" || left[0].Label != "Seedbox" {
+		t.Fatalf("keyed: %+v", left)
+	}
+	if left, _ := leftoversOf(bare, nil, nil, both); len(left) != 0 {
+		t.Fatalf("a bare hash in two clients is guessed: %+v", left)
+	}
+	one := newTorrentKeys([]model.Torrent{{Hash: "defef4", Name: "Home", ServiceID: "qb-1"}})
+	if left, _ := leftoversOf(bare, nil, nil, one); len(left) != 1 || left[0].ServiceID != "qb-1" {
+		t.Fatalf("a bare hash in one client: %+v", left)
+	}
+	if left, _ := leftoversOf(keyed, nil, nil, one); len(left) != 0 {
+		t.Fatalf("another client's torrent taken for it: %+v", left)
 	}
 }
 

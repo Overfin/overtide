@@ -181,7 +181,11 @@ Words used below:
     - Exception: by hand, one torrent of a group can be removed alone; its
       shared files stay.
 25. Every removal is rebuilt and checked again just before it runs, and
-    recorded in History before anything is deleted.
+    recorded in History before anything is deleted. It names each torrent
+    by its client and hash: the same hash in another qBittorrent client is
+    another torrent, and its files are kept with it. A removal queued
+    before torrents had their client in it names a bare hash; it runs only
+    when a single client has that hash, and is refused otherwise.
     - Exception: "Forget missing torrents" takes torrents whose files are
       gone out of qBittorrent; it deletes no file and records nothing in
       History. It takes only the torrents its window listed, by client

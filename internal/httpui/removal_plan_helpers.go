@@ -75,7 +75,7 @@ func physicalCandidates(allFiles []model.File, mediaRefs []model.MediaFileRef, t
 		case removal.MediaOwner:
 			candidate.Selected = selectedManaged[candidate.OwnerKey]
 		case removal.TorrentOwner:
-			candidate.Selected = selectedTorrents[strings.ToLower(candidate.OwnerKey)]
+			candidate.Selected = selectedTorrents[candidate.OwnerKey]
 		case removal.UnmanagedOwner:
 			candidate.Selected = selectedUnmanaged[filepath.Clean(candidate.Path)] || candidate.Selected
 		}
@@ -94,8 +94,8 @@ func physicalCandidates(allFiles []model.File, mediaRefs []model.MediaFileRef, t
 		}
 		for _, r := range torrentByPath[p] {
 			owned = true
-			h := strings.ToLower(r.Hash)
-			mergeRemovalCandidate(initial, removal.CandidateFile{Path: p, Owner: removal.TorrentOwner, OwnerKey: h, Label: filepath.Base(p), Selected: selectedTorrents[h]})
+			key := removalTorrentKey(r.ServiceID, r.Hash)
+			mergeRemovalCandidate(initial, removal.CandidateFile{Path: p, Owner: removal.TorrentOwner, OwnerKey: key, Label: filepath.Base(p), Selected: selectedTorrents[key]})
 		}
 		if !owned {
 			mergeRemovalCandidate(initial, removal.CandidateFile{Path: p, Owner: removal.UnmanagedOwner, OwnerKey: p, Label: filepath.Base(p), Selected: selectedUnmanaged[p]})
@@ -104,7 +104,9 @@ func physicalCandidates(allFiles []model.File, mediaRefs []model.MediaFileRef, t
 	return initial
 }
 
-func physicallyBackingTorrentHashes(files []model.File, mediaRefs []model.MediaFileRef, torrentRefs []model.TorrentFileRef) map[string]bool {
+// physicallyBackingTorrentKeys are the torrents (removalTorrentKey) holding
+// one of the media's files: the same file, or a hardlink to it.
+func physicallyBackingTorrentKeys(files []model.File, mediaRefs []model.MediaFileRef, torrentRefs []model.TorrentFileRef) map[string]bool {
 	byPath := filesByPath(files)
 	mediaIdentities := map[physicalID]bool{}
 	for _, ref := range mediaRefs {
@@ -113,17 +115,17 @@ func physicallyBackingTorrentHashes(files []model.File, mediaRefs []model.MediaF
 			mediaIdentities[physicalID{file.Device, file.Inode}] = true
 		}
 	}
-	hashes := map[string]bool{}
+	keys := map[string]bool{}
 	for _, ref := range torrentRefs {
 		file, ok := byPath[filepath.Clean(ref.Path)]
 		if !ok || !file.Exists || !file.IdentityKnown || !mediaIdentities[physicalID{file.Device, file.Inode}] {
 			continue
 		}
-		if hash := strings.ToLower(strings.TrimSpace(ref.Hash)); hash != "" {
-			hashes[hash] = true
+		if strings.TrimSpace(ref.Hash) != "" {
+			keys[removalTorrentKey(ref.ServiceID, ref.Hash)] = true
 		}
 	}
-	return hashes
+	return keys
 }
 
 func relatedUnmanagedFromCandidates(cm map[string]removal.CandidateFile, files map[string]model.File) []relatedUnmanagedFile {
@@ -149,25 +151,22 @@ func selectedUnmanagedPaths(xs []relatedUnmanagedFile) []string {
 	return out
 }
 
-func relatedTorrentList(cm map[string]removal.CandidateFile, torrents []model.Torrent, exclude string) []relatedRemovalTorrent {
+func relatedTorrentList(cm map[string]removal.CandidateFile, torrents []model.Torrent) []relatedRemovalTorrent {
 	wanted := map[string]bool{}
 	selected := map[string]bool{}
 	for _, c := range cm {
-		if c.Owner == removal.TorrentOwner {
-			h := strings.ToLower(c.OwnerKey)
-			if h != "" && !strings.EqualFold(h, exclude) {
-				wanted[h] = true
-				if c.Selected {
-					selected[h] = true
-				}
+		if c.Owner == removal.TorrentOwner && c.OwnerKey != "" {
+			wanted[c.OwnerKey] = true
+			if c.Selected {
+				selected[c.OwnerKey] = true
 			}
 		}
 	}
 	out := []relatedRemovalTorrent{}
 	for _, t := range torrents {
-		h := strings.ToLower(t.Hash)
-		if wanted[h] {
-			out = append(out, relatedRemovalTorrent{Torrent: t, Selected: selected[h]})
+		key := torrentRemovalKey(t)
+		if wanted[key] {
+			out = append(out, relatedRemovalTorrent{Torrent: t, Selected: selected[key]})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -240,7 +239,9 @@ func underPath(root, p string) bool {
 	return e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func groupRemovalFiles(plan removal.RemovalPlan, inventoryFiles []model.File) []removalPhysicalFileGroup {
+// groupRemovalFiles groups a plan's paths by physical file. targetKey is a
+// torrent removal's own torrent (removalTorrentKey), "" for the others.
+func groupRemovalFiles(plan removal.RemovalPlan, inventoryFiles []model.File, targetKey string) []removalPhysicalFileGroup {
 	files := plan.Files
 	invByPath := filesByPath(inventoryFiles)
 	counts := rootCounts(inventoryFiles)
@@ -330,7 +331,7 @@ func groupRemovalFiles(plan removal.RemovalPlan, inventoryFiles []model.File) []
 				if strings.TrimSpace(state.Label) != "" {
 					display.ActionLabel = fmt.Sprintf("Remove torrent %q and its complete data set", state.Label)
 				}
-			} else if plan.Kind == removal.TorrentObject && state.Selectable && strings.EqualFold(state.OwnerKey, plan.RequestedKey) {
+			} else if plan.Kind == removal.TorrentObject && state.Selectable && state.OwnerKey == targetKey {
 				display.ActionName, display.ActionValue = "target", "1"
 				display.ActionLabel, display.Selectable = "Remove torrent and its complete data set", true
 			}
@@ -527,11 +528,11 @@ func filesByPath(files []model.File) map[string]model.File {
 
 type physicalID struct{ dev, ino uint64 }
 
-func provenManagedRefsForTorrent(files []model.File, mediaRefs []model.MediaFileRef, torrentRefs []model.TorrentFileRef, hash string) []model.MediaFileRef {
+func provenManagedRefsForTorrent(files []model.File, mediaRefs []model.MediaFileRef, torrentRefs []model.TorrentFileRef, serviceID, hash string) []model.MediaFileRef {
 	byPath := filesByPath(files)
 	ids := map[physicalID]bool{}
 	for _, tr := range torrentRefs {
-		if !strings.EqualFold(tr.Hash, hash) {
+		if tr.ServiceID != serviceID || !strings.EqualFold(tr.Hash, hash) {
 			continue
 		}
 		if f, ok := byPath[filepath.Clean(tr.Path)]; ok && f.Exists && f.IdentityKnown {
@@ -625,9 +626,9 @@ func selectedFileSummary(plan removal.RemovalPlan) (int, int64) {
 }
 
 func storageGuidance(plan removal.RemovalPlan, mediaType model.MediaType, related []relatedRemovalTorrent) (string, string) {
-	statusByHash := map[string]string{}
+	statusByKey := map[string]string{}
 	for _, relatedTorrent := range related {
-		statusByHash[strings.ToLower(relatedTorrent.Torrent.Hash)] = strings.ToUpper(relatedTorrent.Torrent.AssociationStatus)
+		statusByKey[torrentRemovalKey(relatedTorrent.Torrent)] = strings.ToUpper(relatedTorrent.Torrent.AssociationStatus)
 	}
 	type physicalIdentity struct {
 		device uint64
@@ -656,20 +657,19 @@ func storageGuidance(plan removal.RemovalPlan, mediaType model.MediaType, relate
 				selection.selectedMedia = true
 			}
 		} else if file.Owner == removal.TorrentOwner {
-			hash := strings.ToLower(file.OwnerKey)
-			selection.blockers[hash] = statusByHash[hash]
+			selection.blockers[file.OwnerKey] = statusByKey[file.OwnerKey]
 		}
 	}
-	blockingHashes := map[string]string{}
+	blockingTorrents := map[string]string{}
 	for _, selection := range physicalFiles {
 		if !selection.selectedMedia || uint64(selection.selectedPaths) >= selection.linkCount {
 			continue
 		}
-		for hash, status := range selection.blockers {
-			blockingHashes[hash] = status
+		for key, status := range selection.blockers {
+			blockingTorrents[key] = status
 		}
 	}
-	if len(blockingHashes) == 0 {
+	if len(blockingTorrents) == 0 {
 		return "", ""
 	}
 	fileName := "library file"
@@ -689,13 +689,13 @@ func storageGuidance(plan removal.RemovalPlan, mediaType model.MediaType, relate
 		title = fmt.Sprintf("Removing the selected %s alone will not reclaim storage space.", fileName)
 	}
 	allCurrent := true
-	for _, status := range blockingHashes {
+	for _, status := range blockingTorrents {
 		if model.NormalizeTorrentStatus(status) != model.TorrentCurrent {
 			allCurrent = false
 			break
 		}
 	}
-	if len(blockingHashes) == 1 && allCurrent {
+	if len(blockingTorrents) == 1 && allCurrent {
 		pronoun := "It is"
 		if selectedFiles != 1 {
 			pronoun = "They are"

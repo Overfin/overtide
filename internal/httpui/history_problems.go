@@ -91,10 +91,7 @@ func (server *Server) problemsNow() ([]problemJSON, bool) {
 	if err != nil || updated.IsZero() {
 		return nil, false
 	}
-	torrents := map[string]model.Torrent{}
-	for _, t := range server.inv.TorrentSnapshot() {
-		torrents[t.Hash] = t
-	}
+	torrents := newTorrentKeys(server.inv.TorrentSnapshot())
 	for _, event := range events {
 		left, known := leftoversOf(event, files, mediaRefs, torrents)
 		if !known || len(left) == 0 {
@@ -107,7 +104,7 @@ func (server *Server) problemsNow() ([]problemJSON, bool) {
 
 // leftoversOf reads an operation's recorded plan and keeps what's still
 // there of what it selected. known is false when no plan was recorded.
-func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model.MediaFileRef, torrents map[string]model.Torrent) (left []leftover, known bool) {
+func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model.MediaFileRef, torrents torrentKeys) (left []leftover, known bool) {
 	var payload struct {
 		Plan struct {
 			Files []removal.FileState `json:"files"`
@@ -136,14 +133,20 @@ func leftoversOf(event store.HistoryEvent, files []model.File, mediaRefs []model
 		}
 		switch f.Owner {
 		case removal.TorrentOwner:
-			t, ok := torrents[f.OwnerKey]
+			// An older plan's owner is a bare hash: it's still that torrent
+			// only when a single client has it.
+			key, err := torrents.resolve(f.OwnerKey)
+			if err != nil {
+				continue
+			}
+			t, ok := torrents.byKey[key]
 			if !ok {
 				continue
 			}
-			if byTorrent[f.OwnerKey] == nil {
-				byTorrent[f.OwnerKey] = &leftover{Kind: "torrent", Label: t.Name, Hash: t.Hash, ServiceID: t.ServiceID}
+			if byTorrent[key] == nil {
+				byTorrent[key] = &leftover{Kind: "torrent", Label: t.Name, Hash: t.Hash, ServiceID: t.ServiceID}
 			}
-			byTorrent[f.OwnerKey].Bytes += f.SizeBytes
+			byTorrent[key].Bytes += f.SizeBytes
 		case removal.MediaOwner:
 			// A title's files, whichever removal selected them: the title
 			// is the file's owner as the inventory has it now.

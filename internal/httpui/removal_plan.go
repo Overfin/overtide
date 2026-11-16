@@ -231,7 +231,7 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 		sel := selectedManaged[managedFileKey(r)]
 		mergeRemovalCandidate(cm, removal.CandidateFile{Path: r.Path, Owner: removal.MediaOwner, OwnerKey: managedFileKey(r), Label: mr.Title, Selected: sel, Selectable: true})
 	}
-	physicalTorrentHashes := physicallyBackingTorrentHashes(files, refs, allTorrentRefs)
+	physicalTorrentKeys := physicallyBackingTorrentKeys(files, refs, allTorrentRefs)
 	var mediaItem *model.Media
 	for itemIndex := range items {
 		if items[itemIndex].Type == kind && items[itemIndex].ServiceID == mr.ServiceID && items[itemIndex].SourceID == id {
@@ -239,11 +239,13 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 			break
 		}
 	}
-	torrentByHash := map[string]model.Torrent{}
+	// Torrents go by their client and hash (removalTorrentKey): the same
+	// hash in two clients is two torrents.
+	torrentByKey := map[string]model.Torrent{}
 	for _, torrent := range server.inv.TorrentSnapshot() {
-		torrentByHash[strings.ToLower(torrent.Hash)] = torrent
+		torrentByKey[torrentRemovalKey(torrent)] = torrent
 	}
-	contextByHash := map[string]relatedRemovalTorrent{}
+	contextByKey := map[string]relatedRemovalTorrent{}
 	if mediaItem != nil {
 		for _, torrent := range mediaItem.Torrents {
 			// Every torrent Overtide has ever related to this media — Current,
@@ -256,61 +258,60 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 			if model.NormalizeTorrentStatus(torrent.AssociationStatus) == model.TorrentUnassociated {
 				continue
 			}
-			hash := strings.ToLower(torrent.Hash)
-			contextByHash[hash] = relatedRemovalTorrent{Torrent: torrent, Selectable: true, PhysicallyBacks: torrent.MediaHardlinked}
+			contextByKey[torrentRemovalKey(torrent)] = relatedRemovalTorrent{Torrent: torrent, Selectable: true, PhysicallyBacks: torrent.MediaHardlinked}
 		}
 	}
-	for hash := range physicalTorrentHashes {
-		torrent, ok := torrentByHash[hash]
+	for key := range physicalTorrentKeys {
+		torrent, ok := torrentByKey[key]
 		if !ok {
 			continue
 		}
 		torrent.AssociationStatus = model.TorrentCurrent
 		torrent.AssociationReason = "Current filesystem topology proves this torrent physically backs managed media."
-		context := contextByHash[hash]
+		context := contextByKey[key]
 		context.Torrent = torrent
 		context.Selectable = true
 		context.PhysicallyBacks = true
-		contextByHash[hash] = context
+		contextByKey[key] = context
 	}
 	authorizedTorrents := map[string]bool{}
-	for hash, context := range contextByHash {
+	for key, context := range contextByKey {
 		if context.Selectable {
-			authorizedTorrents[hash] = true
+			authorizedTorrents[key] = true
 		}
 	}
-	for hash := range selectedTorrents {
-		if !authorizedTorrents[hash] {
-			return removalData{}, fmt.Errorf("torrent is not current for this media: %s", hash)
+	for key := range selectedTorrents {
+		if !authorizedTorrents[key] {
+			return removalData{}, fmt.Errorf("torrent is not current for this media: %s", key)
 		}
 	}
 	// Ticked by default: the torrents holding the title's files, unless
 	// one must keep seeding (kept, or a private tracker's minimum).
 	if !selectionExplicit {
-		for hash := range physicalTorrentHashes {
-			if torrent, ok := torrentByHash[hash]; ok && torrent.Obligation == "" {
-				selectedTorrents[hash] = true
+		for key := range physicalTorrentKeys {
+			if torrent, ok := torrentByKey[key]; ok && torrent.Obligation == "" {
+				selectedTorrents[key] = true
 			}
 		}
 	}
-	for hash, context := range contextByHash {
-		torrentFiles, _, _ := server.inv.TorrentFiles(hash)
+	for key, context := range contextByKey {
+		torrentFiles, _, _ := server.inv.TorrentFiles(context.Torrent.ServiceID, context.Torrent.Hash)
 		context.FileCount = len(torrentFiles)
-		context.Selected = selectedTorrents[hash]
-		contextByHash[hash] = context
+		context.Selected = selectedTorrents[key]
+		contextByKey[key] = context
 		if !context.Selectable {
 			continue
 		}
 		torrent := context.Torrent
 		selected := context.Selected
 		for _, file := range torrentFiles {
-			mergeRemovalCandidate(cm, removal.CandidateFile{Path: file.Path, Owner: removal.TorrentOwner, OwnerKey: hash, Label: torrent.Name, Selected: selected, Selectable: true})
+			mergeRemovalCandidate(cm, removal.CandidateFile{Path: file.Path, Owner: removal.TorrentOwner, OwnerKey: key, Label: torrent.Name, Selected: selected, Selectable: true})
 		}
 	}
 	cm = physicalCandidates(files, allMediaRefs, allTorrentRefs, cm, selectedManaged, selectedTorrents, selectedUnmanaged)
 	related := []relatedRemovalTorrent{}
 	contextTorrents := []relatedRemovalTorrent{}
-	for _, context := range contextByHash {
+	for _, context := range contextByKey {
 		contextTorrents = append(contextTorrents, context)
 		if context.Selectable {
 			related = append(related, context)
@@ -368,7 +369,7 @@ func (server *Server) buildMediaRemovalPlan(kind model.MediaType, id int, servic
 	selectedFileCount, selectedLogicalBytes := selectedFileSummary(p)
 	guidanceTitle, guidanceAction := storageGuidance(p, kind, related)
 	return removalData{
-		Plan: p, FileGroups: groupRemovalFiles(p, files), SelectedActions: actions,
+		Plan: p, FileGroups: groupRemovalFiles(p, files, ""), SelectedActions: actions,
 		PotentialBytes: potential, Related: related, RelatedGroups: groupRelatedTorrents(contextTorrents),
 		RelatedTorrentCount: len(contextTorrents), SelectedTorrentCount: selectedTorrentCount,
 		PreservedTorrentCount: len(contextTorrents) - selectedTorrentCount,
@@ -410,13 +411,14 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 	// The torrents it shares files with (the very same path, or a hardlink):
 	// listed, each with its box, only the asked one ticked by default. A
 	// file goes only when every torrent using it is removed.
+	targetKey := torrentRemovalKey(*found)
 	group := sharingGroup(*found, server.inv.TorrentSnapshot())
 	inGroup := map[string]bool{}
 	for _, t := range group {
-		inGroup[strings.ToLower(t.Hash)] = true
+		inGroup[torrentRemovalKey(t)] = true
 	}
 	for other := range selectedOthers {
-		if other == h {
+		if other == targetKey {
 			continue
 		}
 		if !inGroup[other] {
@@ -428,25 +430,25 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 		return removalData{}, ferr
 	}
 	byPath := filesByPath(files)
-	proven := provenManagedRefsForTorrent(files, mrefs, trefs, h)
+	proven := provenManagedRefsForTorrent(files, mrefs, trefs, found.ServiceID, h)
 	cm := map[string]removal.CandidateFile{}
-	tf, _, _ := server.inv.TorrentFiles(h)
+	tf, _, _ := server.inv.TorrentFiles(found.ServiceID, h)
 	for _, f := range tf {
-		mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: h, Label: found.Name, Selected: targetSelected, Selectable: true})
+		mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: targetKey, Label: found.Name, Selected: targetSelected, Selectable: true})
 	}
 	for _, r := range proven {
 		sel := selectedManaged[managedFileKey(r)]
 		mergeRemovalCandidate(cm, removal.CandidateFile{Path: r.Path, Owner: removal.MediaOwner, OwnerKey: managedFileKey(r), Selected: sel})
 	}
-	selectedTorrents := map[string]bool{h: targetSelected}
+	selectedTorrents := map[string]bool{targetKey: targetSelected}
 	relatedTorrents := []relatedRemovalTorrent{}
 	for _, t := range group {
-		th := strings.ToLower(t.Hash)
-		selected := selectedOthers[th]
-		selectedTorrents[th] = selected
-		otherFiles, _, _ := server.inv.TorrentFiles(th)
+		key := torrentRemovalKey(t)
+		selected := selectedOthers[key]
+		selectedTorrents[key] = selected
+		otherFiles, _, _ := server.inv.TorrentFiles(t.ServiceID, t.Hash)
 		for _, f := range otherFiles {
-			mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: th, Label: t.Name, Selected: selected, Selectable: true})
+			mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: key, Label: t.Name, Selected: selected, Selectable: true})
 		}
 		relatedTorrents = append(relatedTorrents, relatedRemovalTorrent{Torrent: t, Selected: selected, Selectable: true, SharesFiles: true, FileCount: len(otherFiles)})
 	}
@@ -537,7 +539,7 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 		Related: relatedTorrents, RelatedGroups: groupRelatedTorrents(relatedTorrents),
 		RelatedTorrentCount: len(relatedTorrents), SelectedTorrentCount: selectedTorrentCount,
 		PreservedTorrentCount: len(relatedTorrents) - selectedTorrentCount,
-		Plan:                  p, FileGroups: groupRemovalFiles(p, files), TorrentTarget: true,
+		Plan:                  p, FileGroups: groupRemovalFiles(p, files, targetKey), TorrentTarget: true,
 		TorrentSelected: targetSelected, SelectedActions: actions, PotentialBytes: potential,
 		RelatedManaged: related, RelatedUnmanaged: relatedUnmanaged, SelectedUnmanaged: selectedUF,
 		SelectedManaged: selectedRefs, CanUnmonitorMovies: moviesOpt, CanUnmonitorEpisodes: episodesOpt,
@@ -584,20 +586,21 @@ func (server *Server) buildUnmanagedRemovalPlan(paths []string, selectedTorrents
 	// A torrent removal is an owner-level action over the whole torrent. Once a
 	// physically related torrent is identified, include all of its paths so both
 	// selected and potential space calculations describe the actual action.
-	relatedHashes := map[string]bool{}
+	relatedKeys := map[string]bool{}
 	for _, c := range cm {
 		if c.Owner == removal.TorrentOwner {
-			relatedHashes[strings.ToLower(c.OwnerKey)] = true
+			relatedKeys[c.OwnerKey] = true
 		}
 	}
-	for h := range relatedHashes {
-		tf, _, _ := server.inv.TorrentFiles(h)
+	for key := range relatedKeys {
+		serviceID, hash := splitRemovalTorrentKey(key)
+		tf, _, _ := server.inv.TorrentFiles(serviceID, hash)
 		for _, r := range tf {
-			mergeRemovalCandidate(cm, removal.CandidateFile{Path: r.Path, Owner: removal.TorrentOwner, OwnerKey: h, Label: h, Selected: selectedTorrents[h]})
+			mergeRemovalCandidate(cm, removal.CandidateFile{Path: r.Path, Owner: removal.TorrentOwner, OwnerKey: key, Label: hash, Selected: selectedTorrents[key]})
 		}
 	}
 	cm = physicalCandidates(files, mrefs, trefs, cm, map[string]bool{}, selectedTorrents, selectedUF)
-	torrents := relatedTorrentList(cm, server.inv.TorrentSnapshot(), "")
+	torrents := relatedTorrentList(cm, server.inv.TorrentSnapshot())
 	p := removal.Build(removal.UnmanagedObject, "unmanaged", fmt.Sprintf("%d unmanaged file(s)", len(clean)), server.inv.Config().Removal.DryRun, candidateSlice(cm))
 	all := candidateSlice(cm)
 	for i := range all {
@@ -611,7 +614,7 @@ func (server *Server) buildUnmanagedRemovalPlan(paths []string, selectedTorrents
 		}
 	}
 	return removalData{
-		Plan: p, FileGroups: groupRemovalFiles(p, files), PotentialBytes: potential,
+		Plan: p, FileGroups: groupRemovalFiles(p, files, ""), PotentialBytes: potential,
 		BackURL: "/unmanaged", UnmanagedPaths: clean, Related: torrents,
 		RelatedGroups: groupRelatedTorrents(torrents), SelectedActions: actions,
 	}, nil

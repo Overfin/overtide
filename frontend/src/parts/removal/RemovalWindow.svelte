@@ -195,10 +195,10 @@
         {#each v.relatedGroups as group, g (g)}
           <div class="removal-group">
             <h4>{group.label}</h4>
-            {#each group.torrents as t (t.hash)}
+            {#each group.torrents as t (t.key)}
               <div class="removal-row">
                 {#if t.selectable}
-                  <label class="inline"><input type="checkbox" checked={isOn({ name: 'torrent', value: t.hash })} onchange={(e) => set([{ name: 'torrent', value: t.hash }], e.currentTarget.checked)} /> <strong>{t.name}</strong></label>
+                  <label class="inline"><input type="checkbox" checked={isOn({ name: 'torrent', value: t.key })} onchange={(e) => set([{ name: 'torrent', value: t.key }], e.currentTarget.checked)} /> <strong>{t.name}</strong></label>
                 {:else}
                   <strong>{t.name}</strong>
                 {/if}

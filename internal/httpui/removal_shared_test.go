@@ -134,11 +134,11 @@ func TestRemovalKeepsFilesAnotherTorrentUses(t *testing.T) {
 	if len(plan.Related) != 1 || !strings.EqualFold(plan.Related[0].Torrent.Hash, b) || plan.Related[0].Selected || !plan.Related[0].SharesFiles || plan.Plan.SelectedPathBytes != 0 || !plan.Plan.Kept(path) {
 		t.Fatalf("one ticked: related %+v, freed %d", plan.Related, plan.Plan.SelectedPathBytes)
 	}
-	both, err := server.buildTorrentRemovalPlan(a, "qbittorrent-1", true, map[string]bool{}, map[string]bool{}, map[string]bool{b: true})
+	both, err := server.buildTorrentRemovalPlan(a, "qbittorrent-1", true, map[string]bool{}, map[string]bool{}, map[string]bool{removalTorrentKey("qbittorrent-1", b): true})
 	if err != nil || both.Plan.SelectedPathBytes != 4 || both.Plan.Kept(path) {
 		t.Fatalf("both ticked: freed %d, %v", both.Plan.SelectedPathBytes, err)
 	}
-	if _, err := server.buildTorrentRemovalPlan(a, "qbittorrent-1", true, map[string]bool{}, map[string]bool{}, map[string]bool{c: true}); err == nil {
+	if _, err := server.buildTorrentRemovalPlan(a, "qbittorrent-1", true, map[string]bool{}, map[string]bool{}, map[string]bool{removalTorrentKey("qbittorrent-1", c): true}); err == nil {
 		t.Fatal("a torrent outside the group was accepted")
 	}
 

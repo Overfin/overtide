@@ -51,7 +51,9 @@ func (service *Service) ManagedFileRefs(kind model.MediaType, id int, svcID stri
 	return out, updated, err
 }
 
-func (service *Service) TorrentFiles(hash string) ([]model.File, time.Time, error) {
+// TorrentFiles are the files of one torrent of one client: the same hash in
+// another qBittorrent client is another torrent.
+func (service *Service) TorrentFiles(serviceID, hash string) ([]model.File, time.Time, error) {
 	files, _, refs, updated, err := service.FileSnapshot()
 	byPath := map[string]model.File{}
 	for _, f := range files {
@@ -59,7 +61,7 @@ func (service *Service) TorrentFiles(hash string) ([]model.File, time.Time, erro
 	}
 	out := []model.File{}
 	for _, r := range refs {
-		if strings.EqualFold(r.Hash, hash) {
+		if r.ServiceID == serviceID && strings.EqualFold(r.Hash, hash) {
 			if f, ok := byPath[r.Path]; ok {
 				out = append(out, f)
 			}

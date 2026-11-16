@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/overfin/overtide/internal/model"
 	"github.com/overfin/overtide/internal/removal"
@@ -63,7 +62,7 @@ func prepareRemovalData(data *removalData) error {
 	}
 	statuses := make(map[string]string, len(data.Related))
 	for _, relatedTorrent := range data.Related {
-		statuses[strings.ToLower(relatedTorrent.Torrent.Hash)] = model.NormalizeTorrentStatus(relatedTorrent.Torrent.AssociationStatus)
+		statuses[torrentRemovalKey(relatedTorrent.Torrent)] = model.NormalizeTorrentStatus(relatedTorrent.Torrent.AssociationStatus)
 	}
 	selection := removalSelectionModel{
 		Kind: data.Plan.Kind, DryRun: data.Plan.DryRun, MediaType: model.MediaType(data.MediaType),
@@ -85,7 +84,7 @@ func prepareRemovalData(data *removalData) error {
 			fact.ActionName, fact.ActionValue = "managed_file", file.OwnerKey
 			fact.Selectable = file.Selectable
 		case removal.TorrentOwner:
-			if data.Plan.Kind == removal.TorrentObject && strings.EqualFold(file.OwnerKey, data.Hash) {
+			if data.Plan.Kind == removal.TorrentObject && file.OwnerKey == removalTorrentKey(data.TorrentServiceID, data.Hash) {
 				fact.ActionName, fact.ActionValue = "target", "1"
 				fact.Selectable = file.Selectable
 			} else {

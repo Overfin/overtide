@@ -246,7 +246,7 @@ func (server *Server) apiTorrentDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serviceID := strings.TrimSpace(r.URL.Query().Get("service_id"))
-	if notice, pending := server.pendingProjection().torrentOperation(hash); pending {
+	if notice, pending := server.pendingProjection().torrentOperation(serviceID, hash); pending {
 		writeJSON(w, http.StatusOK, torrentDetailResponse{Operation: newOperationView(notice)})
 		return
 	}

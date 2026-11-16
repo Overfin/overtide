@@ -5,7 +5,7 @@
 // everything again when the removal runs.
 import type { RemovalModel } from '../../lib/types-removal';
 
-/** An action is a form field and its value ("torrent" + a hash…). */
+/** An action is a form field and its value ("torrent" + its client and hash…). */
 export const actionKey = (name: string, value: string) => `${name}\u0000${value}`;
 
 export function splitAction(key: string): [string, string] {
@@ -89,8 +89,9 @@ export function consequences(model: RemovalModel, actions: Set<string>): Consequ
     if (selectedMedia && group.selected.size < group.links) {
       for (const fact of group.facts) {
         if (fact.owner === 'torrent' && !fact.selected) {
-          const hash = String(fact.ownerKey).toLowerCase();
-          blockers.set(hash, model.torrentStatuses?.[hash] || 'UNASSOCIATED');
+          // A torrent's key: its client and its hash.
+          const key = String(fact.ownerKey).toLowerCase();
+          blockers.set(key, model.torrentStatuses?.[key] || 'UNASSOCIATED');
         }
       }
     }

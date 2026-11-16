@@ -148,7 +148,7 @@ func TestGroupRelatedTorrentsSeparatesRelationshipTypes(t *testing.T) {
 func TestStorageGuidanceExplainsBlockingAssociatedTorrent(t *testing.T) {
 	plan := removal.RemovalPlan{Files: []removal.FileState{
 		{Path: "/library/movie.mkv", Owner: removal.MediaOwner, Selected: true, Exists: true, SizeBytes: 4096, IdentityKnown: true, Device: 1, Inode: 2, Links: 2},
-		{Path: "/downloads/movie.mkv", Owner: removal.TorrentOwner, OwnerKey: "abc", Selected: false, Exists: true, SizeBytes: 4096, IdentityKnown: true, Device: 1, Inode: 2, Links: 2},
+		{Path: "/downloads/movie.mkv", Owner: removal.TorrentOwner, OwnerKey: "|abc", Selected: false, Exists: true, SizeBytes: 4096, IdentityKnown: true, Device: 1, Inode: 2, Links: 2},
 	}}
 	title, action := storageGuidance(plan, model.Movie, []relatedRemovalTorrent{{Torrent: model.Torrent{Hash: "abc", AssociationStatus: "ASSOCIATED"}}})
 	if title == "" || action != "It is hardlinked to the current torrent. Also select that torrent below to reclaim the shared data." {
@@ -318,7 +318,7 @@ func TestProvenManagedRefsForTorrentUsesPhysicalIdentity(t *testing.T) {
 		{MediaType: model.Series, MediaID: 1, Source: "sonarr", SourceFileID: 11, Path: copyPath},
 	}
 	trefs := []model.TorrentFileRef{{Client: "qBittorrent", Hash: "abc", FileIndex: 0, Path: dl}}
-	got := provenManagedRefsForTorrent(files, refs, trefs, "ABC")
+	got := provenManagedRefsForTorrent(files, refs, trefs, "", "ABC")
 	if len(got) != 1 || got[0].SourceFileID != 10 {
 		t.Fatalf("expected only hardlinked managed file, got %#v", got)
 	}
@@ -329,7 +329,7 @@ func TestGroupRemovalFilesGroupsHardlinksByPhysicalIdentity(t *testing.T) {
 		{Path: "/data/downloads/a.mkv", Owner: removal.TorrentOwner, OwnerKey: "abc", Selected: true, Selectable: true, Exists: true, SizeBytes: 123, IdentityKnown: true, Device: 56, Inode: 99, Links: 2},
 		{Path: "/data/Films/a.mkv", Owner: removal.MediaOwner, OwnerKey: "radarr:9", Selected: true, Selectable: true, Exists: true, SizeBytes: 123, IdentityKnown: true, Device: 56, Inode: 99, Links: 2},
 	}
-	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.MediaObject, Files: files}, nil)
+	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.MediaObject, Files: files}, nil, "")
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 physical group, got %d", len(groups))
 	}
@@ -354,7 +354,7 @@ func TestGroupRemovalFilesMakesUnmanagedTargetSelectable(t *testing.T) {
 	files := []removal.FileState{
 		{Path: "/data/downloads/orphan.iso", Owner: removal.UnmanagedOwner, OwnerKey: "/data/downloads/orphan.iso", Selected: true, Selectable: true, Exists: true, SizeBytes: 999},
 	}
-	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.UnmanagedObject, Files: files}, nil)
+	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.UnmanagedObject, Files: files}, nil, "")
 	if len(groups) != 1 || len(groups[0].DisplayPaths) != 1 {
 		t.Fatalf("expected 1 group with 1 display path, got %+v", groups)
 	}
@@ -454,9 +454,9 @@ func TestMediaPlanDefaultsPhysicallyHardlinkedTorrentAndRejectsUnrelatedTorrent(
 		{MediaType: model.Movie, MediaID: 2, Source: "radarr", SourceFileID: 10, Path: otherMediaPath},
 	}
 	torrentRefs := []model.TorrentFileRef{
-		{Client: "qBittorrent", Hash: "linked", FileIndex: 0, Path: torrentPath},
-		{Client: "qBittorrent", Hash: "linked", FileIndex: 1, Path: otherTorrentPath},
-		{Client: "qBittorrent", Hash: "unrelated", FileIndex: 0, Path: unrelatedPath},
+		{ServiceID: "qbittorrent", Client: "qBittorrent", Hash: "linked", FileIndex: 0, Path: torrentPath},
+		{ServiceID: "qbittorrent", Client: "qBittorrent", Hash: "linked", FileIndex: 1, Path: otherTorrentPath},
+		{ServiceID: "qbittorrent", Client: "qBittorrent", Hash: "unrelated", FileIndex: 0, Path: unrelatedPath},
 	}
 	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
@@ -466,10 +466,10 @@ func TestMediaPlanDefaultsPhysicallyHardlinkedTorrentAndRejectsUnrelatedTorrent(
 	media := []model.Media{{Type: model.Movie, SourceID: 1, Title: "Movie"}, {Type: model.Movie, SourceID: 2, Title: "Other"}}
 	mediaRelation := model.MediaRef{Type: model.Movie, SourceID: 1, Title: "Movie"}
 	torrents := []model.Torrent{
-		{Hash: "linked", Name: "Linked", AssociationStatus: model.TorrentUnassociated},
-		{Hash: "copied", Name: "Copied current import", AssociationStatus: model.TorrentCurrent, MediaItems: []model.MediaRef{mediaRelation}},
-		{Hash: "old", Name: "Superseded release", AssociationStatus: model.TorrentSuperseded, FormerMediaItems: []model.MediaRef{mediaRelation}},
-		{Hash: "unrelated", Name: "Unrelated", AssociationStatus: model.TorrentUnassociated},
+		{ServiceID: "qbittorrent", Hash: "linked", Name: "Linked", AssociationStatus: model.TorrentUnassociated},
+		{ServiceID: "qbittorrent", Hash: "copied", Name: "Copied current import", AssociationStatus: model.TorrentCurrent, MediaItems: []model.MediaRef{mediaRelation}},
+		{ServiceID: "qbittorrent", Hash: "old", Name: "Superseded release", AssociationStatus: model.TorrentSuperseded, FormerMediaItems: []model.MediaRef{mediaRelation}},
+		{ServiceID: "qbittorrent", Hash: "unrelated", Name: "Unrelated", AssociationStatus: model.TorrentUnassociated},
 	}
 	if err := database.PublishInventory(1, nil, torrents, media); err != nil {
 		t.Fatal(err)
@@ -529,14 +529,14 @@ func TestMediaPlanDefaultsPhysicallyHardlinkedTorrentAndRejectsUnrelatedTorrent(
 			t.Fatal("a kept torrent was ticked by default")
 		}
 	}
-	revalidated, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, selectedManagedSet([]string{"radarr:9"}), mapFromValues([]string{"linked"}), map[string]bool{})
+	revalidated, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, selectedManagedSet([]string{"radarr:9"}), mapFromValues([]string{"qbittorrent|linked"}), map[string]bool{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(revalidated.Related) != 3 || !selectedTorrent(revalidated.Related, "linked") || selectedTorrent(revalidated.Related, "copied") || selectedTorrent(revalidated.Related, "old") {
 		t.Fatalf("execution revalidation discarded related torrent or selected one that wasn't submitted: %#v", revalidated.Related)
 	}
-	if _, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, map[string]bool{"radarr:9": true}, map[string]bool{"unrelated": true}, map[string]bool{}); err == nil || !strings.Contains(err.Error(), "not current") {
+	if _, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, map[string]bool{"radarr:9": true}, map[string]bool{"qbittorrent|unrelated": true}, map[string]bool{}); err == nil || !strings.Contains(err.Error(), "not current") {
 		t.Fatalf("unrelated torrent selection error=%v", err)
 	}
 	if _, err := server.buildMediaRemovalPlan(model.Movie, 1, "", true, map[string]bool{"radarr:10": true}, map[string]bool{}, map[string]bool{}); err == nil || !strings.Contains(err.Error(), "does not belong") {
@@ -596,7 +596,7 @@ func TestPhysicalCandidatesPreserveMultipleOwnerClaimsOnSamePath(t *testing.T) {
 func TestGroupRemovalFilesReportsMissingHardlinks(t *testing.T) {
 	states := []removal.FileState{{Path: "/downloads/a.mkv", Exists: true, IdentityKnown: true, Device: 1, Inode: 2, Links: 2, SizeBytes: 100, Owner: removal.TorrentOwner}}
 	inventoryFiles := []model.File{{Path: "/downloads/a.mkv", Exists: true, IdentityKnown: true, Device: 1, Inode: 2, Links: 2, SizeBytes: 100}}
-	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.TorrentObject, RequestedKey: "abc", Files: states}, inventoryFiles)
+	groups := groupRemovalFiles(removal.RemovalPlan{Kind: removal.TorrentObject, RequestedKey: "abc", Files: states}, inventoryFiles, "|abc")
 	if len(groups) != 1 || groups[0].MissingLinks != 1 {
 		t.Fatalf("expected one missing hardlink, got %+v", groups)
 	}

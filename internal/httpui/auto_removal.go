@@ -247,15 +247,13 @@ func actionIsIncompleteTorrent(action cleanup.Action) bool {
 // allowing removal. Things change between a click and the run (a Keep, a
 // tracker's seeding time), and the plan was only a snapshot.
 func (server *Server) cleanupStillEligible(form url.Values) error {
-	torrents := map[string]model.Torrent{}
-	for _, t := range server.inv.TorrentSnapshot() {
-		torrents[strings.ToLower(t.Hash)] = t
-	}
-	checkTorrent := func(hash string, lone bool) error {
-		t, ok := torrents[strings.ToLower(strings.TrimSpace(hash))]
+	keys := newTorrentKeys(server.inv.TorrentSnapshot())
+	torrents := keys.byKey
+	checkTorrent := func(key string, lone bool) error {
+		t, ok := torrents[key]
 		switch {
 		case !ok:
-			return fmt.Errorf("torrent %s is gone", hash)
+			return fmt.Errorf("torrent %s is gone", key)
 		case t.RemovalRestricted:
 			return fmt.Errorf("%s: its service is no longer included in cleanup plans", t.Name)
 		case t.Obligation != "":
@@ -285,29 +283,45 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 				}
 			}
 		}
-		for _, hash := range form["torrent"] {
-			if err := checkTorrent(hash, false); err != nil {
+		selected, err := keys.resolveAll(form["torrent"])
+		if err != nil {
+			return err
+		}
+		for key := range selected {
+			if err := checkTorrent(key, false); err != nil {
 				return err
 			}
 		}
 	case "torrent":
-		if err := checkTorrent(form.Get("hash"), true); err != nil {
-			return err
-		}
-		selected := map[string]bool{strings.ToLower(strings.TrimSpace(form.Get("hash"))): true}
-		for _, hash := range form["torrent"] {
-			if err := checkTorrent(hash, true); err != nil {
+		target := removalTorrentKey(form.Get("service_id"), form.Get("hash"))
+		if form.Get("service_id") == "" {
+			var err error
+			if target, err = keys.resolve(form.Get("hash")); err != nil {
 				return err
 			}
-			selected[strings.ToLower(strings.TrimSpace(hash))] = true
 		}
+		if err := checkTorrent(target, true); err != nil {
+			return err
+		}
+		selected, err := keys.resolveAll(form["torrent"])
+		if err != nil {
+			return err
+		}
+		for key := range selected {
+			if err := checkTorrent(key, true); err != nil {
+				return err
+			}
+		}
+		selected[target] = true
 		// The group it was planned with, whole: a torrent that started
 		// sharing its files since (a new cross-seed) holds it back, as a
 		// group goes only all together, every one past its seeding time.
-		for hash := range selected {
-			for _, other := range torrents[hash].SharesFilesWith {
-				if !selected[strings.ToLower(other)] {
-					return fmt.Errorf("%s now shares files with a torrent the plan didn't include", torrents[hash].Name)
+		// A group is of one client (inventory's share groups).
+		for key := range selected {
+			t := torrents[key]
+			for _, other := range t.SharesFilesWith {
+				if !selected[removalTorrentKey(t.ServiceID, other)] {
+					return fmt.Errorf("%s now shares files with a torrent the plan didn't include", t.Name)
 				}
 			}
 		}
@@ -388,7 +402,7 @@ func (server *Server) formForAction(action cleanup.Action) (url.Values, error) {
 			form.Add("managed_file", managedFileKey(ref))
 		}
 		for _, t := range action.Torrents {
-			form.Add("torrent", strings.ToLower(t.Hash))
+			form.Add("torrent", torrentRemovalKey(t))
 		}
 	case cleanup.StandaloneTorrent:
 		if len(action.Torrents) == 0 {
@@ -400,7 +414,7 @@ func (server *Server) formForAction(action cleanup.Action) (url.Values, error) {
 		form.Set("target", "1")
 		// The rest of a group sharing files: removed with it, or not at all.
 		for _, t := range action.Torrents[1:] {
-			form.Add("torrent", strings.ToLower(t.Hash))
+			form.Add("torrent", torrentRemovalKey(t))
 		}
 	default:
 		return nil, fmt.Errorf("unsupported action kind %q", action.Kind)

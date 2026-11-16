@@ -82,14 +82,6 @@ func mapFromValues(values []string) map[string]bool {
 	return m
 }
 
-func selectedTorrentQuery(query url.Values) map[string]bool {
-	m := map[string]bool{}
-	for _, h := range query["torrent"] {
-		m[strings.ToLower(strings.TrimSpace(h))] = true
-	}
-	return m
-}
-
 func selectedManagedSet(values []string) map[string]bool {
 	m := map[string]bool{}
 	for _, key := range values {
@@ -113,16 +105,20 @@ func targetQuery(query url.Values) bool {
 // (repeated). An explicit selection (selection=1 with managed_file,
 // torrent, target, unmanaged_path) is taken as it is.
 func (server *Server) buildRemovalFor(kind string, query url.Values) (removalData, error) {
+	selectedTorrents, err := newTorrentKeys(server.inv.TorrentSnapshot()).resolveAll(query["torrent"])
+	if err != nil {
+		return removalData{}, err
+	}
 	switch kind {
 	case "media":
 		mediaType := model.MediaType(strings.TrimSpace(query.Get("type")))
 		id, _ := strconv.Atoi(query.Get("id"))
 		serviceID := strings.TrimSpace(query.Get("service_id"))
-		return server.buildMediaRemovalPlan(mediaType, id, serviceID, query.Get("selection") == "1", selectedManagedSet(query["managed_file"]), selectedTorrentQuery(query), selectedUnmanagedSet(query["unmanaged_path"]))
+		return server.buildMediaRemovalPlan(mediaType, id, serviceID, query.Get("selection") == "1", selectedManagedSet(query["managed_file"]), selectedTorrents, selectedUnmanagedSet(query["unmanaged_path"]))
 	case "torrent":
-		return server.buildTorrentRemovalPlan(query.Get("hash"), strings.TrimSpace(query.Get("service_id")), targetQuery(query), selectedManagedSet(query["managed_file"]), selectedUnmanagedSet(query["unmanaged_path"]), selectedTorrentQuery(query))
+		return server.buildTorrentRemovalPlan(query.Get("hash"), strings.TrimSpace(query.Get("service_id")), targetQuery(query), selectedManagedSet(query["managed_file"]), selectedUnmanagedSet(query["unmanaged_path"]), selectedTorrents)
 	case "unmanaged":
-		return server.buildUnmanagedRemovalPlan(query["path"], selectedTorrentQuery(query))
+		return server.buildUnmanagedRemovalPlan(query["path"], selectedTorrents)
 	}
 	return removalData{}, fmt.Errorf("unknown removal kind")
 }
@@ -134,6 +130,12 @@ func (server *Server) buildRemovalFor(kind string, query url.Values) (removalDat
 // text to refuse the request with (empty once accepted). A request whose operation token was
 // already accepted answers that operation again.
 func (server *Server) scheduleRemoval(form url.Values) (int64, bool, int, string) {
+	// Queued with each torrent's client: a bare hash (a window opened
+	// before keys had clients) only when one client has it.
+	if err := keyTorrentFields(form, server.inv.TorrentSnapshot()); err != nil {
+		auditRemovalRejected(0, form, err)
+		return 0, false, http.StatusConflict, "Removal request is no longer valid: " + err.Error()
+	}
 	descriptor, err := server.admitRemoval(form)
 	if err != nil {
 		auditRemovalRejected(0, form, err)
@@ -209,14 +211,8 @@ func (server *Server) admitRemoval(form url.Values) (removalAdmission, error) {
 		if len(form["managed_file"]) == 0 && len(form["torrent"]) == 0 {
 			return removalAdmission{}, fmt.Errorf("nothing selected")
 		}
-		knownTorrents := map[string]bool{}
-		for _, torrent := range server.inv.TorrentSnapshot() {
-			knownTorrents[strings.ToLower(torrent.Hash)] = true
-		}
-		for hash := range mapFromValues(form["torrent"]) {
-			if !knownTorrents[hash] {
-				return removalAdmission{}, fmt.Errorf("torrent not found: %s", hash)
-			}
+		if err := torrentsKnown(form["torrent"], server.inv.TorrentSnapshot()); err != nil {
+			return removalAdmission{}, err
 		}
 		items, _, _ := server.inv.Snapshot()
 		mr, ok := mediaRefFor(items, kind, id, serviceID)
@@ -252,14 +248,8 @@ func (server *Server) admitRemoval(form url.Values) (removalAdmission, error) {
 		if found == nil {
 			return removalAdmission{}, fmt.Errorf("torrent not found")
 		}
-		known := map[string]bool{}
-		for _, torrent := range server.inv.TorrentSnapshot() {
-			known[strings.ToLower(torrent.Hash)] = true
-		}
-		for other := range mapFromValues(form["torrent"]) {
-			if !known[other] {
-				return removalAdmission{}, fmt.Errorf("torrent not found: %s", other)
-			}
+		if err := torrentsKnown(form["torrent"], server.inv.TorrentSnapshot()); err != nil {
+			return removalAdmission{}, err
 		}
 		return removalAdmission{Kind: removal.TorrentObject, Key: hash, Label: found.Name, DryRun: dryRun, ServiceName: found.Client}, nil
 	case "unmanaged":
@@ -320,6 +310,12 @@ func (server *Server) executeRemovalNowContext(w http.ResponseWriter, r *http.Re
 	kind := r.FormValue("kind")
 	if err := validateRemovalScope(r.Form); err != nil {
 		http.Error(w, "Removal scope rejected: "+err.Error(), http.StatusConflict)
+		return
+	}
+	// Removals queued before torrents had their client in their key name
+	// a bare hash: it's run only when one client has it (keyTorrentFields).
+	if err := keyTorrentFields(r.Form, server.inv.TorrentSnapshot()); err != nil {
+		http.Error(w, "Removal revalidation failed: "+err.Error(), http.StatusConflict)
 		return
 	}
 	var d removalData
@@ -689,6 +685,7 @@ func (server *Server) schedulePostRemovalConsistency(historyID int64) error {
 // can't list the torrent's files, or say who uses them, nothing is removed.
 func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan removal.RemovalPlan, t model.Torrent) (results, errs []string, mutated, uncertain bool) {
 	hash := strings.ToLower(t.Hash)
+	key := torrentRemovalKey(t)
 	label := t.Name
 	if label == "" {
 		label = hash
@@ -709,7 +706,7 @@ func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan remov
 	seen := map[string]bool{}
 	var paths []string
 	for _, f := range plan.Files {
-		if f.Owner == removal.TorrentOwner && strings.EqualFold(f.OwnerKey, hash) && f.Exists {
+		if f.Owner == removal.TorrentOwner && f.OwnerKey == key && f.Exists {
 			own = append(own, f)
 			if p := filepath.Clean(f.Path); !seen[p] {
 				seen[p] = true

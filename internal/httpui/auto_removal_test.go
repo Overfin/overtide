@@ -169,7 +169,7 @@ func TestFormForActionHardlinkedBundleIncludesTorrentAndRoundTrips(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if form.Get("kind") != "media" || form.Get("torrent") != "bundlehash" || form.Get("managed_file") != "radarr:10" {
+	if form.Get("kind") != "media" || form.Get("torrent") != torrentRemovalKey(torrent) || form.Get("managed_file") != "radarr:10" {
 		t.Fatalf("unexpected bundle form: %#v", form)
 	}
 	if _, err := server.admitRemoval(form); err != nil {
@@ -216,7 +216,7 @@ func TestFormForGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if form.Get("kind") != "torrent" || form.Get("hash") != "a" || form.Get("target") != "1" || strings.Join(form["torrent"], ",") != "b,c" {
+	if form.Get("kind") != "torrent" || form.Get("hash") != "a" || form.Get("target") != "1" || strings.Join(form["torrent"], ",") != "qb|b,qb|c" {
 		t.Fatalf("%v", form)
 	}
 }

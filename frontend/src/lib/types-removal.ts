@@ -60,7 +60,7 @@ export interface RemovalView {
   managedGroups: FileGroup[];
   torrentTarget: boolean;
   relatedManaged: { title: string; year?: number; type: string; sourceId: number; serviceId: string; fileCount: number; groups: FileGroup[] }[];
-  relatedGroups: { label: string; torrents: { hash: string; name: string; fileCount: number; size: string; meta: string; selectable: boolean; selected: boolean }[] }[];
+  relatedGroups: { label: string; torrents: { key: string; hash: string; name: string; fileCount: number; size: string; meta: string; selectable: boolean; selected: boolean }[] }[];
   relatedTorrentCount: number;
   selectedTorrentCount: number;
   preservedTorrentCount: number;

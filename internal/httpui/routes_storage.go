@@ -596,7 +596,7 @@ func (server *Server) removalsPendingOn(path string) bool {
 		}
 	}
 	for _, t := range server.inv.TorrentsByDevice(server.inv.TorrentSnapshot())[path] {
-		if _, pending := projection.Torrents[strings.ToLower(t.Hash)]; pending {
+		if _, pending := projection.torrentOperation(t.ServiceID, t.Hash); pending {
 			return true
 		}
 	}

@@ -270,6 +270,28 @@ func TestPendingProjectionRestoresFailedTorrent(t *testing.T) {
 	}
 }
 
+// A pending removal hides its torrent of its client only; a bare hash, from
+// a removal queued before, hides that hash in every client.
+func TestPendingProjectionTellsClientsApart(t *testing.T) {
+	items := []model.Torrent{{Hash: "ABC", ServiceID: "qb-1"}, {Hash: "abc", ServiceID: "qb-2"}}
+	projection := emptyPendingProjection()
+	projection.Torrents[removalTorrentKey("qb-2", "abc")] = operationNotice{Status: "queued"}
+	if filtered := projection.filterTorrents(items); len(filtered) != 1 || filtered[0].ServiceID != "qb-1" {
+		t.Fatalf("keyed: %#v", filtered)
+	}
+	if _, pending := projection.torrentOperation("", "ABC"); !pending {
+		t.Fatal("no client given: any client's removal is the torrent's")
+	}
+	if _, pending := projection.torrentOperation("qb-1", "abc"); pending {
+		t.Fatal("another client's removal taken for this one's")
+	}
+	legacy := emptyPendingProjection()
+	legacy.Torrents["abc"] = operationNotice{Status: "queued"}
+	if filtered := legacy.filterTorrents(items); len(filtered) != 0 {
+		t.Fatalf("bare hash: %#v", filtered)
+	}
+}
+
 func TestSSEDisconnectDoesNotLeakSubscriber(t *testing.T) {
 	server, err := New(nil, nil)
 	if err != nil {

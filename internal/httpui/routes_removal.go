@@ -196,7 +196,10 @@ type removalViewTorrents struct {
 	Torrents []removalViewTorrent `json:"torrents"`
 }
 
+// removalViewTorrent is a torrent that may be chosen: Key (its client and
+// hash, removalTorrentKey) is what the window sends for it.
 type removalViewTorrent struct {
+	Key        string `json:"key"`
 	Hash       string `json:"hash"`
 	Name       string `json:"name"`
 	FileCount  int    `json:"fileCount"`
@@ -272,7 +275,7 @@ func removalViewOf(data removalData) removalView {
 	for _, group := range data.RelatedGroups {
 		torrents := removalViewTorrents{Label: group.Label, Torrents: []removalViewTorrent{}}
 		for _, related := range group.Torrents {
-			torrents.Torrents = append(torrents.Torrents, removalViewTorrent{Hash: related.Torrent.Hash, Name: related.Torrent.Name, FileCount: related.FileCount, Size: removalSize(related.Torrent.SizeBytes), Meta: relatedTorrentMeta(related), Selectable: related.Selectable, Selected: related.Selected})
+			torrents.Torrents = append(torrents.Torrents, removalViewTorrent{Key: torrentRemovalKey(related.Torrent), Hash: related.Torrent.Hash, Name: related.Torrent.Name, FileCount: related.FileCount, Size: removalSize(related.Torrent.SizeBytes), Meta: relatedTorrentMeta(related), Selectable: related.Selectable, Selected: related.Selected})
 		}
 		view.RelatedGroups = append(view.RelatedGroups, torrents)
 	}

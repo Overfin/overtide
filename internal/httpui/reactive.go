@@ -330,7 +330,10 @@ func (server *Server) serviceConsistencyRunning() bool {
 }
 
 type pendingProjection struct {
-	Media        map[string]operationNotice
+	Media map[string]operationNotice
+	// Torrents are by client and hash (removalTorrentKey), or by bare hash
+	// for a removal queued before keys had clients: that one stands for the
+	// hash in every client, as it's only what the pages show.
 	Torrents     map[string]operationNotice
 	Unmanaged    map[string]operationNotice
 	ManagedFiles map[string]operationNotice
@@ -399,8 +402,8 @@ func (server *Server) pendingProjection() pendingProjection {
 		if json.Unmarshal(event.Payload, &queued) == nil && len(queued.Command.Form) > 0 {
 			form := queued.Command.Form
 			selectedByOwner := map[string]int{}
-			for _, torrentHash := range form["torrent"] {
-				projection.Torrents[strings.ToLower(strings.TrimSpace(torrentHash))] = notice
+			for _, torrent := range form["torrent"] {
+				projection.Torrents[strings.ToLower(strings.TrimSpace(torrent))] = notice
 			}
 			for _, path := range append(append([]string(nil), form["path"]...), form["unmanaged_path"]...) {
 				projection.Unmanaged[filepath.Clean(path)] = notice
@@ -413,7 +416,11 @@ func (server *Server) pendingProjection() pendingProjection {
 				}
 			}
 			if form.Get("kind") == "torrent" && form.Get("target") == "1" {
-				projection.Torrents[strings.ToLower(strings.TrimSpace(form.Get("hash")))] = notice
+				if serviceID := strings.TrimSpace(form.Get("service_id")); serviceID != "" {
+					projection.Torrents[removalTorrentKey(serviceID, form.Get("hash"))] = notice
+				} else {
+					projection.Torrents[strings.ToLower(strings.TrimSpace(form.Get("hash")))] = notice
+				}
 			}
 			if form.Get("kind") == "media" {
 				id, _ := strconv.Atoi(form.Get("media_id"))
@@ -450,7 +457,7 @@ func (projection pendingProjection) filterMedia(items []model.Media) []model.Med
 func (projection pendingProjection) filterTorrents(items []model.Torrent) []model.Torrent {
 	filtered := make([]model.Torrent, 0, len(items))
 	for _, item := range items {
-		if _, pending := projection.Torrents[strings.ToLower(item.Hash)]; !pending {
+		if _, pending := projection.torrentOperation(item.ServiceID, item.Hash); !pending {
 			filtered = append(filtered, item)
 		}
 	}
@@ -486,9 +493,23 @@ func (projection pendingProjection) mediaOperation(kind model.MediaType, id int,
 	return notice, found
 }
 
-func (projection pendingProjection) torrentOperation(hash string) (operationNotice, bool) {
-	notice, found := projection.Torrents[strings.ToLower(hash)]
-	return notice, found
+// torrentOperation is the removal pending on a torrent: of its client and
+// hash, or of its bare hash. serviceID "" is any client's.
+func (projection pendingProjection) torrentOperation(serviceID, hash string) (operationNotice, bool) {
+	hash = strings.ToLower(strings.TrimSpace(hash))
+	if notice, found := projection.Torrents[hash]; found {
+		return notice, true
+	}
+	if serviceID != "" {
+		notice, found := projection.Torrents[removalTorrentKey(serviceID, hash)]
+		return notice, found
+	}
+	for key, notice := range projection.Torrents {
+		if _, keyed := splitRemovalTorrentKey(key); keyed == hash {
+			return notice, true
+		}
+	}
+	return operationNotice{}, false
 }
 
 func (server *Server) removalHistory(requestedKind, requestedKey string) (operationNotice, bool) {
