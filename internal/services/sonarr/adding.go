@@ -78,6 +78,10 @@ func (client *Client) AddSeries(lookup SeriesLookup, rootFolder string, qualityP
 	body["rootFolderPath"] = rootFolder
 	body["qualityProfileId"] = qualityProfileID
 	body["monitored"] = true
+	// Nor a season Sonarr learns of later: Sonarr's own default would
+	// monitor it, and its RSS grab it whole, past the day's limits and the
+	// order by value.
+	body["monitorNewItems"] = "none"
 	body["seasonFolder"] = true
 	body["seriesType"] = "standard"
 	body["tags"] = []int{tagID}

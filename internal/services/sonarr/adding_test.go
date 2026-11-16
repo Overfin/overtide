@@ -50,7 +50,8 @@ func TestAddingCalls(t *testing.T) {
 		t.Fatalf("add: %d %v", id, err)
 	}
 	options, _ := added["addOptions"].(map[string]any)
-	if added["rootFolderPath"] != "/data/Series" || added["qualityProfileId"] != float64(7) || options["monitor"] != "none" || options["searchForMissingEpisodes"] != false || added["title"] != "Show" {
+	if added["rootFolderPath"] != "/data/Series" || added["qualityProfileId"] != float64(7) || options["monitor"] != "none" || options["searchForMissingEpisodes"] != false || added["title"] != "Show" ||
+		added["monitorNewItems"] != "none" {
 		t.Fatalf("added with %#v", added)
 	}
 	if err := client.TagSeries(42, 3); err != nil || puts != 0 {
