@@ -785,8 +785,18 @@ func (driver *Driver) searchEpisodes(ctx context.Context, cfg config.Config, bud
 			}
 			due = append(due, id)
 		}
-		// The ones never tried, then the longest waiting.
+		// The most valued first (their series' value, as every queue goes
+		// by Overfin's value); then the ones never tried, then the longest
+		// waiting.
+		value := map[int]float64{}
+		for _, id := range due {
+			w := state.Wanted[id]
+			value[id] = driver.SeasonValue(ctx, cfg, svc.ID, w.SeriesID, w.Season)
+		}
 		sort.Slice(due, func(i, j int) bool {
+			if value[due[i]] != value[due[j]] {
+				return value[due[i]] > value[due[j]]
+			}
 			a, b := state.Wanted[due[i]], state.Wanted[due[j]]
 			if !a.NextTry.Equal(b.NextTry) {
 				return a.NextTry.Before(b.NextTry)
