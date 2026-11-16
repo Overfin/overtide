@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -204,7 +205,7 @@ func TestSetDeviceThresholdPersistsAndTrimsName(t *testing.T) {
 // which would have silently wiped whatever id SyncDeviceRegistry had
 // already assigned every time someone saved the Device settings overlay.
 func TestSetDeviceThresholdPreservesAssignedID(t *testing.T) {
-	registered, changed := SyncDeviceRegistry(Config{}, []string{"/data"})
+	registered, changed := SyncDeviceRegistry(Config{}, []string{"/data"}, nil)
 	if !changed || registered.Storage.DeviceThresholds["/data"].ID == 0 {
 		t.Fatalf("setup: expected an id to be assigned, got %#v", registered.Storage.DeviceThresholds)
 	}
@@ -224,7 +225,7 @@ func TestSetDeviceThresholdPreservesAssignedID(t *testing.T) {
 // without this an empty submission would just stay blank forever instead
 // of reverting.
 func TestSetDeviceThresholdClearingNameRevertsToDefault(t *testing.T) {
-	registered, _ := SyncDeviceRegistry(Config{}, []string{"/data"})
+	registered, _ := SyncDeviceRegistry(Config{}, []string{"/data"}, nil)
 	renamed, err := SetDeviceThreshold(registered, "/data", "Media Drive", 70, 85, true)
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +250,7 @@ func TestSetDeviceThresholdClearingNameRevertsToDefault(t *testing.T) {
 // because it had no name at all yet.
 func TestSyncDeviceRegistryAssignsLowestUnusedIDAndDefaultName(t *testing.T) {
 	var c Config
-	updated, changed := SyncDeviceRegistry(c, []string{"/data/a"})
+	updated, changed := SyncDeviceRegistry(c, []string{"/data/a"}, nil)
 	if !changed {
 		t.Fatal("expected assigning a fresh device to report a change")
 	}
@@ -260,7 +261,7 @@ func TestSyncDeviceRegistryAssignsLowestUnusedIDAndDefaultName(t *testing.T) {
 
 	// A second device fills the next slot, not necessarily 2 if 1 were
 	// somehow taken — exercised properly below by the reuse test.
-	updated2, changed2 := SyncDeviceRegistry(updated, []string{"/data/a", "/data/b"})
+	updated2, changed2 := SyncDeviceRegistry(updated, []string{"/data/a", "/data/b"}, nil)
 	if !changed2 {
 		t.Fatal("expected adding a second device to report a change")
 	}
@@ -268,7 +269,7 @@ func TestSyncDeviceRegistryAssignsLowestUnusedIDAndDefaultName(t *testing.T) {
 		t.Fatalf("expected the second device to get id=2, got %d", got)
 	}
 	// Re-running with nothing new must be a no-op.
-	_, changed3 := SyncDeviceRegistry(updated2, []string{"/data/a", "/data/b"})
+	_, changed3 := SyncDeviceRegistry(updated2, []string{"/data/a", "/data/b"}, nil)
 	if changed3 {
 		t.Fatal("expected re-running with the same live set to report no change")
 	}
@@ -281,7 +282,7 @@ func TestSyncDeviceRegistryAssignsLowestUnusedIDAndDefaultName(t *testing.T) {
 func TestSyncDeviceRegistryNeverOverwritesAnExistingName(t *testing.T) {
 	var c Config
 	c.Storage.DeviceThresholds = map[string]DeviceThreshold{"/data/a": {TargetUsagePercent: 80, CriticalUsagePercent: 90, Name: "Media Drive"}}
-	updated, changed := SyncDeviceRegistry(c, []string{"/data/a"})
+	updated, changed := SyncDeviceRegistry(c, []string{"/data/a"}, nil)
 	if !changed {
 		t.Fatal("expected backfilling a missing id to report a change")
 	}
@@ -300,13 +301,13 @@ func TestSyncDeviceRegistryNeverOverwritesAnExistingName(t *testing.T) {
 // id — otherwise ids would only ever climb.
 func TestSyncDeviceRegistryPrunesAndReusesIDs(t *testing.T) {
 	var c Config
-	withTwo, _ := SyncDeviceRegistry(c, []string{"/data/a", "/data/b"})
+	withTwo, _ := SyncDeviceRegistry(c, []string{"/data/a", "/data/b"}, nil)
 	if withTwo.Storage.DeviceThresholds["/data/a"].ID != 1 || withTwo.Storage.DeviceThresholds["/data/b"].ID != 2 {
 		t.Fatalf("setup: expected ids 1 and 2, got %#v", withTwo.Storage.DeviceThresholds)
 	}
 
 	// /data/a disappears (unplugged, service removed, etc.).
-	pruned, changed := SyncDeviceRegistry(withTwo, []string{"/data/b"})
+	pruned, changed := SyncDeviceRegistry(withTwo, []string{"/data/b"}, nil)
 	if !changed {
 		t.Fatal("expected pruning a disappeared device to report a change")
 	}
@@ -315,7 +316,7 @@ func TestSyncDeviceRegistryPrunesAndReusesIDs(t *testing.T) {
 	}
 
 	// A new device now reuses id 1, since it's free again.
-	withNew, changed := SyncDeviceRegistry(pruned, []string{"/data/b", "/data/c"})
+	withNew, changed := SyncDeviceRegistry(pruned, []string{"/data/b", "/data/c"}, nil)
 	if !changed {
 		t.Fatal("expected the new device to report a change")
 	}
@@ -845,5 +846,19 @@ func TestConfigFileIsOwnersOnly(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("rewritten: mode %v, want 0600", info.Mode().Perm())
+	}
+}
+
+// Settings saved before their roots were recorded move by their folders.
+func TestSyncDeviceRegistryMovesSettingsByTheirFolders(t *testing.T) {
+	var c Config
+	c.Storage.DeviceThresholds = map[string]DeviceThreshold{"/data/films": {ID: 1, Name: "Media", AutomaticRemovalDisabled: true, Folders: map[string]FolderSettings{"/data/films": {SharePercent: 50}, "/data/series": {SharePercent: 50}}}}
+	updated, changed := SyncDeviceRegistry(c, []string{"/data/series"}, map[string][]string{"/data/series": {"/data/series", "/downloads"}})
+	entry, ok := updated.Storage.DeviceThresholds["/data/series"]
+	if !changed || !ok || len(updated.Storage.DeviceThresholds) != 1 || entry.Name != "Media" || !entry.AutomaticRemovalDisabled {
+		t.Fatalf("%#v", updated.Storage.DeviceThresholds)
+	}
+	if !slices.Equal(entry.Roots, []string{"/data/series", "/downloads"}) {
+		t.Fatalf("roots not recorded: %v", entry.Roots)
 	}
 }

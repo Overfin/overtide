@@ -7,6 +7,7 @@ import (
 	"log"
 	"maps"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -247,8 +248,21 @@ func (service *Service) syncDeviceRegistry() {
 	}
 	groups, order := service.knownDeviceRoots()
 	livePaths := make([]string, 0, len(order))
+	roots := make(map[string][]string, len(order))
 	for _, device := range order {
-		livePaths = append(livePaths, groups[device].representative)
+		group := groups[device]
+		livePaths = append(livePaths, group.representative)
+		for _, paths := range group.rootPaths {
+			for path := range paths {
+				roots[group.representative] = append(roots[group.representative], path)
+			}
+		}
+		for path := range group.folders {
+			roots[group.representative] = append(roots[group.representative], path)
+		}
+		roots[group.representative] = append(roots[group.representative], group.representative)
+		slices.Sort(roots[group.representative])
+		roots[group.representative] = slices.Compact(roots[group.representative])
 	}
 
 	service.configMu.Lock()
@@ -258,7 +272,7 @@ func (service *Service) syncDeviceRegistry() {
 	currentCfg := service.cfg
 	service.mu.RUnlock()
 
-	updatedCfg, changed := config.SyncDeviceRegistry(currentCfg, livePaths)
+	updatedCfg, changed := config.SyncDeviceRegistry(currentCfg, livePaths, roots)
 	if !changed {
 		return
 	}

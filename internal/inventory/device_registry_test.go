@@ -97,3 +97,59 @@ func TestSyncDeviceRegistryPrunesADeviceNoLongerDiscovered(t *testing.T) {
 		t.Fatalf("expected the disappeared device's entry to be pruned, got %#v", reloaded.Storage.DeviceThresholds)
 	}
 }
+
+// A disk's settings are saved under one of its roots. When that root goes
+// (its Radarr folder removed), the disk's next root takes them over, with
+// automatic removal still off, rather than starting over on the defaults.
+func TestSyncDeviceRegistryMovesSettingsWhenTheirRootGoes(t *testing.T) {
+	disk := t.TempDir()
+	films, series := filepath.Join(disk, "films"), filepath.Join(disk, "series")
+	for _, dir := range []string{films, series} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"storage":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(cfg, nil)
+	service.SetConfigPath(configPath)
+	setRoots := func(roots ...storageRoot) {
+		service.mu.Lock()
+		service.storageRoots = roots
+		service.mu.Unlock()
+	}
+	radarr := config.Service{ID: "radarr-1", Name: "Radarr", Type: "radarr"}
+	sonarr := config.Service{ID: "sonarr-1", Name: "Sonarr", Type: "sonarr"}
+	setRoots(storageRoot{Path: films, Service: radarr}, storageRoot{Path: series, Service: sonarr})
+	service.syncDeviceRegistry()
+	saved, err := config.SetDeviceThreshold(service.Config(), films, "Media", 70, 85, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Save(configPath, saved); err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.cfg = saved
+	service.mu.Unlock()
+
+	setRoots(storageRoot{Path: series, Service: sonarr})
+	service.syncDeviceRegistry()
+	reloaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := reloaded.Storage.DeviceThresholds[series]
+	if !ok || len(reloaded.Storage.DeviceThresholds) != 1 {
+		t.Fatalf("settings not moved to the disk's next root: %#v", reloaded.Storage.DeviceThresholds)
+	}
+	if entry.Name != "Media" || entry.ID != 1 || entry.TargetUsagePercent != 70 || reloaded.AutomaticRemovalEnabledFor(series) {
+		t.Fatalf("moved settings changed: %#v", entry)
+	}
+}

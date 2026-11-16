@@ -430,6 +430,10 @@ type DeviceThreshold struct {
 	// its share of the disk and its own daily limits (see FolderSettings),
 	// keyed by the root folder's path.
 	Folders map[string]FolderSettings `json:"folders,omitempty"`
+	// Roots are every root of the disk, Radarr's, Sonarr's and the torrent
+	// client's, as last seen (see SyncDeviceRegistry): when the root these
+	// settings are saved under goes away, they move to the disk's next.
+	Roots []string `json:"roots,omitempty"`
 }
 
 // FolderSettings is one root folder's own settings on its disk.
@@ -597,7 +601,7 @@ func SetDeviceThreshold(configuration Config, representativePath, name string, t
 	if trimmedName == "" && existingID > 0 {
 		trimmedName = fmt.Sprintf("Device #%d", existingID)
 	}
-	updated.Storage.DeviceThresholds[representativePath] = DeviceThreshold{TargetUsagePercent: target, CriticalUsagePercent: critical, Name: trimmedName, ID: existingID, AutomaticRemovalDisabled: !automaticRemovalEnabled, Folders: configuration.Storage.DeviceThresholds[representativePath].Folders}
+	updated.Storage.DeviceThresholds[representativePath] = DeviceThreshold{TargetUsagePercent: target, CriticalUsagePercent: critical, Name: trimmedName, ID: existingID, AutomaticRemovalDisabled: !automaticRemovalEnabled, Folders: configuration.Storage.DeviceThresholds[representativePath].Folders, Roots: configuration.Storage.DeviceThresholds[representativePath].Roots}
 	return updated, nil
 }
 
@@ -611,19 +615,55 @@ func SetDeviceThreshold(configuration Config, representativePath, name string, t
 // partial/targeted view, or a device merely absent from that scope would
 // be wrongly pruned. Returns whether anything actually changed, so a
 // no-op cycle (the common case) can skip persisting.
-func SyncDeviceRegistry(configuration Config, liveRepresentativePaths []string) (Config, bool) {
+//
+// roots are each live device's roots, by its representative path. A device
+// whose settings are saved under a root that went away (a Radarr root
+// folder removed, say) is known by another of its roots now: the settings
+// move there, found by the roots they last saw (DeviceThreshold.Roots) or
+// their folders, rather than the device starting over on the defaults.
+func SyncDeviceRegistry(configuration Config, liveRepresentativePaths []string, roots map[string][]string) (Config, bool) {
 	live := make(map[string]bool, len(liveRepresentativePaths))
 	for _, path := range liveRepresentativePaths {
 		live[path] = true
 	}
+	deviceOf := map[string]string{}
+	for representative, paths := range roots {
+		for _, path := range paths {
+			deviceOf[path] = representative
+		}
+	}
+	for _, path := range liveRepresentativePaths {
+		deviceOf[path] = path
+	}
 	changed := false
 	merged := make(map[string]DeviceThreshold, len(configuration.Storage.DeviceThresholds))
+	var gone []string
 	for path, entry := range configuration.Storage.DeviceThresholds {
 		if !live[path] {
 			changed = true
+			gone = append(gone, path)
 			continue
 		}
 		merged[path] = entry
+	}
+	slices.Sort(gone)
+	for _, path := range gone {
+		entry := configuration.Storage.DeviceThresholds[path]
+		known := append([]string{path}, entry.Roots...)
+		for folder := range entry.Folders {
+			known = append(known, folder)
+		}
+		slices.Sort(known[1+len(entry.Roots):])
+		for _, root := range known {
+			representative := deviceOf[root]
+			if representative == "" {
+				continue
+			}
+			if _, taken := merged[representative]; !taken {
+				merged[representative] = entry
+			}
+			break
+		}
 	}
 	usedIDs := make(map[int]bool, len(merged))
 	for _, entry := range merged {
@@ -650,6 +690,19 @@ func SyncDeviceRegistry(configuration Config, liveRepresentativePaths []string) 
 		}
 		merged[path] = entry
 		changed = true
+	}
+	for _, path := range liveRepresentativePaths {
+		entry, ok := merged[path]
+		if !ok || roots[path] == nil {
+			continue
+		}
+		seen := append([]string(nil), roots[path]...)
+		slices.Sort(seen)
+		if !slices.Equal(entry.Roots, seen) {
+			entry.Roots = seen
+			merged[path] = entry
+			changed = true
+		}
 	}
 	if !changed {
 		return configuration, false
