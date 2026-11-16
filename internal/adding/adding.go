@@ -456,6 +456,7 @@ func (service *Service) Run(ctx context.Context) error {
 		// Off, nothing's searched or grabbed, but what's downloaded is
 		// still imported, and seasons imported wrong are put right.
 		service.standDown(ctx, cfg)
+		service.retryUnmonitors(ctx, false)
 		service.sonarr.Repair(ctx, cfg)
 		return nil
 	}
@@ -469,6 +470,7 @@ func (service *Service) Run(ctx context.Context) error {
 		l.Running, l.Phase, l.Title, l.Step, l.Stopped = false, "", "", "", service.trackersDown
 	})
 	service.phase("Getting ready")
+	service.retryUnmonitors(ctx, dryRun)
 	entries, err := service.load()
 	if err != nil {
 		return err
@@ -504,6 +506,10 @@ func (service *Service) Run(ctx context.Context) error {
 	service.phase("Following the downloads")
 	service.giveUpStalled(ctx, cfg, dryRun)
 	service.sonarr.ImportDownloads(ctx, cfg, dryRun)
+	// Packs sent are followed whatever the searches left.
+	if err := service.sonarr.FollowPacks(ctx, cfg, dryRun); err != nil {
+		log.Printf("[adding] the whole-season packs sent: %v", err)
+	}
 	entries = service.match(entries)
 	service.follow(ctx, entries, dryRun)
 	entries = service.reportWishes(ctx, cfg, entries, dryRun)

@@ -99,12 +99,63 @@ func acceptablePack(release sonarr.Release, season int) bool {
 	return true
 }
 
+// FollowPacks follows the whole-season packs sent: imported in place of the
+// old files once downloaded, or tried again if they didn't come. It asks
+// for no search, so it runs whatever a run's searches left. In dry run,
+// nothing.
+func (driver *Driver) FollowPacks(ctx context.Context, cfg config.Config, dryRun bool) error {
+	if dryRun {
+		return nil
+	}
+	states, err := driver.States()
+	if err != nil {
+		return err
+	}
+	for _, svc := range cfg.ServicesOfType("sonarr") {
+		state := states[svc.ID]
+		if state == nil {
+			continue
+		}
+		state = stateFor(states, svc.ID)
+		client, err := driver.inv.SonarrClient(svc.ID)
+		if err != nil {
+			return err
+		}
+		client = client.WithContext(ctx)
+		episodesOf := map[int][]sonarr.Episode{}
+		episodes := func(seriesID int) ([]sonarr.Episode, error) {
+			if cached, ok := episodesOf[seriesID]; ok {
+				return cached, nil
+			}
+			list, err := client.Episodes(seriesID)
+			if err == nil {
+				episodesOf[seriesID] = list
+			}
+			return list, err
+		}
+		for _, pack := range state.Seasons {
+			if pack.Done || pack.GrabbedAt.IsZero() {
+				continue
+			}
+			if driver.autoImportOff[svc.ID] {
+				driver.followImported(client, state, pack)
+				continue
+			}
+			if err := driver.followPack(ctx, client, state, pack, episodes); err != nil {
+				_ = driver.SaveStates(states)
+				return err
+			}
+		}
+	}
+	return driver.SaveStates(states)
+}
+
 // ReplaceSeasons replaces with a whole-season pack each season that has
 // wanted episodes, SeasonWait after its last episode aired: one search a
 // season (within budget, seekPack); once it's downloaded and Sonarr
 // imported what it would, the rest of it is imported in place of the old
-// files (Sonarr replaces them). A pack not found, or that didn't come, is
-// tried again later (tries.RetryDelay); nothing is replaced before the pack
+// files (Sonarr replaces them: FollowPacks). A pack not found, or that
+// didn't come, is tried again later (tries.RetryDelay); nothing is replaced before the pack
 // is there. A season complete without one gets its pack as an upgrade
 // (PackUpgrades). It takes the seasons just finished, which don't wait for
 // the titles a day but count in it, or the older ones, which do, most valued
@@ -141,21 +192,6 @@ func (driver *Driver) ReplaceSeasons(ctx context.Context, cfg config.Config, bud
 				episodesOf[seriesID] = list
 			}
 			return list, err
-		}
-
-		// Packs sent: imported in place of the old files once downloaded,
-		// or tried again if they didn't come.
-		for _, pack := range state.Seasons {
-			if !fresh || pack.Done || pack.GrabbedAt.IsZero() || dryRun {
-				continue
-			}
-			if driver.autoImportOff[svc.ID] {
-				driver.followImported(client, state, pack)
-				continue
-			}
-			if err := driver.followPack(ctx, client, state, pack, episodes); err != nil {
-				return used, waiting, err
-			}
 		}
 
 		// Seasons whose turn it is.

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/overfin/overtide/internal/arrfake"
 	"github.com/overfin/overtide/internal/config"
@@ -140,5 +141,91 @@ func TestMonitoredForReleaseCountsOnce(t *testing.T) {
 	service.downloading(&entry, tries.Title{Monitor: func(int, bool) error { return nil }}, false)
 	if times, _ := service.started(""); len(times) != 1 {
 		t.Fatalf("grabbed: %d counted, want still 1", len(times))
+	}
+}
+
+// An unmonitor that failed after an upgrade search is tried again at the
+// next run, until it works.
+func TestRetryUnmonitors(t *testing.T) {
+	failing := true
+	var puts []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v3/movie/42" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"id":42,"monitored":true}`))
+		case r.URL.Path == "/api/v3/movie/42" && r.Method == http.MethodPut:
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			puts = append(puts, body["monitored"] == true)
+			if failing {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	cfg := config.Config{Services: []config.Service{{ID: "r", Type: "radarr", URL: srv.URL, APIKey: "k"}}}
+	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
+	if err := service.noteLeftMonitored(leftMonitored{Kind: "movie", ServiceID: "r", ArrID: 42, Title: "Film"}); err != nil {
+		t.Fatal(err)
+	}
+	service.retryUnmonitors(context.Background(), true)
+	if len(puts) != 0 {
+		t.Fatal("dry run unmonitored")
+	}
+	service.retryUnmonitors(context.Background(), false)
+	if list, _ := service.leftMonitoredList(); len(list) != 1 {
+		t.Fatalf("failed again, forgotten: %v", list)
+	}
+	failing = false
+	service.retryUnmonitors(context.Background(), false)
+	if list, _ := service.leftMonitoredList(); len(list) != 0 || len(puts) != 2 || puts[1] {
+		t.Fatalf("left %v, asked %v", list, puts)
+	}
+}
+
+// A search that errors out after it grabbed still counts its download.
+func TestSearchErrorAfterAGrabCounts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v3/movie/lookup/tmdb":
+			w.Write([]byte(`{"title":"Film","tmdbId":5,"digitalRelease":"2026-01-01T00:00:00Z"}`))
+		case r.URL.Path == "/api/v3/rootfolder":
+			w.Write([]byte(`[{"path":"/data/Films"}]`))
+		case r.URL.Path == "/api/v3/qualityprofile":
+			w.Write([]byte(`[{"id":7}]`))
+		case r.URL.Path == "/api/v3/tag":
+			w.Write([]byte(`[{"id":3,"label":"overtide-added"}]`))
+		case r.URL.Path == "/api/v3/movie/42" && r.Method == http.MethodGet:
+			w.Write([]byte(`{"id":42,"tags":[3],"monitored":false}`))
+		case r.URL.Path == "/api/v3/movie/42":
+			w.Write([]byte(`{}`))
+		case r.URL.Path == "/api/v3/command" && r.Method == http.MethodPost:
+			w.Write([]byte(`{"id":1}`))
+		case r.URL.Path == "/api/v3/command/1":
+			w.WriteHeader(http.StatusBadGateway) // following the search fails
+		case r.URL.Path == "/api/v3/queue/details":
+			w.Write([]byte(`[{}]`))
+		case r.URL.Path == "/api/v3/history/movie":
+			w.Write([]byte(`[{"eventType":"grabbed","date":"2026-10-25T12:00:00Z"}]`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	cfg := config.Config{Services: []config.Service{{ID: "r", Type: "radarr", URL: srv.URL, APIKey: "k"}}}
+	service := newTestService(t, cfg, *arrfake.Day("2026-10-25"))
+	service.disk = func(config.Config, string, bool) string { return "" }
+	tries.PollEvery = time.Millisecond
+	entry := Entry{Key: movieKey(5), Kind: "movie", ServiceID: "r", ExternalID: 5, Source: FromOverfin, State: Waiting, ArrID: 42}
+	service.try(context.Background(), cfg, &entry, false)
+	if entry.State != Downloading {
+		t.Fatalf("grabbed, then the search errored: %+v", entry)
+	}
+	if times, _ := service.started(""); len(times) != 1 {
+		t.Fatalf("counted %d, want 1", len(times))
 	}
 }

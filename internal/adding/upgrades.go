@@ -246,7 +246,10 @@ func (service *Service) searchUpgrades(ctx context.Context, cfg config.Config, e
 		started := time.Now()
 		_, searchErr := a.Search(ctx, c.arrID)
 		if err := a.Monitor(c.arrID, false); err != nil {
-			log.Printf("[adding] unmonitor %s after its upgrade search: %v", c.title, err)
+			log.Printf("[adding] unmonitor %s after its upgrade search: %v; tried again at the next run", c.title, err)
+			if err := service.noteLeftMonitored(leftMonitored{Kind: c.kind, ServiceID: c.serviceID, ArrID: c.arrID, Season: c.season, Title: c.title}); err != nil {
+				log.Printf("[adding] %s left monitored: %v", c.title, err)
+			}
 		}
 		used++
 		if searchErr != nil {
@@ -418,4 +421,86 @@ func (service *Service) removalLine() (float64, bool) {
 		return 0, false
 	}
 	return line, ok
+}
+
+// leftMonitoredKey keeps the titles (or seasons) an upgrade search left
+// monitored, unmonitoring them having failed: Radarr and Sonarr would
+// upgrade them on their own. Each run tries again (retryUnmonitors).
+const leftMonitoredKey = "adding.left_monitored"
+
+// leftMonitored is one title or season an upgrade search left monitored.
+type leftMonitored struct {
+	Kind      model.MediaType `json:"kind"`
+	ServiceID string          `json:"serviceId"`
+	ArrID     int             `json:"arrId"`
+	Season    int             `json:"season,omitempty"`
+	Title     string          `json:"title,omitempty"`
+}
+
+func (service *Service) leftMonitoredList() ([]leftMonitored, error) {
+	raw, err := service.inv.Store().Meta(leftMonitoredKey)
+	if err != nil || raw == "" {
+		return nil, err
+	}
+	var list []leftMonitored
+	return list, json.Unmarshal([]byte(raw), &list)
+}
+
+func (service *Service) saveLeftMonitored(list []leftMonitored) error {
+	if len(list) == 0 {
+		return service.inv.Store().SetMeta(leftMonitoredKey, "")
+	}
+	encoded, err := json.Marshal(list)
+	if err != nil {
+		return err
+	}
+	return service.inv.Store().SetMeta(leftMonitoredKey, string(encoded))
+}
+
+// noteLeftMonitored keeps one more title left monitored, once.
+func (service *Service) noteLeftMonitored(l leftMonitored) error {
+	list, err := service.leftMonitoredList()
+	if err != nil {
+		return err
+	}
+	if slices.Contains(list, l) {
+		return nil
+	}
+	return service.saveLeftMonitored(append(list, l))
+}
+
+// retryUnmonitors unmonitors again what an upgrade search left monitored;
+// what still fails is tried at the next run. In dry run, nothing.
+func (service *Service) retryUnmonitors(ctx context.Context, dryRun bool) {
+	if dryRun {
+		return
+	}
+	list, err := service.leftMonitoredList()
+	if err != nil || len(list) == 0 {
+		if err != nil {
+			log.Printf("[adding] the titles left monitored: %v", err)
+		}
+		return
+	}
+	var still []leftMonitored
+	for _, l := range list {
+		entry := Entry{Kind: l.Kind, ServiceID: l.ServiceID, ArrID: l.ArrID, Title: l.Title}
+		if l.Kind == model.Series {
+			entry.Seasons = []int{l.Season}
+		}
+		a, err := service.arrFor(ctx, &entry)
+		if err == nil {
+			err = a.Monitor(l.ArrID, false)
+			if a.Gone(err) {
+				continue // no longer there: nothing to unmonitor
+			}
+		}
+		if err != nil {
+			log.Printf("[adding] unmonitor %s after its upgrade search, again: %v", l.Title, err)
+			still = append(still, l)
+		}
+	}
+	if err := service.saveLeftMonitored(still); err != nil {
+		log.Printf("[adding] the titles left monitored: %v", err)
+	}
 }

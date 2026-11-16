@@ -223,7 +223,7 @@ func TestReplaceSeasons(t *testing.T) {
 	fake.ImportAt = []map[string]any{item("/dl/e1.mkv", 1), item("/dl/e2.mkv", 2), item("/dl/e3.mkv", 3)}
 	fake.Mu.Unlock()
 	driver.now = func() time.Time { return now.Add(2 * time.Hour) }
-	if _, _, err := driver.ReplaceSeasons(context.Background(), cfg, 3, false, true); err != nil {
+	if err := driver.FollowPacks(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)
 	}
 	fake.Mu.Lock()
@@ -245,7 +245,8 @@ func TestReplaceSeasons(t *testing.T) {
 }
 
 // A pack that leaves the queue without its files counts as not found, and
-// is tried again later; nothing was replaced.
+// is tried again later; nothing was replaced. It's followed with no search
+// left in the run.
 func TestReplaceSeasonsPackThatDidntCome(t *testing.T) {
 	now := *arrfake.Day("2026-10-30")
 	fake := arrfake.New(now)
@@ -255,7 +256,7 @@ func TestReplaceSeasonsPackThatDidntCome(t *testing.T) {
 	if err := driver.SaveStates(map[string]*State{"s": {Wanted: map[int]EpisodeWant{1: {SeriesID: 5, Season: 1}}, Seasons: map[string]*SeasonPack{seasonKey(5, 1): pack}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := driver.ReplaceSeasons(context.Background(), cfg, 0, false, true); err != nil {
+	if err := driver.FollowPacks(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)
 	}
 	states, _ := driver.States()

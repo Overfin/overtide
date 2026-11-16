@@ -146,8 +146,16 @@ func (service *Service) try(ctx context.Context, cfg config.Config, entry *Entry
 	}
 	searches := entry.searches()
 	started := time.Now()
+	searchedAt := service.now()
 	service.step(entry.Title, a.Name+" is searching its trackers")
 	grabbed, err := a.Search(ctx, entry.ArrID)
+	if err != nil && a.Grabbed != nil {
+		// A search can error out after it grabbed (Radarr slow to say it
+		// finished): what it grabbed downloads all the same, and counts.
+		if got, grabErr := a.Grabbed(entry.ArrID, searchedAt); grabErr == nil && got {
+			grabbed, err = true, nil
+		}
+	}
 	if err == nil && grabbed {
 		service.downloading(entry, a, false)
 		return searches
