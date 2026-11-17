@@ -209,9 +209,9 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 	}
 	mediaTier = sharedPacks(mediaTier, backers)
 
-	byHash := make(map[string]model.Torrent, len(torrents))
+	byKey := make(map[string]model.Torrent, len(torrents))
 	for _, t := range torrents {
-		byHash[torrentKey(t)] = t
+		byKey[model.TorrentKey(t.ServiceID, t.Hash)] = t
 	}
 	seenGroups := map[string]bool{}
 	for _, t := range torrents {
@@ -227,7 +227,7 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 		}
 		if len(t.SharesFilesWith) > 0 {
 			// A cross-seed group: removed together, or not at all.
-			if group := shareGroup(t, byHash); group != nil && !seenGroups[torrentKey(group[0])] {
+			if group := shareGroup(t, byKey); group != nil && !seenGroups[torrentKey(group[0])] {
 				seenGroups[torrentKey(group[0])] = true
 				if action, ok := groupAction(group); ok {
 					torrentTier = append(torrentTier, action)
@@ -244,18 +244,24 @@ func classify(media []model.Media, torrents []model.Torrent) (mediaTier, torrent
 	return mediaTier, torrentTier
 }
 
-// shareGroup returns t and every torrent of its client it shares files
-// with, ordered by hash, or nil if one of them is unknown.
-func shareGroup(t model.Torrent, byHash map[string]model.Torrent) []model.Torrent {
+// shareGroup returns t and every torrent it shares files with, of any
+// client, ordered by hash then client, or nil if one of them is unknown.
+func shareGroup(t model.Torrent, byKey map[string]model.Torrent) []model.Torrent {
 	group := []model.Torrent{t}
-	for _, hash := range t.SharesFilesWith {
-		other, ok := byHash[t.ServiceID+"|"+strings.ToLower(hash)]
-		if !ok {
+	for _, key := range t.ShareKeys() {
+		other, ok := byKey[key]
+		if !ok || key == model.TorrentKey(t.ServiceID, t.Hash) {
 			return nil
 		}
 		group = append(group, other)
 	}
-	sort.Slice(group, func(i, j int) bool { return strings.ToLower(group[i].Hash) < strings.ToLower(group[j].Hash) })
+	sort.Slice(group, func(i, j int) bool {
+		a, b := strings.ToLower(group[i].Hash), strings.ToLower(group[j].Hash)
+		if a != b {
+			return a < b
+		}
+		return group[i].ServiceID < group[j].ServiceID
+	})
 	return group
 }
 

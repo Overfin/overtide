@@ -108,7 +108,7 @@ func applyTorrentFileEstimates(torrents []model.Torrent, files []model.File, ref
 		t.SharedFiles = 0
 		t.StorageError = ""
 		t.FilesMissing = false
-		paths := x.TorrentPaths(t.Hash)
+		paths := ownTorrentPaths(x, *t)
 		if len(paths) == 0 {
 			continue
 		}
@@ -130,6 +130,22 @@ func applyTorrentFileEstimates(torrents []model.Torrent, files []model.File, ref
 			t.StorageError = fmt.Sprintf("file identity incomplete for %d torrent file(s); run File reconciliation", e.UnknownFiles)
 		}
 	}
+}
+
+// ownTorrentPaths are t's own paths: the index keeps a torrent's paths by
+// hash, and the same torrent in another client may be at a path of its own.
+func ownTorrentPaths(x *filetopology.Index, t model.Torrent) []string {
+	key := model.TorrentKey(t.ServiceID, t.Hash)
+	var own []string
+	for _, path := range x.TorrentPaths(t.Hash) {
+		for _, owner := range x.TorrentOwners(path) {
+			if model.TorrentKey(owner.ServiceID, owner.Hash) == key {
+				own = append(own, path)
+				break
+			}
+		}
+	}
+	return own
 }
 
 // allFilesGone reports whether every path was reconciled and found missing
@@ -250,18 +266,19 @@ func applyTorrentShareGroups(torrents []model.Torrent, index *filetopology.Index
 		}
 		return i
 	}
-	byHash := map[string]int{}
+	// By client and hash: the same torrent can be in two clients.
+	byKey := map[string]int{}
 	for i := range torrents {
 		torrents[i].SharesFilesWith = nil
 		torrents[i].GroupReclaimableKnown = false
 		torrents[i].GroupReclaimableBytes = 0
-		byHash[strings.ToLower(torrents[i].Hash)] = i
+		byKey[model.TorrentKey(torrents[i].ServiceID, torrents[i].Hash)] = i
 	}
 	for i := range torrents {
-		for _, path := range index.TorrentPaths(torrents[i].Hash) {
+		for _, path := range ownTorrentPaths(index, torrents[i]) {
 			for _, same := range append([]string{path}, index.SamePhysicalPaths(path)...) {
 				for _, owner := range index.TorrentOwners(same) {
-					if j, ok := byHash[strings.ToLower(owner.Hash)]; ok && j != i {
+					if j, ok := byKey[model.TorrentKey(owner.ServiceID, owner.Hash)]; ok && j != i {
 						parent[find(j)] = find(i)
 					}
 				}
@@ -304,10 +321,10 @@ func applyTorrentShareGroups(torrents []model.Torrent, index *filetopology.Index
 			t := &torrents[i]
 			for _, j := range members {
 				if j != i {
-					t.SharesFilesWith = append(t.SharesFilesWith, strings.ToLower(torrents[j].Hash))
+					t.SharesFilesWith = append(t.SharesFilesWith, model.TorrentKey(torrents[j].ServiceID, torrents[j].Hash))
 				}
 			}
-			paths = append(paths, index.TorrentPaths(t.Hash)...)
+			paths = append(paths, ownTorrentPaths(index, *t)...)
 			if len(media) == 0 || len(t.HardlinkedMediaItems) > 0 {
 				continue
 			}

@@ -38,6 +38,26 @@ const (
 	TorrentUnassociated = "UNASSOCIATED"
 )
 
+// TorrentKey names a torrent by its client and its hash: two clients can
+// have the same torrent (the same hash), each its own.
+func TorrentKey(serviceID, hash string) string {
+	return strings.ToLower(strings.TrimSpace(serviceID)) + "|" + strings.ToLower(strings.TrimSpace(hash))
+}
+
+// ShareKeys are t.SharesFilesWith as TorrentKeys. An entry without a
+// client, a bare hash as kept before keys had clients, is of t's client.
+func (t Torrent) ShareKeys() []string {
+	keys := make([]string, 0, len(t.SharesFilesWith))
+	for _, other := range t.SharesFilesWith {
+		if i := strings.LastIndex(other, "|"); i >= 0 {
+			keys = append(keys, TorrentKey(other[:i], other[i+1:]))
+		} else {
+			keys = append(keys, TorrentKey(t.ServiceID, other))
+		}
+	}
+	return keys
+}
+
 // NormalizeTorrentStatus migrates legacy cached provenance labels into the
 // current four-state relationship model.
 func NormalizeTorrentStatus(status string) string {
@@ -115,6 +135,8 @@ type Torrent struct {
 	FilesMissing bool `json:"filesMissing,omitempty"`
 	// SharesFilesWith lists the other torrents with the same files on disk
 	// (cross-seeds): removing one of them alone frees nothing they share.
+	// Each is a TorrentKey, as the same torrent can be in two clients; read
+	// them with ShareKeys.
 	SharesFilesWith []string `json:"sharesFilesWith,omitempty"`
 	// GroupReclaimableKnown/Bytes estimate removing this torrent together
 	// with every torrent in SharesFilesWith; set only when none of them

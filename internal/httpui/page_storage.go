@@ -176,7 +176,7 @@ func excludedSetFrom(values []string) map[string]bool {
 func shownKey(action cleanup.Action) string {
 	hashes := make([]string, 0, len(action.Torrents))
 	for _, t := range action.Torrents {
-		hashes = append(hashes, strings.ToLower(t.Hash))
+		hashes = append(hashes, torrentRemovalKey(t))
 	}
 	sort.Strings(hashes)
 	return cleanup.ActionKey(action) + "|" + strings.Join(hashes, ",")

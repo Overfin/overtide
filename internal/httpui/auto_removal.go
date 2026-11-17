@@ -316,11 +316,12 @@ func (server *Server) cleanupStillEligible(form url.Values) error {
 		// The group it was planned with, whole: a torrent that started
 		// sharing its files since (a new cross-seed) holds it back, as a
 		// group goes only all together, every one past its seeding time.
-		// A group is of one client (inventory's share groups).
+		// A group can take in more than one client (the same torrent in
+		// two, at the same path).
 		for key := range selected {
 			t := torrents[key]
-			for _, other := range t.SharesFilesWith {
-				if !selected[removalTorrentKey(t.ServiceID, other)] {
+			for _, other := range t.ShareKeys() {
+				if !selected[other] {
 					return fmt.Errorf("%s now shares files with a torrent the plan didn't include", t.Name)
 				}
 			}

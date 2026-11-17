@@ -505,3 +505,19 @@ func TestSeasonOrderBeforeTheCutoff(t *testing.T) {
 		t.Fatalf("expected season 1 alone, got %#v", taken)
 	}
 }
+
+// The same torrent in two clients, sharing its file: one action with
+// both, its space counted once.
+func TestBuildGroupsTheSameTorrentInTwoClients(t *testing.T) {
+	torrents := []model.Torrent{
+		{ServiceID: "q1", Hash: "aaa", AssociationStatus: model.TorrentUnassociated, ReclaimableKnown: true, SharesFilesWith: []string{"q2|aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+		{ServiceID: "q2", Hash: "aaa", AssociationStatus: model.TorrentUnassociated, ReclaimableKnown: true, SharesFilesWith: []string{"q1|aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000},
+	}
+	p, err := Build(t.TempDir(), 0, 0, 0, nil, torrents, true, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 1 || len(p.Actions[0].Torrents) != 2 || p.Actions[0].Torrents[0].ServiceID == p.Actions[0].Torrents[1].ServiceID || p.Actions[0].ReclaimableBytes != 1000 {
+		t.Fatalf("expected one action with both clients' torrent, got %#v", p.Actions)
+	}
+}

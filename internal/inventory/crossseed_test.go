@@ -119,3 +119,28 @@ func TestFilesStillMissing(t *testing.T) {
 		t.Fatalf("back: %q", got)
 	}
 }
+
+// The same torrent in two clients, at the same path, shares its file with
+// itself in the other: each names the other by client and hash. Its copy
+// in a third client, at a path of its own, shares nothing.
+func TestShareGroupAcrossClients(t *testing.T) {
+	files := []model.File{file("/dl/a.mkv", 10, 1, 1000), file("/other/a.mkv", 11, 1, 1000)}
+	refs := []model.TorrentFileRef{{ServiceID: "q1", Hash: "AAA", Path: "/dl/a.mkv"}, {ServiceID: "q2", Hash: "AAA", Path: "/dl/a.mkv"}, {ServiceID: "q3", Hash: "AAA", Path: "/other/a.mkv"}}
+	torrents := []model.Torrent{
+		{ServiceID: "q1", Hash: "AAA", AssociationStatus: model.TorrentUnassociated},
+		{ServiceID: "q2", Hash: "AAA", AssociationStatus: model.TorrentUnassociated},
+		{ServiceID: "q3", Hash: "AAA", AssociationStatus: model.TorrentUnassociated},
+	}
+	applyTorrentFileEstimates(torrents, files, refs)
+	applyTorrentMediaHardlinks(torrents, nil, files, nil, refs)
+	want := map[string][]string{"q1": {"q2|aaa"}, "q2": {"q1|aaa"}, "q3": nil}
+	for _, tr := range torrents {
+		got := tr.ShareKeys()
+		if len(got) != len(want[tr.ServiceID]) || (len(got) == 1 && got[0] != want[tr.ServiceID][0]) {
+			t.Errorf("%s shares with %v, want %v", tr.ServiceID, got, want[tr.ServiceID])
+		}
+		if tr.ServiceID != "q3" && (!tr.GroupReclaimableKnown || tr.GroupReclaimableBytes != 1000) {
+			t.Errorf("%s: the pair frees the file together: %+v", tr.ServiceID, tr)
+		}
+	}
+}

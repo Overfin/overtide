@@ -401,3 +401,17 @@ func TestCleanupRecordsTheTitlesValue(t *testing.T) {
 		t.Fatalf("history: %+v, %v", events, err)
 	}
 }
+
+// The same torrent in two clients sharing its file: its figure counts once,
+// and each lists the other in its group, the one in another client too.
+func TestTheSameTorrentInTwoClients(t *testing.T) {
+	a := model.Torrent{ServiceID: "q1", Hash: "aaa", SharesFilesWith: []string{"q2|aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000}
+	b := model.Torrent{ServiceID: "q2", Hash: "aaa", SharesFilesWith: []string{"q1|aaa"}, GroupReclaimableKnown: true, GroupReclaimableBytes: 1000}
+	if got := reclaimableOnce(a) + reclaimableOnce(b); got != 1000 {
+		t.Errorf("counted %d, want 1000", got)
+	}
+	group := sharingGroup(a, []model.Torrent{a, b})
+	if len(group) != 1 || group[0].ServiceID != "q2" {
+		t.Errorf("a's group: %+v", group)
+	}
+}

@@ -300,14 +300,16 @@ func (server *Server) torrentListing(query url.Values) torrentData {
 
 // reclaimableOnce is what removing t frees, for totals: nothing if its files
 // are gone; for a cross-seed group, the whole group's figure on one of its
-// torrents (the lowest hash) and nothing on the others, so it's counted once.
+// torrents (the lowest client and hash) and nothing on the others, so it's
+// counted once.
 func reclaimableOnce(t model.Torrent) int64 {
 	if t.FilesMissing {
 		return 0
 	}
 	if len(t.SharesFilesWith) > 0 && t.GroupReclaimableKnown {
-		for _, other := range t.SharesFilesWith {
-			if strings.ToLower(other) < strings.ToLower(t.Hash) {
+		own := torrentRemovalKey(t)
+		for _, other := range t.ShareKeys() {
+			if other < own {
 				return 0
 			}
 		}

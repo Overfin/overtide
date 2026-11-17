@@ -21,6 +21,9 @@ type relatedRemovalTorrent struct {
 	// removed (the same path, or a hardlink).
 	SharesFiles bool
 	FileCount   int
+	// OtherClient: it's in another client than the torrent being removed
+	// (the same torrent can be in two, under the same name).
+	OtherClient bool
 }
 
 type relatedRemovalTorrentGroup struct {
@@ -39,6 +42,9 @@ var errTorrentGone = errors.New("torrent not found")
 func relatedTorrentMeta(rt relatedRemovalTorrent) string {
 	if rt.SharesFiles {
 		meta := "shares files with this torrent · they stay while it does"
+		if rt.OtherClient && rt.Torrent.Client != "" {
+			meta = "in " + rt.Torrent.Client + " · " + meta
+		}
 		if rt.Torrent.Obligation != "" {
 			meta += " · " + rt.Torrent.Obligation
 		}
@@ -450,7 +456,7 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 		for _, f := range otherFiles {
 			mergeRemovalCandidate(cm, removal.CandidateFile{Path: f.Path, Owner: removal.TorrentOwner, OwnerKey: key, Label: t.Name, Selected: selected, Selectable: true})
 		}
-		relatedTorrents = append(relatedTorrents, relatedRemovalTorrent{Torrent: t, Selected: selected, Selectable: true, SharesFiles: true, FileCount: len(otherFiles)})
+		relatedTorrents = append(relatedTorrents, relatedRemovalTorrent{Torrent: t, Selected: selected, Selectable: true, SharesFiles: true, FileCount: len(otherFiles), OtherClient: t.ServiceID != found.ServiceID})
 	}
 	sort.Slice(relatedTorrents, func(i, j int) bool {
 		return strings.ToLower(relatedTorrents[i].Torrent.Name) < strings.ToLower(relatedTorrents[j].Torrent.Name)
@@ -620,17 +626,19 @@ func (server *Server) buildUnmanagedRemovalPlan(paths []string, selectedTorrents
 	}, nil
 }
 
-// sharingGroup is every other torrent of t's client that shares files with
-// it, as the last refresh found them: the very same path, or a hardlink
-// (see inventory's share groups, which are transitive).
+// sharingGroup is every other torrent that shares files with it, of any
+// client (the same torrent can be in two), as the last refresh found them:
+// the very same path, or a hardlink (see inventory's share groups, which
+// are transitive).
 func sharingGroup(t model.Torrent, torrents []model.Torrent) []model.Torrent {
 	wanted := map[string]bool{}
-	for _, hash := range t.SharesFilesWith {
-		wanted[strings.ToLower(hash)] = true
+	for _, key := range t.ShareKeys() {
+		wanted[key] = true
 	}
+	own := torrentRemovalKey(t)
 	var out []model.Torrent
 	for _, other := range torrents {
-		if wanted[strings.ToLower(other.Hash)] && other.ServiceID == t.ServiceID && !strings.EqualFold(other.Hash, t.Hash) {
+		if key := torrentRemovalKey(other); wanted[key] && key != own {
 			out = append(out, other)
 		}
 	}
