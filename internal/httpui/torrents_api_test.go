@@ -150,7 +150,7 @@ func TestTorrentDetail(t *testing.T) {
 func TestFilesMissing(t *testing.T) {
 	// "one"'s only file is gone from disk; "two"'s is there.
 	handler, _ := torrentsTestServerWithFiles(t, qbittorrent, []model.Torrent{
-		{Hash: strings.Repeat("a", 40), Name: "one", AssociationStatus: model.TorrentOrphaned, ServiceID: "qbittorrent-1"},
+		{Hash: strings.Repeat("a", 40), Name: "one", AssociationStatus: model.TorrentOrphaned, ServiceID: "qbittorrent-1", Progress: 1},
 		{Hash: strings.Repeat("b", 40), Name: "two", AssociationStatus: model.TorrentCurrent, ServiceID: "qbittorrent-1"},
 	}, nil, []model.File{
 		{Path: "/data/torrents/one.mkv", SizeBytes: 10, Exists: false},

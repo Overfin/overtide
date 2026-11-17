@@ -114,8 +114,11 @@ func applyTorrentFileEstimates(torrents []model.Torrent, files []model.File, ref
 		}
 		if allFilesGone(x, paths) {
 			// The client still lists it, but its files are gone: it takes no
-			// space, and removing it only tidies the client.
-			t.FilesMissing = true
+			// space, and removing it only tidies the client. A download not
+			// done has nothing at its final path yet (or its data in the
+			// client's folder for incomplete ones): its files are missing
+			// only when the client says so.
+			t.FilesMissing = t.Progress >= 1 || t.State == "missingFiles"
 			t.ReclaimableKnown = true
 			continue
 		}

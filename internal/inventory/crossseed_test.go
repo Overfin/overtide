@@ -64,10 +64,27 @@ func TestCrossSeedOfCurrentTorrentJoinsItsTitle(t *testing.T) {
 func TestTorrentWithFilesGone(t *testing.T) {
 	files := []model.File{{Path: "/dl/gone.mkv", Exists: false}}
 	refs := []model.TorrentFileRef{{Hash: "gone", Path: "/dl/gone.mkv"}}
-	torrents := []model.Torrent{{Hash: "gone", SizeBytes: 2000, AssociationStatus: model.TorrentSuperseded}}
+	torrents := []model.Torrent{{Hash: "gone", SizeBytes: 2000, Progress: 1, AssociationStatus: model.TorrentSuperseded}}
 	applyTorrentFileEstimates(torrents, files, refs)
 	if !torrents[0].FilesMissing || torrents[0].ReclaimableBytes != 0 || torrents[0].StorageError != "" {
 		t.Fatalf("%+v", torrents[0])
+	}
+}
+
+// A download not done has no files to miss at its final path: nothing yet,
+// or its data in qBittorrent's folder for incomplete downloads. Only
+// qBittorrent saying its files are missing counts then.
+func TestDownloadUnderWayIsNotMissingItsFiles(t *testing.T) {
+	files := []model.File{{Path: "/dl/new.mkv", Exists: false}}
+	refs := []model.TorrentFileRef{{Hash: "new", Path: "/dl/new.mkv"}, {Hash: "half", Path: "/dl/new.mkv"}, {Hash: "lost", Path: "/dl/new.mkv"}}
+	torrents := []model.Torrent{
+		{Hash: "new", SizeBytes: 2000, State: "stalledDL", AssociationStatus: model.TorrentCurrent},
+		{Hash: "half", SizeBytes: 2000, Progress: 0.5, State: "downloading", AssociationStatus: model.TorrentCurrent},
+		{Hash: "lost", SizeBytes: 2000, Progress: 0.5, State: "missingFiles", AssociationStatus: model.TorrentCurrent},
+	}
+	applyTorrentFileEstimates(torrents, files, refs)
+	if torrents[0].FilesMissing || torrents[1].FilesMissing || !torrents[2].FilesMissing {
+		t.Fatalf("new %t, half %t, lost %t", torrents[0].FilesMissing, torrents[1].FilesMissing, torrents[2].FilesMissing)
 	}
 }
 
