@@ -184,6 +184,16 @@ func TestRemovingATorrentFreesOnlyWhatNoOtherUses(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := New(config.Config{}, database)
+	// Named by hash alone, as one client's torrent: its own files are its.
+	if err := database.PublishReconciliation(2, files[1:2], nil, refs[1:2], nil, torrents[:1], nil); err != nil {
+		t.Fatal(err)
+	}
+	if view, _, _ := New(config.Config{}, database).TorrentStorage("", "aaa"); view.RemoveTorrent.ReclaimableBytes != 300 {
+		t.Errorf("by hash alone: frees %d, want 300", view.RemoveTorrent.ReclaimableBytes)
+	}
+	if err := database.PublishReconciliation(3, files, nil, refs, nil, torrents, nil); err != nil {
+		t.Fatal(err)
+	}
 	for client, want := range map[string]int64{"q1": 300, "q2": 0, "q3": 1000} {
 		view, _, err := service.TorrentStorage(client, "aaa")
 		if err != nil {
