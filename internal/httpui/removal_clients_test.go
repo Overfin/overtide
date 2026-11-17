@@ -272,3 +272,50 @@ func TestRemovalAsksEveryClientWhoUsesTheFiles(t *testing.T) {
 		t.Fatalf("the seedbox's file is gone: %v", err)
 	}
 }
+
+// A file the plan already keeps (another torrent uses it) needs no client
+// asked: a client out of reach doesn't hold back a removal that deletes
+// nothing.
+func TestRemovalKeepingEverythingDoesntWaitForAClientDown(t *testing.T) {
+	const hash = "cccccccccccccccccccccccccccccccccccccccc"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Release.mkv")
+	if err := os.WriteFile(path, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Lstat(path)
+	st := info.Sys().(*syscall.Stat_t)
+	file := model.File{Path: path, SizeBytes: 4, Exists: true, IdentityKnown: true, Device: uint64(st.Dev), Inode: st.Ino, Links: uint64(st.Nlink)}
+	home := newFakeClient(t, hash, path)
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	cfg := config.Config{Services: []config.Service{
+		{ID: "qbittorrent-1", Type: "qbittorrent", Name: "Home", URL: home.server.URL, AllowAutomaticRemoval: true},
+		// Out of reach.
+		{ID: "qbittorrent-2", Type: "qbittorrent", Name: "Seedbox", URL: "http://127.0.0.1:1", AllowAutomaticRemoval: true},
+	}}
+	refs := []model.TorrentFileRef{
+		{ServiceID: "qbittorrent-1", Client: "Home", Hash: hash, Path: path},
+		{ServiceID: "qbittorrent-2", Client: "Seedbox", Hash: hash, Path: path},
+	}
+	torrents := []model.Torrent{
+		{Hash: hash, Name: "Release", AssociationStatus: model.TorrentUnassociated, ServiceID: "qbittorrent-1", Client: "Home", SharesFilesWith: []string{"qbittorrent-2|" + hash}},
+		{Hash: hash, Name: "Release", AssociationStatus: model.TorrentUnassociated, ServiceID: "qbittorrent-2", Client: "Seedbox", SharesFilesWith: []string{"qbittorrent-1|" + hash}},
+	}
+	if err := database.PublishReconciliation(1, []model.File{file}, nil, refs, nil, torrents, nil); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{inv: inventory.New(cfg, database)}
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(url.Values{"kind": {"torrent"}, "hash": {hash}, "service_id": {"qbittorrent-1"}, "target": {"1"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("X-Overtide-Overlay", "1")
+	r.ParseForm()
+	w := httptest.NewRecorder()
+	server.executeRemovalNowContext(w, r, context.Background())
+	if got := home.deleted(); len(got) != 1 || got[0] != hash+" deleteFiles=false" {
+		t.Fatalf("home asked %v: %d %s", got, w.Code, w.Body)
+	}
+}

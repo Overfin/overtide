@@ -176,7 +176,9 @@ Words used below:
     not at all, and a file goes only when every torrent using it goes.
     Before deleting, Overtide asks every qBittorrent client again which
     torrents use the files; one that joined since, in any client, holds
-    the group back, and when a client can't say, nothing is removed.
+    the group back, and when a client can't say, the torrent and its files
+    stay. A torrent whose files all stay anyway (another torrent uses
+    them) goes without them, nobody asked.
     Automatic removal takes such a group only when every torrent in it met
     its seeding time and ratio.
     - Exception: by hand, one torrent of a group can be removed alone; its

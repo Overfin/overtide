@@ -720,19 +720,25 @@ func (server *Server) removeTorrentKeepingShared(ctx context.Context, plan remov
 			paths = append(paths, p)
 		}
 	}
+	// The files the plan keeps already (another torrent uses them) stay
+	// whatever the clients say: only the others are asked about, so a
+	// client out of reach holds back only a removal that would delete.
 	kept := map[string]bool{}
-	if len(paths) > 0 {
-		live, err := server.inv.TorrentPathsClaimedByOthers(ctx, t.ServiceID, paths, map[string]bool{hash: true})
+	var asked []string
+	for _, p := range paths {
+		if plan.Kept(p) {
+			kept[p] = true
+		} else {
+			asked = append(asked, p)
+		}
+	}
+	if len(asked) > 0 {
+		live, err := server.inv.TorrentPathsClaimedByOthers(ctx, t.ServiceID, asked, map[string]bool{hash: true})
 		if err != nil {
 			return nil, []string{"torrent " + label + ": kept, as qBittorrent couldn't say whether another torrent uses its files: " + err.Error()}, false, true
 		}
 		for _, p := range live {
 			kept[filepath.Clean(p)] = true
-		}
-	}
-	for _, p := range paths {
-		if plan.Kept(p) {
-			kept[p] = true
 		}
 	}
 	if len(kept) == 0 {
