@@ -72,5 +72,8 @@ svg.storage-bar { display: block; width: 100%; height: 30px; margin: 10px 0 6px;
 .storage-legend li.c3 .swatch { background: var(--orange); }
 .folder-limits { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .folder-limits th, .folder-limits td { padding: 4px 6px; text-align: left; }
-.folder-limits input { width: 6rem; }
-.folder-limits tbody th { text-transform: none; letter-spacing: normal; font-size: .9rem; font-weight: 500; color: var(--text); font-family: var(--mono, monospace); }
+/* Headers and paths wrap: unwrapped, they made the disk window wider than
+   a phone, its text cut off on the right. */
+.folder-limits th { white-space: normal; }
+.folder-limits input { width: 4.5rem; max-width: 100%; }
+.folder-limits tbody th { text-transform: none; letter-spacing: normal; font-size: .9rem; font-weight: 500; color: var(--text); font-family: var(--mono, monospace); overflow-wrap: anywhere; }
