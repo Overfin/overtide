@@ -788,11 +788,12 @@ func (service *Service) match(entries []Entry) []Entry {
 func (service *Service) follow(ctx context.Context, entries []Entry, dryRun bool) {
 	importing := service.sonarr.Importing()
 	ignored := map[string]bool{}
-	if items, _, err := service.inv.Snapshot(); err == nil {
-		for _, m := range items {
-			if model.HasTag(m.Tags, model.TagIgnore) {
-				ignored[fmt.Sprintf("%s|%s|%d", m.ServiceID, m.Type, m.SourceID)] = true
-			}
+	// The titles last read, a refresh failed since or not: the operator's
+	// ignore tag still holds.
+	items, _, _ := service.inv.Snapshot()
+	for _, m := range items {
+		if model.HasTag(m.Tags, model.TagIgnore) {
+			ignored[fmt.Sprintf("%s|%s|%d", m.ServiceID, m.Type, m.SourceID)] = true
 		}
 	}
 	for i := range entries {

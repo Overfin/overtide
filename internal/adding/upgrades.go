@@ -53,10 +53,7 @@ func (service *Service) seasonValue(ctx context.Context, cfg config.Config, serv
 // among its series' seasons, 1 the most valued; 0 and 0 when unknown.
 func (service *Service) seasonValueAndPlace(ctx context.Context, cfg config.Config, serviceID string, seriesID, season int) (float64, int) {
 	values := service.libraryValues(ctx, cfg)
-	items, _, err := service.inv.Snapshot()
-	if err != nil {
-		return 0, 0
-	}
+	items, _, _ := service.inv.Snapshot()
 	for _, m := range items {
 		if m.ServiceID == serviceID && m.Type == model.Series && m.SourceID == seriesID {
 			return values.Seasons[m.TVDBID][season], values.Places[m.TVDBID][season]
@@ -98,8 +95,10 @@ func (service *Service) upgradeCandidates(ctx context.Context, cfg config.Config
 	if err != nil || !ok {
 		return nil, ok, err
 	}
+	// The titles last read: a refresh that failed since (a service out of
+	// reach) leaves them as they were.
 	items, _, err := service.inv.Snapshot()
-	if err != nil {
+	if len(items) == 0 && err != nil {
 		return nil, true, err
 	}
 	known := map[string]model.Media{}

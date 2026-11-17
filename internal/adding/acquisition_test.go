@@ -2,9 +2,12 @@ package adding
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -398,5 +401,90 @@ func TestByValue(t *testing.T) {
 	}
 	if want := []string{"film", "s4 (place 1)", "s2 (place 2)", "s1 (place 3)", "low film"}; !slices.Equal(got, want) {
 		t.Errorf("order: %v", got)
+	}
+}
+
+// A refresh failing (a second qBittorrent out of reach) leaves the titles
+// last read: the upgrades are still listed and searched from them, not
+// all refused.
+func TestUpgradesAfterARefreshFailed(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	old := now.AddDate(-1, 0, 0)
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "High", "monitored": false, "hasFile": true, "tags": []int{}, "added": arrfake.ISO(old)}
+	fake.Cutoff["radarr"] = []map[string]any{{"id": 2}}
+	var down atomic.Bool
+	client := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		if r.URL.Path == "/api/v2/auth/login" {
+			w.Write([]byte("Ok."))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer client.Close()
+	cfg := arrfake.Config(t, fake, config.ManageAll)
+	cfg.Services = append(cfg.Services, config.Service{ID: "q2", Type: "qbittorrent", Name: "Seedbox", URL: client.URL})
+	cfg.Adding.UpgradesPerDay = 5
+	service := newTestService(t, cfg, now)
+	service.disk = func(config.Config, string, bool) string { return "" }
+	if err := service.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	if err := service.inv.Refresh(context.Background()); err == nil {
+		t.Fatal("the seedbox is down: the refresh should fail")
+	}
+	if items, _, err := service.inv.Snapshot(); err == nil || len(items) == 0 {
+		t.Fatalf("the titles last read, and the refresh's error: %d, %v", len(items), err)
+	}
+	service.values = &overfin.Values{Films: map[int]float64{12: 9}}
+	rows, err := service.Upgrades(context.Background())
+	if err != nil || len(rows) != 1 || rows[0].Title != "High" {
+		t.Fatalf("page: %+v, %v", rows, err)
+	}
+}
+
+// The operator's ignore tag holds when a refresh failed since: a download
+// of an ignored title is left alone, not unmonitored.
+func TestIgnoredAfterARefreshFailed(t *testing.T) {
+	now := *arrfake.Day("2026-10-30")
+	fake := arrfake.New(now)
+	ignore := fake.TagID("radarr", model.TagIgnore)
+	fake.Films[2] = map[string]any{"id": 2, "tmdbId": 12, "title": "Ignored", "monitored": true, "hasFile": false, "tags": []int{ignore}, "added": arrfake.ISO(now)}
+	var down atomic.Bool
+	client := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		if r.URL.Path == "/api/v2/auth/login" {
+			w.Write([]byte("Ok."))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer client.Close()
+	cfg := arrfake.Config(t, fake, config.ManageAll)
+	cfg.Services = append(cfg.Services, config.Service{ID: "q2", Type: "qbittorrent", Name: "Seedbox", URL: client.URL})
+	service := newTestService(t, cfg, now)
+	if err := service.inv.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	if err := service.inv.Refresh(context.Background()); err == nil {
+		t.Fatal("the seedbox is down: the refresh should fail")
+	}
+	radarrID := cfg.ServicesOfType("radarr")[0].ID
+	entries := []Entry{{Key: movieKey(12), Kind: "movie", ServiceID: radarrID, ArrID: 2, ExternalID: 12, Title: "Ignored", State: Downloading, AddedAt: now}}
+	before := len(fake.Mutations())
+	service.follow(context.Background(), entries, false)
+	if changes := fake.Mutations()[before:]; len(changes) != 0 {
+		t.Fatalf("an ignored title was changed: %v", changes)
 	}
 }
