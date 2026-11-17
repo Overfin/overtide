@@ -274,6 +274,19 @@ type upgradesFolder struct {
 	Root   string `json:"root"`
 	PerDay int    `json:"perDay"`
 	Today  int    `json:"today"`
+	// Shared: the folder has no upgrades a day of its own, and Today and
+	// PerDay are the count it shares with the others without one.
+	Shared bool `json:"shared,omitempty"`
+}
+
+// upgradesFolders are the root folders' upgrade searches of the day, as
+// the Upgrades page says them.
+func upgradesFolders(days []adding.FolderDay) []upgradesFolder {
+	out := make([]upgradesFolder, 0, len(days))
+	for _, day := range days {
+		out = append(out, upgradesFolder{Root: day.Root, PerDay: day.UpgradesPerDay, Today: day.Upgrades, Shared: day.SharedUpgrades})
+	}
+	return out
 }
 
 // addingUpgrades answers GET /api/adding/upgrades: what waits for an
@@ -286,10 +299,7 @@ func (server *Server) addingUpgrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query()
-	data := upgradesData{Rows: []upgradeRow{}, Folders: []upgradesFolder{}, AllItems: len(rows), Q: query.Get("q")}
-	for _, day := range server.adder.Days() {
-		data.Folders = append(data.Folders, upgradesFolder{Root: day.Root, PerDay: day.UpgradesPerDay, Today: day.Upgrades})
-	}
+	data := upgradesData{Rows: []upgradeRow{}, Folders: upgradesFolders(server.adder.Days()), AllItems: len(rows), Q: query.Get("q")}
 	if line, ok := server.adder.RemovalLine(); ok {
 		data.RemovalLine = line
 	}

@@ -22,7 +22,7 @@
   }
   interface Upgrades {
     rows: UpgradeRow[];
-    folders: { root: string; perDay: number; today: number }[];
+    folders: { root: string; perDay: number; today: number; shared?: boolean }[];
     allItems: number;
     totalItems: number;
     q: string;
@@ -104,11 +104,18 @@
   {#if !data.folders.some((f) => f.perDay > 0)}
     <Notice>Upgrades are off: set how many a day for each root folder in Storage, in its disk's settings.</Notice>
   {:else}
-    {#each data.folders as folder (folder.root)}
+    {#each data.folders.filter((f) => !f.shared) as folder (folder.root)}
       <p class="muted">
         {folder.root}: {folder.perDay === 0 ? 'no upgrades' : `${folder.today} of ${folder.perDay} upgrade searches used in the last 24 hours`}.
       </p>
     {/each}
+    {@const shared = data.folders.filter((f) => f.shared)}
+    {#if shared.length}
+      <!-- The folders without their own share one count: said once. -->
+      <p class="muted">
+        {shared.map((f) => f.root).join(', ')}: {shared[0].perDay === 0 ? 'no upgrades' : `${shared[0].today} of ${shared[0].perDay} upgrade searches used in the last 24 hours`}{shared.length > 1 ? ', shared by these folders' : ''}.
+      </p>
+    {/if}
   {/if}
   {#if data.cutoffAt}
     <p class="muted">What's below its quality cutoff, as Radarr and Sonarr said at {short(data.cutoffAt)}{data.cutoffReading ? ', being asked again now' : ''}. They're asked again once that's over 30 minutes old.</p>
