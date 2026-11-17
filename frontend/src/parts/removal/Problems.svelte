@@ -65,7 +65,9 @@
     <Card title={p.label}>
       <p class="muted">{stamp(p.createdAt)} · {p.status}</p>
       {#if p.error}<p class="error problem-error">{p.error}</p>{/if}
-      <table>
+      <!-- Wrapped: on a phone, the table scrolls inside the card. -->
+      <div class="table-wrap">
+        <table>
           <thead><tr><th>Still there</th><th>Kind</th><th class="num">Size</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
           <tbody>
             {#each p.leftovers as l, i (i)}
@@ -78,6 +80,7 @@
             {/each}
           </tbody>
         </table>
+      </div>
       {#snippet foot()}
         <span class="grow"></span>
         <Busy action={() => dismiss(p)}>Dismiss</Busy>
