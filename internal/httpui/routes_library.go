@@ -104,6 +104,9 @@ func (server *Server) libraryList(w http.ResponseWriter, r *http.Request) {
 // ---- A title ----
 
 type torrentRowJSON struct {
+	// ServiceID is its client's: the same torrent can be in two.
+	ServiceID   string  `json:"serviceId"`
+	Client      string  `json:"client,omitempty"`
 	Hash        string  `json:"hash"`
 	Name        string  `json:"name"`
 	Size        string  `json:"size"`
@@ -178,7 +181,7 @@ type operationJSON struct {
 func torrentRows(list []model.Torrent, reclaimable bool) []torrentRowJSON {
 	rows := []torrentRowJSON{}
 	for _, t := range list {
-		row := torrentRowJSON{Hash: t.Hash, Name: t.Name, Size: humanSize(t.SizeBytes), Ratio: t.Ratio, Seeds: t.SeedsSwarm, Leechers: t.LeechersSwarm}
+		row := torrentRowJSON{ServiceID: t.ServiceID, Client: t.Client, Hash: t.Hash, Name: t.Name, Size: humanSize(t.SizeBytes), Ratio: t.Ratio, Seeds: t.SeedsSwarm, Leechers: t.LeechersSwarm}
 		if reclaimable && t.ReclaimableKnown {
 			row.Reclaimable = humanSize(t.ReclaimableBytes)
 		}

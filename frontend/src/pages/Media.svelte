@@ -153,13 +153,13 @@
     {#if rows.length}
       <h3 class="group-title">{title} <span class="count">({rows.length})</span></h3>
       <ul class="list">
-        {#each rows as t (t.hash)}
+        {#each rows as t (t.serviceId + t.hash)}
           <li>
             <div>
               <div class="name breakable">{t.name}</div>
-              <div class="hint">{t.size} · ratio {t.ratio.toFixed(2)} · {t.seeds} seeds · {t.leechers} leechers{#if t.reclaimable}{' · '}{t.reclaimable} reclaimable{/if}</div>
+              <div class="hint">{#if t.client && rows.some((o) => o.hash === t.hash && o.serviceId !== t.serviceId)}in {t.client}{' · '}{/if}{t.size} · ratio {t.ratio.toFixed(2)} · {t.seeds} seeds · {t.leechers} leechers{#if t.reclaimable}{' · '}{t.reclaimable} reclaimable{/if}</div>
             </div>
-            <a href={`/torrents/${t.hash}`}>View →</a>
+            <a href={`/torrents/${t.hash}?service_id=${encodeURIComponent(t.serviceId)}`}>View →</a>
           </li>
         {/each}
       </ul>

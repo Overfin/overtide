@@ -194,3 +194,18 @@ func TestRemovingATorrentFreesOnlyWhatNoOtherUses(t *testing.T) {
 		}
 	}
 }
+
+// The same torrent in two clients backing a title: the title has both,
+// each in its client, not one of them taken for the other.
+func TestTitleKeepsTheSameTorrentOfEachClient(t *testing.T) {
+	ref := model.MediaRef{Type: model.Movie, ServiceID: "r1", SourceID: 7}
+	media := []model.Media{{Type: model.Movie, ServiceID: "r1", SourceID: 7, Title: "Film"}}
+	torrents := []model.Torrent{
+		{ServiceID: "q1", Hash: "aaa", MediaItems: []model.MediaRef{ref}},
+		{ServiceID: "q2", Hash: "aaa", MediaItems: []model.MediaRef{ref}},
+	}
+	projectTorrentRelations(media, torrents)
+	if len(media[0].Torrents) != 2 || media[0].Torrents[0].ServiceID == media[0].Torrents[1].ServiceID {
+		t.Fatalf("%+v", media[0].Torrents)
+	}
+}

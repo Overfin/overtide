@@ -41,6 +41,8 @@ export interface LibraryList {
 }
 
 export interface TorrentRow {
+  serviceId: string;
+  client?: string;
   hash: string;
   name: string;
   size: string;

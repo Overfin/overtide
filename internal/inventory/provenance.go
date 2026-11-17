@@ -2,7 +2,6 @@ package inventory
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/overfin/overtide/internal/model"
 )
@@ -23,7 +22,8 @@ func projectTorrentRelations(media []model.Media, torrents []model.Torrent) {
 		if seen[key] == nil {
 			seen[key] = map[string]bool{}
 		}
-		h := strings.ToLower(t.Hash)
+		// By client and hash: the same torrent in two clients is two.
+		h := model.TorrentKey(t.ServiceID, t.Hash)
 		if seen[key][h] {
 			return
 		}
