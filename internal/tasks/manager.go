@@ -1071,6 +1071,30 @@ func (manager *Manager) Snapshot() []Status {
 	return statuses
 }
 
+// ReadyAt is when the work a pending trigger waits on may start (a
+// cooldown, a debounce): zero when it may start now, runs, or is done.
+func (manager *Manager) ReadyAt(triggerID string) time.Time {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	trigger := manager.state.Triggers[triggerID]
+	if trigger == nil || trigger.State != "pending" {
+		return time.Time{}
+	}
+	for _, intent := range manager.state.Pending {
+		if intent.ID != trigger.TargetID {
+			continue
+		}
+		readyAt := intent.NotBefore
+		if !intent.Deadline.IsZero() && (readyAt.IsZero() || intent.Deadline.Before(readyAt)) {
+			readyAt = intent.Deadline
+		}
+		if readyAt.After(manager.clock.Now()) {
+			return readyAt
+		}
+	}
+	return time.Time{}
+}
+
 func (manager *Manager) Trigger(triggerID string) (Trigger, bool) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()

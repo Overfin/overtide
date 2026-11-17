@@ -169,7 +169,9 @@ func autoActions(actions []cleanup.Action, cfg config.Config) []cleanup.Action {
 const scoresWait = 2 * time.Minute
 
 // refreshScores asks Overfin for every title's score (its task, run now)
-// and waits for the answer: a plan is made on current scores. Without
+// and waits for the answer: a plan is made on current scores. When the
+// read can't come within scoresWait (its cooldown after a removal), it
+// answers at once with an error. Without
 // Overfin there's nothing to ask. When it fails, Overtide's reliability
 // says so, and no plan is made until Overfin answers.
 func (server *Server) refreshScores(ctx context.Context, cause string) error {
@@ -179,6 +181,11 @@ func (server *Server) refreshScores(ctx context.Context, cause string) error {
 	receipt, err := server.tasks.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerEvent, Priority: tasks.PriorityManual, Cause: cause})
 	if err != nil {
 		return err
+	}
+	// The read waits out its cooldown after a removal interrupted it (half
+	// an hour): not waited for, as it can't come in time.
+	if at := server.tasks.ReadyAt(receipt.TriggerID); at.After(time.Now().Add(scoresWait)) {
+		return fmt.Errorf("read again at %s, after a removal", at.Local().Format("15:04"))
 	}
 	ctx, cancel := context.WithTimeout(ctx, scoresWait)
 	defer cancel()
