@@ -170,7 +170,7 @@ func TestKeyTorrentFields(t *testing.T) {
 
 // The same torrent in two clients at the same path is one group: the
 // window lists the other client's, named by its client, and removing both
-// removes the file with them (each client asked to delete its data).
+// removes the file with the last of them.
 func TestRemovalTakesTheOtherClientsTwinAlong(t *testing.T) {
 	const hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	dir := t.TempDir()
@@ -220,12 +220,55 @@ func TestRemovalTakesTheOtherClientsTwinAlong(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	// qBittorrent deletes the data itself, asked with deleteFiles.
-	want := []string{hash + " deleteFiles=true"}
-	if got := home.deleted(); len(got) != 1 || got[0] != want[0] {
-		t.Fatalf("home client asked: %v", got)
+	// One at a time: the first goes without the file the other still
+	// uses, the last takes it (qBittorrent deletes it, asked with
+	// deleteFiles).
+	asked := append(home.deleted(), seedbox.deleted()...)
+	if len(asked) != 2 || asked[0] != hash+" deleteFiles=false" || asked[1] != hash+" deleteFiles=true" {
+		t.Fatalf("home asked %v, seedbox %v", home.deleted(), seedbox.deleted())
 	}
-	if got := seedbox.deleted(); len(got) != 1 || got[0] != want[0] {
-		t.Fatalf("seedbox asked: %v", got)
+}
+
+// Just before deleting, every qBittorrent client is asked who uses the
+// files, not only the torrent's own: one another client started seeding
+// from the same path since the last refresh keeps them.
+func TestRemovalAsksEveryClientWhoUsesTheFiles(t *testing.T) {
+	const hash, other = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Release.mkv")
+	if err := os.WriteFile(path, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Lstat(path)
+	st := info.Sys().(*syscall.Stat_t)
+	file := model.File{Path: path, SizeBytes: 4, Exists: true, IdentityKnown: true, Device: uint64(st.Dev), Inode: st.Ino, Links: uint64(st.Nlink)}
+	// The seedbox seeds the same file now; the last refresh didn't see it.
+	home, seedbox := newFakeClient(t, hash, path), newFakeClient(t, other, path)
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	cfg := config.Config{Services: []config.Service{
+		{ID: "qbittorrent-1", Type: "qbittorrent", Name: "Home", URL: home.server.URL, AllowAutomaticRemoval: true},
+		{ID: "qbittorrent-2", Type: "qbittorrent", Name: "Seedbox", URL: seedbox.server.URL, AllowAutomaticRemoval: true},
+	}}
+	refs := []model.TorrentFileRef{{ServiceID: "qbittorrent-1", Client: "Home", Hash: hash, Path: path}}
+	torrents := []model.Torrent{{Hash: hash, Name: "Release", AssociationStatus: model.TorrentUnassociated, ServiceID: "qbittorrent-1", Client: "Home"}}
+	if err := database.PublishReconciliation(1, []model.File{file}, nil, refs, nil, torrents, nil); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{inv: inventory.New(cfg, database)}
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(url.Values{"kind": {"torrent"}, "hash": {hash}, "service_id": {"qbittorrent-1"}, "target": {"1"}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("X-Overtide-Overlay", "1")
+	r.ParseForm()
+	w := httptest.NewRecorder()
+	server.executeRemovalNowContext(w, r, context.Background())
+	if got := home.deleted(); len(got) != 1 || got[0] != hash+" deleteFiles=false" {
+		t.Fatalf("home asked %v (%d %s): the seedbox's file would go", got, w.Code, w.Body)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the seedbox's file is gone: %v", err)
 	}
 }

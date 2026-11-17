@@ -174,9 +174,9 @@ Words used below:
 24. In a plan, torrents sharing files (cross-seeds, or several torrents on
     the same path, in one qBittorrent client or several) go together or
     not at all, and a file goes only when every torrent using it goes.
-    Before deleting, Overtide asks qBittorrent again which torrents use the
-    files; one that joined since holds the group back, and when
-    qBittorrent can't say, nothing is removed.
+    Before deleting, Overtide asks every qBittorrent client again which
+    torrents use the files; one that joined since, in any client, holds
+    the group back, and when a client can't say, nothing is removed.
     Automatic removal takes such a group only when every torrent in it met
     its seeding time and ratio.
     - Exception: by hand, one torrent of a group can be removed alone; its

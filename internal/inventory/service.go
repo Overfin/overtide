@@ -666,14 +666,41 @@ func (service *Service) TorrentFileNames(ctx context.Context, hash string) (name
 	return nil, false, nil
 }
 
-// TorrentPathsClaimedByOthers returns which of paths a torrent of svcID's
-// qBittorrent other than those in except uses now, asked of the client.
+// TorrentPathsClaimedByOthers returns which of paths a torrent uses now,
+// asked of every qBittorrent client: of svcID's, those not in except
+// (hashes, lower case); of the others, any (another client can seed the
+// very same file). When one can't say, it fails.
 func (service *Service) TorrentPathsClaimedByOthers(ctx context.Context, svcID string, paths []string, except map[string]bool) ([]string, error) {
-	client, err := service.qbittorrentClient(svcID)
-	if err != nil {
+	if _, err := service.qbittorrentClient(svcID); err != nil {
 		return nil, err
 	}
-	return client.WithContext(ctx).ClaimedByOthers(paths, except)
+	service.mu.RLock()
+	instances := service.cfg.ServicesOfType("qbittorrent")
+	clients := service.qb
+	service.mu.RUnlock()
+	seen := map[string]bool{}
+	var out []string
+	for _, svc := range instances {
+		client, ok := clients[svc.ID]
+		if !ok {
+			return nil, fmt.Errorf("no qbittorrent client for service %q", svc.ID)
+		}
+		skip := map[string]bool{}
+		if svc.ID == svcID {
+			skip = except
+		}
+		claimed, err := client.WithContext(ctx).ClaimedByOthers(paths, skip)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", svc.Name, err)
+		}
+		for _, p := range claimed {
+			if !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return out, nil
 }
 
 // removeIncompleteTorrentViaQueue attempts the Radarr/Sonarr queue removal
