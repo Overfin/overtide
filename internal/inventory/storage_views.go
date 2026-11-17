@@ -526,7 +526,7 @@ func (service *Service) TorrentStorage(serviceID, hash string) (TorrentStorageVi
 	for _, path := range paths {
 		shared := false
 		for _, owner := range x.TorrentOwners(path) {
-			if model.TorrentKey(owner.ServiceID, owner.Hash) != key {
+			if !strings.EqualFold(owner.Hash, hash) || (serviceID != "" && model.TorrentKey(owner.ServiceID, owner.Hash) != key) {
 				shared = true
 			}
 		}
