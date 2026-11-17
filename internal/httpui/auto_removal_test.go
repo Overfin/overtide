@@ -112,7 +112,7 @@ func newTestInventoryWithReconciledState(t *testing.T) *inventory.Service {
 	return newTestInventoryWithConfig(t, config.Config{})
 }
 
-func newTestInventoryWithConfig(t *testing.T, cfg config.Config) *inventory.Service {
+func newTestInventoryWithConfig(t testing.TB, cfg config.Config) *inventory.Service {
 	t.Helper()
 	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

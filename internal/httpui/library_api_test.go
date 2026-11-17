@@ -18,7 +18,7 @@ import (
 
 // libraryServer is a server on the test inventory (one film, two
 // torrents), without the sign-in.
-func libraryServer(t *testing.T, cfg config.Config) (*Server, http.Handler) {
+func libraryServer(t testing.TB, cfg config.Config) (*Server, http.Handler) {
 	t.Helper()
 	server, err := New(newTestInventoryWithConfig(t, cfg), nil)
 	if err != nil {
