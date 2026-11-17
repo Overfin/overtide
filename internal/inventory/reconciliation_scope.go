@@ -132,6 +132,26 @@ func (service *Service) QueueReconciliation(scope ReconciliationScope) error {
 	if service.db == nil {
 		return fmt.Errorf("reconciliation scope requires durable state")
 	}
+	// The targeted reconciliation goes by hash: a torrent another client
+	// has too (the same hash) would leave with it, its files shown
+	// unmanaged until the next refresh. A full one reads both clients.
+	if !scope.Full {
+		clients := map[string]map[string]bool{}
+		for _, t := range service.TorrentSnapshot() {
+			hash := strings.ToLower(t.Hash)
+			if clients[hash] == nil {
+				clients[hash] = map[string]bool{}
+			}
+			clients[hash][t.ServiceID] = true
+		}
+		for _, hash := range scope.Torrents {
+			if len(clients[strings.ToLower(strings.TrimSpace(hash))]) > 1 {
+				scope.Full = true
+				scope.Reasons = append(scope.Reasons, "a torrent removed is in another client too")
+				break
+			}
+		}
+	}
 	service.reconciliationMu.Lock()
 	defer service.reconciliationMu.Unlock()
 	current, err := service.reconciliationScope()

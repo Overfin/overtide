@@ -209,3 +209,31 @@ func TestTitleKeepsTheSameTorrentOfEachClient(t *testing.T) {
 		t.Fatalf("%+v", media[0].Torrents)
 	}
 }
+
+// A removal of a torrent another client has too (the same hash) asks for a
+// full reconciliation: the targeted one goes by hash, and would take the
+// other client's out of the pages, its file shown unmanaged.
+func TestRemovingATorrentInTwoClientsReconcilesInFull(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	torrents := []model.Torrent{{ServiceID: "q1", Client: "One", Hash: "aaa"}, {ServiceID: "q2", Client: "Two", Hash: "aaa"}, {ServiceID: "q1", Client: "One", Hash: "bbb"}}
+	if err := database.PublishReconciliation(1, nil, nil, nil, nil, torrents, nil); err != nil {
+		t.Fatal(err)
+	}
+	service := New(config.Config{}, database)
+	if err := service.QueueReconciliation(ReconciliationScope{Paths: []string{"/dl/b.mkv"}, Torrents: []string{"bbb"}}); err != nil {
+		t.Fatal(err)
+	}
+	if scope, _ := service.reconciliationScope(); scope.Full {
+		t.Fatal("a torrent in one client: targeted is enough")
+	}
+	if err := service.QueueReconciliation(ReconciliationScope{Paths: []string{"/dl/a.mkv"}, Torrents: []string{"AAA"}}); err != nil {
+		t.Fatal(err)
+	}
+	if scope, _ := service.reconciliationScope(); !scope.Full {
+		t.Fatalf("the same torrent in two clients: %+v", scope)
+	}
+}
