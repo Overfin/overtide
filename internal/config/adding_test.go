@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,6 +69,12 @@ func TestExampleConfigLoads(t *testing.T) {
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Nothing in it that Overtide no longer reads.
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&Config{}); err != nil {
+		t.Errorf("a setting Overtide doesn't read: %v", err)
 	}
 	if _, ok := cfg.FirstService("prowlarr"); !ok || cfg.Adding.Mode != AddingOff || cfg.Adding.SearchesPerRun() != DefaultSearches {
 		t.Fatalf("%+v", cfg.Adding)
