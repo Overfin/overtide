@@ -507,13 +507,36 @@ type TorrentStorageView struct {
 	RemoveTorrent RemovalEstimate `json:"removeTorrent"`
 }
 
-func (service *Service) TorrentStorage(hash string) (TorrentStorageView, time.Time, error) {
+// TorrentStorage is a torrent's files, and what removing it would free:
+// its own files (not those of the same torrent in another client, at
+// another path) that no other torrent uses at the same path, as a removal
+// keeps those for it.
+func (service *Service) TorrentStorage(serviceID, hash string) (TorrentStorageView, time.Time, error) {
 	files, mr, tr, updated, err := service.FileSnapshot()
 	items, _, _ := service.Snapshot()
 	torrents := service.TorrentSnapshot()
 	x := filetopology.New(files, mr, tr)
+	own := model.Torrent{ServiceID: serviceID, Hash: hash}
 	paths := x.TorrentPaths(hash)
-	return TorrentStorageView{Files: buildFileViews(paths, x, mediaRefMap(items), torrentOwnerMap(torrents)), RemoveTorrent: x.Estimate(paths)}, updated, err
+	if serviceID != "" {
+		paths = ownTorrentPaths(x, own)
+	}
+	key := model.TorrentKey(serviceID, hash)
+	var freed []string
+	for _, path := range paths {
+		shared := false
+		for _, owner := range x.TorrentOwners(path) {
+			if model.TorrentKey(owner.ServiceID, owner.Hash) != key {
+				shared = true
+			}
+		}
+		if !shared {
+			freed = append(freed, path)
+		}
+	}
+	estimate := x.Estimate(freed)
+	estimate.Known = estimate.Known || (len(freed) == 0 && len(paths) > 0)
+	return TorrentStorageView{Files: buildFileViews(paths, x, mediaRefMap(items), torrentOwnerMap(torrents)), RemoveTorrent: estimate}, updated, err
 }
 
 // sharePath says whether two sets of paths name the same file (a torrent

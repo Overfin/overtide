@@ -264,7 +264,7 @@ func (server *Server) apiTorrentDetail(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "No such torrent.")
 		return
 	}
-	storageView, filesUpdated, filesErr := server.inv.TorrentStorage(hash)
+	storageView, filesUpdated, filesErr := server.inv.TorrentStorage(torrent.ServiceID, hash)
 	out := torrentDetailResponse{
 		Torrent:    newTorrentDetailView(torrent),
 		Refreshing: server.inv.IsRefreshing(), LastError: errString(last), DetailUnavailable: detailErr != nil,

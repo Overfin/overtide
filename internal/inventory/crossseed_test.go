@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/overfin/overtide/internal/config"
 	"github.com/overfin/overtide/internal/model"
+	"github.com/overfin/overtide/internal/store"
 )
 
 func file(path string, inode, links uint64, size int64) model.File {
@@ -158,6 +160,37 @@ func TestShareGroupAcrossClients(t *testing.T) {
 		}
 		if tr.ServiceID != "q3" && (!tr.GroupReclaimableKnown || tr.GroupReclaimableBytes != 1000) {
 			t.Errorf("%s: the pair frees the file together: %+v", tr.ServiceID, tr)
+		}
+	}
+}
+
+// What removing a torrent frees, on its page: a file another torrent uses
+// at the same path stays (a removal keeps it), so it isn't counted, and
+// its copy in another client at another path isn't its own.
+func TestRemovingATorrentFreesOnlyWhatNoOtherUses(t *testing.T) {
+	database, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	files := []model.File{file("/dl/shared.mkv", 10, 1, 1000), file("/dl/own.mkv", 11, 1, 300), file("/other/shared.mkv", 12, 1, 1000)}
+	refs := []model.TorrentFileRef{
+		{ServiceID: "q1", Client: "One", Hash: "aaa", FileIndex: 0, Path: "/dl/shared.mkv"}, {ServiceID: "q1", Client: "One", Hash: "aaa", FileIndex: 1, Path: "/dl/own.mkv"},
+		{ServiceID: "q2", Client: "Two", Hash: "aaa", Path: "/dl/shared.mkv"},
+		{ServiceID: "q3", Client: "Three", Hash: "aaa", Path: "/other/shared.mkv"},
+	}
+	torrents := []model.Torrent{{ServiceID: "q1", Client: "One", Hash: "aaa"}, {ServiceID: "q2", Client: "Two", Hash: "aaa"}, {ServiceID: "q3", Client: "Three", Hash: "aaa"}}
+	if err := database.PublishReconciliation(1, files, nil, refs, nil, torrents, nil); err != nil {
+		t.Fatal(err)
+	}
+	service := New(config.Config{}, database)
+	for client, want := range map[string]int64{"q1": 300, "q2": 0, "q3": 1000} {
+		view, _, err := service.TorrentStorage(client, "aaa")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !view.RemoveTorrent.Known || view.RemoveTorrent.ReclaimableBytes != want {
+			t.Errorf("%s frees %d (known %t), want %d", client, view.RemoveTorrent.ReclaimableBytes, view.RemoveTorrent.Known, want)
 		}
 	}
 }
