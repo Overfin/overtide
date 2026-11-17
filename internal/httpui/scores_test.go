@@ -2,6 +2,7 @@ package httpui
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +67,30 @@ func TestCleanupPlanDoesntWaitForTheCooldown(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/storage/plan?path=/data/movies", nil))
 	if took := time.Since(start); took > 5*time.Second {
 		t.Fatalf("the plan waited %s for a read due in half an hour", took)
+	}
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"oldScores":true`) {
+		t.Fatalf("%d %s", recorder.Code, recorder.Body)
+	}
+}
+
+// Overfin out of reach: its read fails and is tried again a minute later.
+// The plan doesn't wait for that try: it opens on the scores as they are.
+func TestCleanupPlanDoesntWaitForOverfinsRetries(t *testing.T) {
+	manager := tasks.New(tasks.Definition{ID: "overfin", Name: "Overfin values", Coalesce: true,
+		Runner: func(context.Context) error { return tasks.Retryable(errors.New("Overfin out of reach")) },
+		Retry:  tasks.RetryPolicy{MaxAttempts: 3, InitialDelay: time.Minute, MaxDelay: 15 * time.Minute},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go manager.Start(ctx)
+	cfg := config.Config{Overfin: config.Connection{URL: "http://192.0.2.10:8080", APIKey: "k"}}
+	server := &Server{tasks: manager, inv: inventory.New(cfg, nil)}
+	handler := server.routes()
+	start := time.Now()
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/storage/plan?path=/data/movies", nil))
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("the plan waited %s for Overfin's next try", took)
 	}
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"oldScores":true`) {
 		t.Fatalf("%d %s", recorder.Code, recorder.Body)

@@ -1072,10 +1072,45 @@ func (manager *Manager) Snapshot() []Status {
 }
 
 // ReadyAt is when the work a pending trigger waits on may start (a
-// cooldown, a debounce): zero when it may start now, runs, or is done.
+// cooldown, a debounce, a retry after a failure): zero when it may start
+// now, runs, or is done.
 func (manager *Manager) ReadyAt(triggerID string) time.Time {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	return manager.readyAtLocked(triggerID)
+}
+
+// AwaitNow is Await, except that it gives up as soon as the work is put
+// off (ReadyAt in the future: a cooldown, or a retry after a failure),
+// answering when it may start instead.
+func (manager *Manager) AwaitNow(ctx context.Context, triggerID string) (Result, time.Time, error) {
+	for {
+		manager.mu.Lock()
+		trigger := manager.state.Triggers[triggerID]
+		if trigger == nil {
+			manager.mu.Unlock()
+			return Result{}, time.Time{}, fmt.Errorf("unknown trigger %q", triggerID)
+		}
+		if terminalTrigger(trigger.State) {
+			manager.mu.Unlock()
+			result, err := manager.Await(ctx, triggerID)
+			return result, time.Time{}, err
+		}
+		if at := manager.readyAtLocked(triggerID); !at.IsZero() {
+			manager.mu.Unlock()
+			return Result{}, at, nil
+		}
+		changed := manager.changed
+		manager.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return Result{}, time.Time{}, ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+func (manager *Manager) readyAtLocked(triggerID string) time.Time {
 	trigger := manager.state.Triggers[triggerID]
 	if trigger == nil || trigger.State != "pending" {
 		return time.Time{}

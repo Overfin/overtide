@@ -182,14 +182,15 @@ func (server *Server) refreshScores(ctx context.Context, cause string) error {
 	if err != nil {
 		return err
 	}
-	// The read waits out its cooldown after a removal interrupted it (half
-	// an hour): not waited for, as it can't come in time.
-	if at := server.tasks.ReadyAt(receipt.TriggerID); at.After(time.Now().Add(scoresWait)) {
-		return fmt.Errorf("read again at %s, after a removal", at.Local().Format("15:04"))
-	}
+	// Not waited for when it's put off: its cooldown after a removal
+	// interrupted it (half an hour), or its next try after Overfin
+	// couldn't be reached. The plan goes on with the scores as they are.
 	ctx, cancel := context.WithTimeout(ctx, scoresWait)
 	defer cancel()
-	_, err = server.tasks.Await(ctx, receipt.TriggerID)
+	_, at, err := server.tasks.AwaitNow(ctx, receipt.TriggerID)
+	if err == nil && !at.IsZero() {
+		err = fmt.Errorf("read again at %s", at.Local().Format("15:04"))
+	}
 	return err
 }
 
