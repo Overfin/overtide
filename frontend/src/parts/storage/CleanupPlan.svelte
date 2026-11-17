@@ -27,6 +27,9 @@
   // excluded: the rows skipped so far in this window.
   let excluded = $state<string[]>([]);
   let oldScores = $state(false);
+  // Until when Overfin's scores are paused after a removal, when they are.
+  let pausedUntil = $state('');
+  const pausedMinutes = $derived(pausedUntil ? Math.max(1, Math.ceil((Date.parse(pausedUntil) - Date.now()) / 60000)) : 0);
 
   const rows = $derived(plan ? [...plan.torrents, ...plan.media] : []);
 
@@ -40,6 +43,7 @@
       excluded = plan.excluded;
       // Asked when the window opens: it stays true for the rows skipped after.
       oldScores = oldScores || !!plan.oldScores;
+      if (plan.scoresPausedUntil) pausedUntil = plan.scoresPausedUntil;
     } catch (err) {
       failure = (err as Error).message;
     }
@@ -136,7 +140,8 @@
     {#if failure}<Notice warn>{failure}</Notice>{:else}<Loading text="Asking Overfin for current scores…" />{/if}
   {:else if rows.length}
     {#if plan.dryRun}<Notice warn>Dry run — nothing will be removed.</Notice>{/if}
-    {#if oldScores}<Notice warn>Overfin couldn't be reached: this plan uses the scores it last gave.</Notice>{/if}
+    {#if oldScores && pausedUntil}<Notice warn>Overfin's scores are paused for {pausedMinutes} more minute{pausedMinutes === 1 ? '' : 's'} after a removal: this plan uses the scores it last gave.</Notice>
+    {:else if oldScores}<Notice warn>Overfin couldn't be reached: this plan uses the scores it last gave.</Notice>{/if}
     <p>{plan.message} <span class="muted">· {rows.length} to remove, {human(plan.selectedBytes)} in all</span></p>
     <p class="muted">Skip a row for this time: another takes its place, so the target is still met. Keep it: it goes on the Kept list, and is never planned for removal until taken off it.</p>
     {#each [['Torrents', plan.torrents], ['Titles', plan.media]] as [label, group] (label)}

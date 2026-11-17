@@ -147,6 +147,8 @@ export interface CleanupPlan {
   dryRun: boolean;
   message: string;
   oldScores?: boolean;
+  /** Overfin's scores are paused after a removal until then (ISO time). */
+  scoresPausedUntil?: string;
   /** Changes when the plan may have: asked again on live updates. */
   stamp: string;
   selectedBytes: number;

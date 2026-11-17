@@ -3,6 +3,7 @@ package tasks
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"runtime"
@@ -875,5 +876,42 @@ func TestExclusiveWaiterIsNotStarvedBySharedClaims(t *testing.T) {
 	}
 	if got := receive(t, order); got != "inventory" {
 		t.Fatalf("last: %s", got)
+	}
+}
+
+// Work interrupted and put off is said so to whoever waits on it now: put
+// off after an interruption, not after a failure.
+func TestAwaitNowSaysWhyWorkIsPutOff(t *testing.T) {
+	started := make(chan struct{}, 4)
+	claim := []ResourceClaim{{Resource: "mutation", Mode: ClaimExclusive}}
+	fail := false
+	manager := New(
+		Definition{ID: "low", Name: "Low", Priority: PriorityPeriodic, Resources: claim, Interruptible: true, InterruptionDelay: time.Hour, Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Minute}, Runner: func(ctx context.Context) error {
+			if fail {
+				return Retryable(errors.New("out of reach"))
+			}
+			started <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		Definition{ID: "high", Name: "High", Priority: PriorityMutation, Resources: claim, Runner: func(context.Context) error { return nil }},
+	)
+	startManager(t, manager)
+	low, _ := manager.Submit(Request{TaskID: "low", Kind: TriggerEvent})
+	<-started
+	high, _ := manager.Submit(Request{TaskID: "high", Kind: TriggerEvent, Priority: PriorityMutation, Durable: true})
+	_, _ = manager.Await(context.Background(), high.TriggerID)
+	_, off, err := manager.AwaitNow(context.Background(), low.TriggerID)
+	if err != nil || off.Until.IsZero() || !off.Interrupted {
+		t.Fatalf("interrupted: %+v, %v", off, err)
+	}
+
+	fail = true
+	other := New(Definition{ID: "low", Name: "Low", Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Minute}, Runner: func(context.Context) error { return Retryable(errors.New("out of reach")) }})
+	startManager(t, other)
+	trigger, _ := other.Submit(Request{TaskID: "low", Kind: TriggerEvent})
+	_, off, err = other.AwaitNow(context.Background(), trigger.TriggerID)
+	if err != nil || off.Until.IsZero() || off.Interrupted {
+		t.Fatalf("failed: %+v, %v", off, err)
 	}
 }

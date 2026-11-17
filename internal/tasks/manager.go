@@ -29,6 +29,9 @@ type pendingIntent struct {
 	CreatedAt        time.Time       `json:"createdAt"`
 	Attempt          int             `json:"attempt"`
 	WorkflowInstance string          `json:"workflowInstance,omitempty"`
+	// Interrupted: put off (NotBefore) after higher-priority work
+	// interrupted it, not after a failure.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 type persistedState struct {
@@ -727,6 +730,9 @@ func (manager *Manager) finishExecution(executionID string, definition Definitio
 	}
 	if interrupted && definition.Recovery == RecoveryRetry {
 		manager.requeueExecutionLocked(execution, definition.InterruptionDelay)
+		if intent := manager.state.Pending[intentKey(execution.TaskID, execution.CoalescingKey)]; intent != nil {
+			intent.Interrupted = true
+		}
 	} else if interrupted {
 		for _, triggerID := range execution.TriggerIDs {
 			trigger := manager.state.Triggers[triggerID]
@@ -735,6 +741,9 @@ func (manager *Manager) finishExecution(executionID string, definition Definitio
 		}
 	} else if runError != nil && IsRetryable(runError) && execution.Attempt < definition.Retry.MaxAttempts {
 		manager.requeueExecutionLocked(execution, retryDelay(definition.Retry, execution.Attempt))
+		if intent := manager.state.Pending[intentKey(execution.TaskID, execution.CoalescingKey)]; intent != nil {
+			intent.Interrupted = false
+		}
 	} else {
 		for _, triggerID := range execution.TriggerIDs {
 			trigger := manager.state.Triggers[triggerID]
@@ -1080,31 +1089,46 @@ func (manager *Manager) ReadyAt(triggerID string) time.Time {
 	return manager.readyAtLocked(triggerID)
 }
 
+// PutOff says why and until when work isn't run now.
+type PutOff struct {
+	// Until is when it may start; zero when it isn't put off.
+	Until time.Time
+	// Interrupted: higher-priority work interrupted it (its cooldown),
+	// rather than a failure (its next try).
+	Interrupted bool
+}
+
 // AwaitNow is Await, except that it gives up as soon as the work is put
 // off (ReadyAt in the future: a cooldown, or a retry after a failure),
-// answering when it may start instead.
-func (manager *Manager) AwaitNow(ctx context.Context, triggerID string) (Result, time.Time, error) {
+// answering when it may start, and why, instead.
+func (manager *Manager) AwaitNow(ctx context.Context, triggerID string) (Result, PutOff, error) {
 	for {
 		manager.mu.Lock()
 		trigger := manager.state.Triggers[triggerID]
 		if trigger == nil {
 			manager.mu.Unlock()
-			return Result{}, time.Time{}, fmt.Errorf("unknown trigger %q", triggerID)
+			return Result{}, PutOff{}, fmt.Errorf("unknown trigger %q", triggerID)
 		}
 		if terminalTrigger(trigger.State) {
 			manager.mu.Unlock()
 			result, err := manager.Await(ctx, triggerID)
-			return result, time.Time{}, err
+			return result, PutOff{}, err
 		}
 		if at := manager.readyAtLocked(triggerID); !at.IsZero() {
+			off := PutOff{Until: at}
+			for _, intent := range manager.state.Pending {
+				if intent.ID == trigger.TargetID {
+					off.Interrupted = intent.Interrupted
+				}
+			}
 			manager.mu.Unlock()
-			return Result{}, at, nil
+			return Result{}, off, nil
 		}
 		changed := manager.changed
 		manager.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return Result{}, time.Time{}, ctx.Err()
+			return Result{}, PutOff{}, ctx.Err()
 		case <-changed:
 		}
 	}

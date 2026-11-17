@@ -2,6 +2,7 @@ package httpui
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -324,6 +325,9 @@ type cleanupPlanJSON struct {
 	// OldScores: Overfin couldn't be asked just now, so the plan is made on
 	// the scores last read.
 	OldScores bool `json:"oldScores,omitempty"`
+	// ScoresPausedUntil: Overfin's scores are paused after a removal (its
+	// cooldown) until then, which is why the plan uses the scores last read.
+	ScoresPausedUntil time.Time `json:"scoresPausedUntil,omitzero"`
 	// Stamp is planStamp's as the plan was built: the page asks for it
 	// again on live updates, and the plan only when it changed.
 	Stamp         string           `json:"stamp"`
@@ -428,17 +432,23 @@ func (server *Server) apiCleanupPlan(w http.ResponseWriter, r *http.Request) {
 	// check.
 	stamp := server.planStamp(path)
 	oldScores := false
+	var pausedUntil time.Time
 	// A live update (live=1) uses the scores as they are: only opening the
 	// plan asks Overfin.
 	if excluded == nil && server.tasks != nil && r.URL.Query().Get("live") != "1" {
 		if err := server.refreshScores(r.Context(), "A cleanup plan was opened"); err != nil {
 			log.Printf("[cleanup-plan] Overfin's scores: %v", err)
 			oldScores = true
+			var off scoresPutOff
+			if errors.As(err, &off) && off.Interrupted {
+				pausedUntil = off.Until
+			}
 		}
 	}
 	data, _ := server.planForDevice(path, excluded)
 	out := cleanupPlanJSONFrom(data)
 	out.OldScores = oldScores
+	out.ScoresPausedUntil = pausedUntil
 	out.Stamp = stamp
 	writeJSON(w, http.StatusOK, out)
 }

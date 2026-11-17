@@ -187,11 +187,22 @@ func (server *Server) refreshScores(ctx context.Context, cause string) error {
 	// couldn't be reached. The plan goes on with the scores as they are.
 	ctx, cancel := context.WithTimeout(ctx, scoresWait)
 	defer cancel()
-	_, at, err := server.tasks.AwaitNow(ctx, receipt.TriggerID)
-	if err == nil && !at.IsZero() {
-		err = fmt.Errorf("read again at %s", at.Local().Format("15:04"))
+	_, off, err := server.tasks.AwaitNow(ctx, receipt.TriggerID)
+	if err == nil && !off.Until.IsZero() {
+		err = scoresPutOff(off)
 	}
 	return err
+}
+
+// scoresPutOff is refreshScores' answer when Overfin's read is put off:
+// paused after a removal (its cooldown), or tried again after it failed.
+type scoresPutOff tasks.PutOff
+
+func (off scoresPutOff) Error() string {
+	if off.Interrupted {
+		return fmt.Sprintf("paused after a removal until %s", off.Until.Local().Format("15:04"))
+	}
+	return fmt.Sprintf("tried again at %s", off.Until.Local().Format("15:04"))
 }
 
 // overTarget reports whether a disk with automatic removal is over its

@@ -2,6 +2,7 @@ package httpui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -94,5 +95,42 @@ func TestCleanupPlanDoesntWaitForOverfinsRetries(t *testing.T) {
 	}
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"oldScores":true`) {
 		t.Fatalf("%d %s", recorder.Code, recorder.Body)
+	}
+}
+
+// Overfin's read paused after a removal: the plan says it's paused, and
+// until when, not that Overfin couldn't be reached.
+func TestCleanupPlanSaysScoresArePausedAfterARemoval(t *testing.T) {
+	started := make(chan struct{}, 1)
+	claim := []tasks.ResourceClaim{{Resource: "owner-filesystem-mutation", Mode: tasks.ClaimExclusive}}
+	manager := tasks.New(
+		tasks.Definition{ID: "overfin", Name: "Overfin values", Resources: claim, Interruptible: true, InterruptionDelay: 30 * time.Minute, Recovery: tasks.RecoveryRetry, Runner: func(ctx context.Context) error {
+			started <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		tasks.Definition{ID: "removal", Name: "Removal", Priority: tasks.PriorityMutation, Resources: claim, Runner: func(context.Context) error { return nil }},
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go manager.Start(ctx)
+	if _, err := manager.Submit(tasks.Request{TaskID: "overfin", Kind: tasks.TriggerEvent}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	removal, _ := manager.Submit(tasks.Request{TaskID: "removal", Kind: tasks.TriggerEvent, Priority: tasks.PriorityMutation, Durable: true})
+	if _, err := manager.Await(context.Background(), removal.TriggerID); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Overfin: config.Connection{URL: "http://192.0.2.10:8080", APIKey: "k"}}
+	server := &Server{tasks: manager, inv: inventory.New(cfg, nil)}
+	recorder := httptest.NewRecorder()
+	server.routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/storage/plan?path=/data/movies", nil))
+	var out cleanupPlanJSON
+	if err := json.Unmarshal(recorder.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.OldScores || out.ScoresPausedUntil.Before(time.Now().Add(25*time.Minute)) {
+		t.Fatalf("%s", recorder.Body)
 	}
 }
