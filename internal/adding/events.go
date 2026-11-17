@@ -219,20 +219,9 @@ func (service *Service) saveWebhook(app eventsApp, address, secret string) error
 	if done {
 		return nil
 	}
-	entries, err := app.client.Notifications()
+	entry, err := webhookEntry(app)
 	if err != nil {
 		return err
-	}
-	var entry map[string]any
-	for _, e := range entries {
-		if name, _ := e["name"].(string); name == webhookName {
-			entry = e
-		}
-	}
-	if entry == nil {
-		if entry, err = app.client.WebhookSchema(); err != nil {
-			return err
-		}
 	}
 	if err := app.client.SaveNotification(webhook(entry, app, address, secret)); err != nil {
 		return err
@@ -241,6 +230,22 @@ func (service *Service) saveWebhook(app eventsApp, address, secret string) error
 	service.connected[key] = true
 	service.eventsMu.Unlock()
 	return nil
+}
+
+// webhookEntry is app's Connect entry for Overtide, or the app's schema
+// for a new one when it has none. Tries go through the saved entry too:
+// Radarr and Sonarr refuse a test under a name another entry has.
+func webhookEntry(app eventsApp) (map[string]any, error) {
+	entries, err := app.client.Notifications()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if name, _ := e["name"].(string); name == webhookName {
+			return e, nil
+		}
+	}
+	return app.client.WebhookSchema()
 }
 
 // findAddress tries the addresses Overtide may have as app reaches it: the
@@ -270,7 +275,7 @@ func (service *Service) findAddress(app eventsApp, cfg config.Config) string {
 			addresses = append(addresses, "http://"+net.JoinHostPort(host, port))
 		}
 	}
-	schema, err := app.client.WebhookSchema()
+	entry, err := webhookEntry(app)
 	if err != nil {
 		return ""
 	}
@@ -286,7 +291,7 @@ func (service *Service) findAddress(app eventsApp, cfg config.Config) string {
 		}
 		// The app sends the test event before it answers: heard by then,
 		// or not at all.
-		err = app.client.TestNotification(webhook(schema, app, address, token))
+		err = app.client.TestNotification(webhook(entry, app, address, token))
 		if heard := service.stopProbe(); err == nil && heard {
 			return address
 		}

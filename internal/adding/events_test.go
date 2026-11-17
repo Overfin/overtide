@@ -98,6 +98,20 @@ func TestConnect(t *testing.T) {
 		t.Errorf("from the panel's address: %q, %v", got, fake.Notifications)
 	}
 
+	// A webhook saved before (the address since cleared, or moved) doesn't
+	// stop the tries: Radarr and Sonarr refuse a second entry of its name.
+	fake, service, cfg = setup(true)
+	old := map[string]any{"id": 1, "name": webhookName, "implementation": "Webhook", "onMovieAdded": true,
+		"fields": []any{map[string]any{"name": "url", "value": "http://192.0.2.1:8088" + EventsPath}, map[string]any{"name": "method", "value": 1}, map[string]any{"name": "username", "value": EventsUser}, map[string]any{"name": "password", "value": "********"}}}
+	fake.Notifications["radarr"][1] = old
+	if err := service.connect(context.Background(), cfg, false); err != nil {
+		t.Fatal(err)
+	}
+	address = service.inv.Config().Adding.EventsURL
+	if address == "" || service.EventsProblem() != "" || len(fake.Notifications["radarr"]) != 1 || arr.Field(fake.Notifications["radarr"][1], "url") != address+EventsPath {
+		t.Errorf("with a webhook saved before: address %q, problem %q, %v", address, service.EventsProblem(), fake.Notifications["radarr"])
+	}
+
 	fake, service, cfg = setup(false)
 	if err := service.connect(context.Background(), cfg, false); err != nil {
 		t.Fatal(err)

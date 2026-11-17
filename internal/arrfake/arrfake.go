@@ -319,6 +319,9 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/api/v3/notification/schema":
 		write([]map[string]any{{"implementation": "Webhook", "name": "", "onGrab": false, "onMovieAdded": false, "onSeriesAdd": false,
 			"fields": []any{map[string]any{"name": "url"}, map[string]any{"name": "method", "value": 1}, map[string]any{"name": "username"}, map[string]any{"name": "password"}}}})
+	case path == "/api/v3/notification/test" && f.nameTaken(app, body):
+		// Radarr and Sonarr refuse a name another entry has, tests too.
+		w.WriteHeader(http.StatusBadRequest)
 	case path == "/api/v3/notification/test":
 		field := func(name string) string {
 			for _, f := range body["fields"].([]any) {
@@ -345,6 +348,8 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(map[string]any{})
 	case path == "/api/v3/notification" && r.Method == http.MethodGet:
 		write(list(f.Notifications[app]))
+	case path == "/api/v3/notification" && f.nameTaken(app, body):
+		w.WriteHeader(http.StatusBadRequest)
 	case path == "/api/v3/notification":
 		id := len(f.Notifications[app]) + 1
 		body["id"] = id
@@ -357,6 +362,18 @@ func (f *Arrs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		write(map[string]any{})
 	}
+}
+
+// nameTaken reports whether another of app's notifications than entry
+// (by id) has entry's name, which Radarr and Sonarr refuse.
+func (f *Arrs) nameTaken(app string, entry map[string]any) bool {
+	id, _ := entry["id"].(float64)
+	for other, saved := range f.Notifications[app] {
+		if saved["name"] == entry["name"] && float64(other) != id {
+			return true
+		}
+	}
+	return false
 }
 
 // Mutations are the changes asked, in order.
