@@ -406,7 +406,7 @@ func (server *Server) buildTorrentRemovalPlan(hash, serviceID string, targetSele
 			continue
 		}
 		if found != nil {
-			return removalData{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; an service_id is required", h)
+			return removalData{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; a service_id is required", h)
 		}
 		x := t
 		found = &x

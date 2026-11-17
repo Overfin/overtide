@@ -414,7 +414,7 @@ func (service *Service) TorrentDetail(hash, svcID string) (model.Torrent, error)
 			continue
 		}
 		if found {
-			return model.Torrent{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; an service_id is required", hash)
+			return model.Torrent{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; a service_id is required", hash)
 		}
 		indexed, found = t, true
 	}

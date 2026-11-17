@@ -240,7 +240,7 @@ func (server *Server) admitRemoval(form url.Values) (removalAdmission, error) {
 				continue
 			}
 			if found != nil {
-				return removalAdmission{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; an service_id is required", hash)
+				return removalAdmission{}, fmt.Errorf("torrent hash %q exists in more than one configured instance; a service_id is required", hash)
 			}
 			t := torrent
 			found = &t

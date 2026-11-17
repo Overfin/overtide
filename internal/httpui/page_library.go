@@ -515,7 +515,7 @@ func (server *Server) mediaDetail(kind string, sourceID int, serviceID string) m
 			}
 		}
 		if matches > 1 {
-			return mediaLookup{Status: http.StatusConflict, Message: "this media id exists in more than one configured instance; an service_id is required"}
+			return mediaLookup{Status: http.StatusConflict, Message: "this media id exists in more than one configured instance; a service_id is required"}
 		}
 	}
 
